@@ -1,0 +1,28 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# --- Secrets / local runtime state ---
+# tokens, push subscriptions, checkpoints, cloud-cap, VAPID pem, run logs
+.env
+.storyforge_state/
+
+# --- Large downloaded model weights (auto-download on first run) ---
+models/*.onnx
+models/*.bin
+
+# --- Generated media (recreated by the pipeline at runtime) ---
+output/
+# synthesized on first render
+assets/ambient_bed.wav
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.log

@@ -1,0 +1,7 @@
+# StoryForge control app (PWA backend) + self-hosted Web Push.
+# Optional: without these, app/main.py falls back to a stdlib http.server that
+# still serves the PWA and the full JSON API (just no uvicorn/websockets).
+fastapi>=0.110
+uvicorn[standard]>=0.29
+pywebpush>=1.14
+cryptography>=42.0

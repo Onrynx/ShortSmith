@@ -1,0 +1,20 @@
+# Gaming Lore — prompts evoke GENRE aesthetics, never trademarked characters.
+key: gaming_lore
+name: Gaming Lore
+niche: "video game lore and hidden stories"
+angle: "deep lore told cinematically"
+voice: am_michael           # Kokoro voice id (American male, warm narrator)
+style: "epic concept art, dramatic fantasy/sci-fi environments, painterly"
+banned: "leaks, real people, direct copyrighted character likenesses"
+
+# --- Output format: YouTube SHORTS (vertical 9:16, under 60s) ---------------
+format: shorts
+orientation: vertical
+target_seconds: 45
+max_seconds: 58
+scene_bounds: [5, 8]
+target_minutes: 7           # used only if format: long
+
+lane_budgets:
+  night: [4, 8]
+  day: [2, 4]
