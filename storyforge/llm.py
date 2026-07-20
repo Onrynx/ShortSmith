@@ -62,11 +62,20 @@ def _odysseus_models(api_base: str) -> list[str]:
         return []
 
 
+def odysseus_ui_reachable() -> bool:
+    """True if the Odysseus web app answers at :7000 (even a login redirect)."""
+    return host_reachable(odysseus_base_url(), timeout=3)
+
+
 def odysseus_reachable() -> bool:
+    """True only if Odysseus actually serves an OpenAI-compatible /v1 that we can
+    generate against. Odysseus's own API is auth'd under /api and it usually just
+    *consumes* model backends, so we require a real /v1/models list before routing
+    the crew here — otherwise StoryForge uses the shared Ollama that Odysseus also
+    uses (same brain), and never picks a backend that would 404."""
     if env("ODYSSEUS_DISABLE"):
         return False
-    return host_reachable(odysseus_base_url(), timeout=4) or \
-        host_reachable(odysseus_api_base() + "/models", timeout=4)
+    return len(_odysseus_models(odysseus_api_base())) > 0
 
 
 def select_model(mock: bool = False) -> dict:

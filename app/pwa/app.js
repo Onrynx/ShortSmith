@@ -2,7 +2,7 @@
 const STAGES = ["script", "voice", "canvas", "cutter", "herald"];
 let TOKEN = localStorage.getItem("sf_token") || "";
 let CONFIG = null;
-let activeTab = "today";
+let activeTab = "home";
 let pollTimer = null;
 
 // ---------------------------------------------------------------- api ----
@@ -51,7 +51,8 @@ const view = document.getElementById("view");
 async function render() {
   if (!TOKEN) { view.innerHTML = `<div class="empty">Tap ⚙️ and paste your <b>APP_TOKEN</b> to begin.</div>`; return; }
   try {
-    if (activeTab === "today") await renderToday();
+    if (activeTab === "home") await renderHome();
+    else if (activeTab === "today") await renderToday();
     else if (activeTab === "review") await renderReview();
     else if (activeTab === "feed") await renderFeed();
     else if (activeTab === "history") await renderHistory();
@@ -73,6 +74,66 @@ function stageTrack(st) {
   const label = failed ? `<span class="sev-red">failed: ${esc(st.message || "")}</span>`
     : (st && st.message ? esc(st.message) : "idle");
   return `<div class="stage-track">${dots}</div><div class="stage-label">${label}</div>`;
+}
+
+async function renderHome() {
+  CONFIG = CONFIG || await api("/api/config");
+  const [ody, status] = await Promise.all([api("/api/odysseus"), api("/api/status")]);
+  const brain = ody.storyforge_brain || {};
+  const dot = (up) => `<span style="color:${up ? 'var(--green)' : 'var(--red)'}">${up ? '●' : '○'}</span>`;
+  const apMode = CONFIG.auto_publish || "off";
+  const apColor = apMode === "public" ? "var(--red)" : (apMode === "private" ? "var(--yellow)" : "var(--muted)");
+  const brainVia = brain.backend === "odysseus" ? "via Odysseus /v1"
+    : (brain.backend === "ollama" ? "Ollama (shared with Odysseus)" : brain.backend);
+
+  view.innerHTML = `
+    <div class="card">
+      <h3>🧠 Odysseus <span class="muted" style="font-weight:400">— your self-hosted brain</span></h3>
+      <div class="row spread"><span>${dot(ody.ui_up)} Workspace ${ody.ui_up ? 'online' : 'offline'}</span>
+        <span class="muted">${esc(ody.url)}</span></div>
+      <div class="row spread" style="margin-top:6px"><span>${dot(ody.llm_v1_up)} OpenAI /v1 gateway</span>
+        <span class="muted">${ody.llm_v1_up ? (ody.models.length + ' models') : 'not exposed (using Ollama)'}</span></div>
+      <button class="btn full" id="openOdy">Open Odysseus →</button>
+    </div>
+
+    <div class="card">
+      <h3>🎬 StoryForge <span class="muted" style="font-weight:400">— the video factory</span></h3>
+      <div class="row spread"><span>Crew brain</span><span class="pill">${esc(brain.model || '—')}</span></div>
+      <div class="muted" style="margin-top:6px">${esc(brainVia)}</div>
+      <div class="row spread" style="margin-top:8px"><span>Awaiting review</span><span class="pill">${status.pending_count}</span></div>
+      <div class="row spread" style="margin-top:6px"><span>Cloud cap (day)</span><span class="pill">${status.cloud_cap_remaining}</span></div>
+    </div>
+
+    <div class="card">
+      <h3>⚡ Automation</h3>
+      <div class="row spread"><span>Publish mode</span>
+        <span class="pill" style="color:${apColor};border-color:${apColor}">${esc(apMode)}</span></div>
+      <div class="muted" style="margin-top:6px">
+        ${apMode === 'off' ? 'Videos wait in Review for your approval (recommended).'
+          : apMode === 'private' ? 'Auto-uploads PRIVATE — you flip to public in YouTube Studio.'
+          : '⚠️ Fully autonomous: auto-uploads PUBLIC. Change AUTO_PUBLISH in .env to revert.'}
+      </div>
+      <button class="btn primary full" id="runBoth">▶ Run both lanes now (mock)</button>
+      <button class="btn full" id="goToday">🌗 Assign today's lanes</button>
+    </div>
+
+    <div class="card">
+      <h3>🔗 How they work together</h3>
+      <ol class="muted" style="margin:0;padding-left:18px;line-height:1.7">
+        <li><b>Odysseus</b> is the brain + scheduler you own locally.</li>
+        <li>An Odysseus scheduled task fires <b>StoryForge</b> daily (webhook / run_script).</li>
+        <li>StoryForge writes the script on the <b>same local model</b> Odysseus uses.</li>
+        <li>7 agents build a vertical Short with AI motion, voice & captions.</li>
+        <li>It lands in <b>Review</b> → you Approve → (optional) auto-upload with #hashtags.</li>
+      </ol>
+    </div>`;
+
+  document.getElementById("openOdy").onclick = () => window.open(ody.url, "_blank");
+  document.getElementById("goToday").onclick = () => setTab("today");
+  document.getElementById("runBoth").onclick = async () => {
+    const r = await api("/api/trigger", { method: "POST", body: { daily: true, mock: true } });
+    toast(r.ok ? "Running both lanes (mock)…" : "Failed: " + (r.error || "?"));
+  };
 }
 
 async function renderToday() {
@@ -226,7 +287,7 @@ async function enablePush() {
 // --------------------------------------------------------------- boot ----
 function startPolling() {
   if (pollTimer) clearInterval(pollTimer);
-  pollTimer = setInterval(() => { if (["today", "feed"].includes(activeTab)) render(); }, 5000);
+  pollTimer = setInterval(() => { if (["home", "today", "feed"].includes(activeTab)) render(); }, 5000);
 }
 async function boot() {
   if ("serviceWorker" in navigator) { try { await navigator.serviceWorker.register("/service-worker.js"); } catch (e) {} }

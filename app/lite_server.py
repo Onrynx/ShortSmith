@@ -99,6 +99,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(store.history())
             if path == "/api/assignment":
                 return self._json(store.get_assignment_public())
+            if path == "/api/odysseus":
+                return self._json(store.odysseus_status())
             if path == "/api/events":
                 return self._json(store.events(int(q.get("limit", ["100"])[0])))
             if path.startswith("/api/pending/"):
@@ -120,9 +122,17 @@ class Handler(BaseHTTPRequestHandler):
         u = urlparse(self.path)
         path = u.path
         q = parse_qs(u.query)
+        body = self._body()
+        # Webhook trigger uses its own token (may differ from the app token).
+        if path == "/api/trigger":
+            tok = store.webhook_token()
+            header = self.headers.get("Authorization", "")
+            given = header[7:] if header.lower().startswith("bearer ") else (q.get("token", [""])[0])
+            if given != tok:
+                return self._json({"error": "unauthorized"}, 401)
+            return self._json(store.trigger(body))
         if not path.startswith("/api/") or not self._authed(q):
             return self._json({"error": "unauthorized"}, 401)
-        body = self._body()
         if path.endswith("/approve"):
             return self._json(store.approve(path.split("/")[-2]))
         if path.endswith("/reject"):

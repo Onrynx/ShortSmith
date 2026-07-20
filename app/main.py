@@ -112,6 +112,19 @@ def build_fastapi():
     def api_subscribe(payload: dict = Body(default={}), _=Depends(auth)):
         return store.subscribe_push(payload.get("subscription") or payload)
 
+    @app.get("/api/odysseus")
+    def api_odysseus(_=Depends(auth)):
+        return store.odysseus_status()
+
+    @app.post("/api/trigger")
+    def api_trigger(payload: dict = Body(default={}),
+                    authorization: str = Header(default=""), token: str = Query(default="")):
+        # Webhook for Odysseus scheduled tasks / external automation.
+        given = authorization[7:] if authorization.lower().startswith("bearer ") else token
+        if given != store.webhook_token():
+            raise HTTPException(status_code=401, detail="bad webhook token")
+        return store.trigger(payload)
+
     @app.get("/api/media/{item_id}/{kind}")
     def api_media(item_id: str, kind: str, _=Depends(auth)):
         p = store.media_path(item_id, kind)

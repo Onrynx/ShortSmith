@@ -12,6 +12,8 @@ import sys
 from pathlib import Path
 
 from storyforge.config import list_channels, load_channel
+from storyforge.llm import (_odysseus_models, odysseus_api_base, odysseus_base_url,
+                            odysseus_reachable, odysseus_ui_reachable, select_model)
 from storyforge.notify import add_subscription, recent_events
 from storyforge.providers.cloud import cap_remaining
 from storyforge.scheduler import get_assignment, set_assignment
@@ -52,6 +54,8 @@ def config_info() -> dict:
         "lanes": ["night", "day"],
         "vapid_public_key": vapid_public_key(),
         "push_configured": bool(vapid_public_key()),
+        "auto_publish": (env("AUTO_PUBLISH", "off") or "off").lower(),
+        "odysseus_url": odysseus_base_url(),
     }
 
 
@@ -179,6 +183,57 @@ def media_path(item_id: str, kind: str) -> Path | None:
 # --------------------------------------------------------------------------- #
 # Actions
 # --------------------------------------------------------------------------- #
+def odysseus_status() -> dict:
+    """How StoryForge is connected to Odysseus right now."""
+    llm_up = odysseus_reachable()          # real OpenAI /v1 available?
+    sel = select_model(False)
+    return {
+        "url": odysseus_base_url(),
+        "ui_up": odysseus_ui_reachable(),  # web app answering at :7000
+        "llm_v1_up": llm_up,
+        "models": _odysseus_models(odysseus_api_base()) if llm_up else [],
+        "storyforge_brain": {"backend": sel.get("backend"), "model": sel.get("model"),
+                             "reason": sel.get("reason")},
+    }
+
+
+def _spawn(cmd: list[str], tag: str) -> dict:
+    logdir = ensure_dir(STATE_DIR / "runs")
+    logfile = logdir / f"{tag}_{utcnow_iso().replace(':', '').replace('-', '')}.log"
+    kwargs = {}
+    if os.name == "nt":
+        kwargs["creationflags"] = 0x00000008 | 0x00000200  # DETACHED_PROCESS|NEW_PROCESS_GROUP
+    else:
+        kwargs["start_new_session"] = True
+    fh = open(logfile, "w", encoding="utf-8")
+    proc = subprocess.Popen(cmd, cwd=str(ROOT), stdout=fh, stderr=subprocess.STDOUT, **kwargs)
+    return {"ok": True, "pid": proc.pid, "log": str(logfile), "cmd": " ".join(cmd)}
+
+
+def run_scheduler_daily(mock: bool = False) -> dict:
+    cmd = [sys.executable, "-m", "storyforge.scheduler", "daily", "--no-wait"]
+    if mock:
+        cmd.append("--mock")
+    return _spawn(cmd, "daily")
+
+
+def webhook_token() -> str:
+    """Token Odysseus (or any external trigger) uses to fire StoryForge."""
+    return env("STORYFORGE_WEBHOOK_TOKEN") or app_token()
+
+
+def trigger(payload: dict) -> dict:
+    """External automation entry point (called by Odysseus scheduled tasks / webhooks).
+
+    payload: {"daily": true} to run both lanes for today's assignment, or
+             {"channel": "...", "lane": "night|day", "mock": false} for one run.
+    """
+    if payload.get("daily"):
+        return run_scheduler_daily(bool(payload.get("mock", False)))
+    channel = payload.get("channel") or (list_channels() or ["history_mysteries"])[0]
+    return run_now(channel, payload.get("lane", "night"), bool(payload.get("mock", False)))
+
+
 def run_now(channel: str, lane: str, mock: bool = False) -> dict:
     if channel not in (list_channels() or []):
         return {"ok": False, "error": f"unknown channel {channel}"}

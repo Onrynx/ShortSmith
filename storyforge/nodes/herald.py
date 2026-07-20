@@ -8,6 +8,7 @@ self-declared synthetic-content disclosure. NEVER auto-public.
 """
 from __future__ import annotations
 
+import re
 import shutil
 from pathlib import Path
 
@@ -130,14 +131,47 @@ def _make_thumbnail(state, workdir: Path, dest: Path) -> str | None:
 
 
 # --------------------------------------------------------------------------- #
-# Optional private YouTube upload
+# Hashtags + publish-mode
 # --------------------------------------------------------------------------- #
-def _upload_youtube(state, video: Path, thumb: str | None, title, description, tags) -> str | None:
+def build_hashtags(tags: list[str], is_shorts: bool = True, limit: int = 5) -> str:
+    """Turn tags into YouTube hashtags (#Shorts first). Shown above the title."""
+    out: list[str] = ["#Shorts"] if is_shorts else []
+    for t in tags:
+        camel = "".join(w.capitalize() for w in re.split(r"[^A-Za-z0-9]+", t) if w)
+        h = "#" + camel
+        if camel and h not in out:
+            out.append(h)
+        if len(out) >= limit:
+            break
+    return " ".join(out)
+
+
+def publish_mode(state: dict) -> str:
+    """Resolve upload behaviour: 'off' | 'private' | 'public'.
+
+    AUTO_PUBLISH=public is the ONLY way videos go public automatically, and it is
+    opt-in by you. Everything else uploads PRIVATE at most, and the default keeps
+    the human approval gate (nothing is uploaded until you approve/--publish)."""
+    ap = (env("AUTO_PUBLISH", "off") or "off").lower()
+    if ap in ("private", "public"):
+        return ap
+    if state.get("publish") or env_bool("PUBLISH", False):
+        return "private"
+    return "off"
+
+
+# --------------------------------------------------------------------------- #
+# Optional YouTube upload (default PRIVATE; public only on explicit opt-in)
+# --------------------------------------------------------------------------- #
+def _upload_youtube(state, video: Path, thumb: str | None, title, description, tags,
+                    privacy: str = "private") -> str | None:
     secrets = env("YOUTUBE_CLIENT_SECRETS")
     token = env("YOUTUBE_TOKEN_JSON")
     if not secrets or not token or not Path(token).exists():
-        add_fallback(state, "herald", "PUBLISH set but YouTube creds missing; kept in pending/")
+        add_fallback(state, "herald", "publish requested but YouTube creds missing; kept in pending/")
         return None
+    if privacy == "public":
+        add_fallback(state, "herald", "AUTO_PUBLISH=public — uploading PUBLIC (fully autonomous)")
     try:
         from google.oauth2.credentials import Credentials  # type: ignore
         from googleapiclient.discovery import build  # type: ignore
@@ -148,8 +182,9 @@ def _upload_youtube(state, video: Path, thumb: str | None, title, description, t
         body = {
             "snippet": {"title": title[:100], "description": description,
                         "tags": tags, "categoryId": "27"},
-            # NEVER public. Private until the human flips it in Studio.
-            "status": {"privacyStatus": "private", "selfDeclaredMadeForKids": False},
+            # Default PRIVATE; 'public' only when you explicitly set AUTO_PUBLISH=public.
+            "status": {"privacyStatus": privacy if privacy in ("private", "public", "unlisted") else "private",
+                       "selfDeclaredMadeForKids": False},
         }
         # Self-declared "altered or synthetic content" disclosure (best-effort;
         # field name may vary by API version — safe to ignore if rejected).
@@ -166,7 +201,7 @@ def _upload_youtube(state, video: Path, thumb: str | None, title, description, t
                 yt.thumbnails().set(videoId=vid, media_body=MediaFileUpload(thumb)).execute()
             except Exception:
                 pass
-        mark_done(state, "herald", f"uploaded PRIVATE to YouTube: {vid}")
+        mark_done(state, "herald", f"uploaded {privacy.upper()} to YouTube: {vid}")
         return vid
     except Exception as exc:  # noqa: BLE001
         add_error(state, "herald", f"YouTube upload failed ({exc}); kept in pending/")
@@ -182,9 +217,14 @@ def node_herald(state: dict) -> dict:
     channel = state["channel"]
     progress(state, "herald", "finalizing metadata, thumbnail, and approval package")
 
+    spec = format_spec(state.get("channel_cfg", {}))
     title = script["title"]
-    description = ensure_disclosure(script.get("description", ""))
     tags = script.get("tags", [])
+    # Hashtags near the top so YouTube shows the first 3 above the title (Shorts).
+    hashtags = build_hashtags(tags, is_shorts=(spec["format"] == "shorts"))
+    description = ensure_disclosure(script.get("description", ""))
+    if hashtags:
+        description = f"{hashtags}\n\n{description}"
 
     base = run_basename(state)
     pend = pending_dir(channel)
@@ -221,19 +261,21 @@ def node_herald(state: dict) -> dict:
     # metadata sidecar the PWA reads for the review screen
     from ..utils import write_json
     runtime = round(sum(state.get("durations", [])), 1)
-    # Publish only when explicitly requested (CLI --publish or PUBLISH=true).
-    # _upload_youtube itself no-ops (stays in pending) if creds are missing.
+    # Upload behaviour resolved by publish_mode() (off|private|public). Default 'off'
+    # => stays in pending/ for human approval. _upload_youtube no-ops without creds.
+    mode = publish_mode(state)
     published_id = None
-    if state.get("publish") or env_bool("PUBLISH", False):
-        published_id = _upload_youtube(state, final_video, thumb, title, description, tags)
+    if mode != "off":
+        published_id = _upload_youtube(state, final_video, thumb, title, description, tags, privacy=mode)
 
-    spec = format_spec(state.get("channel_cfg", {}))
     write_json(meta_path, {
         "run_id": state.get("run_id"),
         "channel": channel,
         "channel_name": state.get("channel_cfg", {}).get("name", channel),
         "lane": state.get("lane"),
         "mock": state.get("mock"),
+        "publish_mode": mode,
+        "hashtags": hashtags,
         "format": spec["format"],
         "orientation": "vertical" if spec["vertical"] else "horizontal",
         "resolution": f"{spec['width']}x{spec['height']}",
