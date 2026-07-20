@@ -44,20 +44,10 @@ def _resolve(arg: str) -> str | None:
     return arg if control.find_item(arg) else None
 
 
-def main() -> int:
-    try:
-        import discord
-        from discord.ext import commands
-    except ImportError:
-        print("pip install discord.py  (then set DISCORD_BOT_TOKEN in .env)")
-        return 1
-
-    token = env("DISCORD_BOT_TOKEN")
-    if not token:
-        print("Set DISCORD_BOT_TOKEN in .env (create a bot at discord.com/developers,"
-              " enable the Message Content intent).")
-        return 1
-    chan_id = int(env("DISCORD_CHANNEL_ID", "0") or 0)
+def build_bot(chan_id: int = 0):
+    """Construct the bot + all command handlers (no network). Testable offline."""
+    import discord
+    from discord.ext import commands
 
     intents = discord.Intents.default()
     intents.message_content = True
@@ -189,6 +179,21 @@ def main() -> int:
             f"{icon.get(e.get('severity'), '•')} [{e.get('lane')}/{e.get('channel')}] "
             f"{e.get('stage')}: {e.get('message', '')[:100]}" for e in evs[:15]) or "no events")
 
+    return bot
+
+
+def main() -> int:
+    try:
+        import discord  # noqa: F401
+    except ImportError:
+        print("pip install discord.py  (then set DISCORD_BOT_TOKEN in .env)")
+        return 1
+    token = env("DISCORD_BOT_TOKEN")
+    if not token:
+        print("Set DISCORD_BOT_TOKEN in .env (create a bot at discord.com/developers,"
+              " enable the Message Content intent).")
+        return 1
+    bot = build_bot(int(env("DISCORD_CHANNEL_ID", "0") or 0))
     bot.run(token)
     return 0
 
