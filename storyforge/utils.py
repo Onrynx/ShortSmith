@@ -362,7 +362,7 @@ def ffprobe_duration(path: Path | str) -> float:
 
 
 # --------------------------------------------------------------------------- #
-# Status files (read by the PWA for live per-lane progress)
+# Status files (read by the Discord bot for live per-lane progress)
 # --------------------------------------------------------------------------- #
 def write_status(lane: str, data: dict) -> None:
     data = {**data, "updated": utcnow_iso()}

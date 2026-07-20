@@ -75,7 +75,7 @@ def build_run_report(state: dict) -> str:
     add("  [x] Human approval REQUIRED before anything goes public (this report)")
     add("  [x] Prompts exclude real people / logos / copyrighted characters")
     add("  [x] Critic pass flags unverifiable claims for softening")
-    add(f"  [ ] Reviewer confirms facts & tone, then APPROVE in the PWA")
+    add(f"  [ ] Reviewer confirms facts & tone, then !approve in Discord")
     add("")
     add("ACTION: Review, then Approve (moves mp4 -> approved/) or Reject (deletes) in the app.")
     add("=" * 64)

@@ -258,7 +258,7 @@ def node_herald(state: dict) -> dict:
     write_run_report(state, report_path)
     state["report_path"] = str(report_path)
 
-    # metadata sidecar the PWA reads for the review screen
+    # metadata sidecar the Discord bot reads for !review
     from ..utils import write_json
     runtime = round(sum(state.get("durations", [])), 1)
     # Upload behaviour resolved by publish_mode() (off|private|public). Default 'off'

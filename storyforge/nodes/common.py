@@ -1,6 +1,6 @@
 """Shared node helpers: live progress + fallback/error bookkeeping.
 
-Every node calls progress() so the PWA can show which stage each lane is in, and
+Every node calls progress() so !status can show which stage each lane is in, and
 add_fallback()/add_error() so degradations and failures land in the bottleneck
 feed and (for yellow/red) get pushed to the phone.
 """

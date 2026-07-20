@@ -15,8 +15,8 @@ and **runs end-to-end on the first try with zero keys, zero network, zero GPU.**
   falling back to raw Ollama → Gemini → a canned generator. A run never hard-fails.
 - 🤖 **7 agents**: Scout · Scribe · Critic (CrewAI creative crew) → script · voice ·
   canvas · cutter · herald (LangGraph checkpointed assembly line).
-- 📲 **Installable PWA** control app with self-hosted Web Push — assign lanes daily,
-  watch live status, review & approve, see the bottleneck feed on your phone.
+- 💬 **Discord is the interface** — events stream to your server via webhook; a bot
+  gives `!status`, `!review`, `!approve`, `!run`, `!lanes` from any device.
 - ✅ **Compliance baked in** for YouTube's 2025–2026 inauthentic-content policy.
 
 ---
@@ -34,7 +34,7 @@ layer never kills a lane.
 ## Architecture
 
 ```
-scheduler ──> daily lane picker (PWA tap, 30-min cutoff → reuse yesterday)
+scheduler ──> daily lane picker (Discord !lanes, 30-min cutoff → reuse yesterday)
     │
     ├── LANE A (night / local)  channel → Wan2GP hero clips @480p + stock/motion
     └── LANE B (day / cloud)    channel → Veo/Seedance hero clips + stock/motion
@@ -96,24 +96,24 @@ GEMINI_API_KEY=...                              # DAY lane hero clips via Veo (f
 CLOUD_DAILY_CAP=5                               # cap → stock backfill + 🟡 push when hit
 ```
 
-### 6) Launch the control app + install the PWA on your phone
+### 6) Discord — the control surface
 ```bash
-python scripts/gen_vapid.py                 # one-time Web Push keys → add to .env
-pip install -r requirements-app.txt         # optional: full FastAPI backend (else stdlib)
-python -m app.main                          # prints your APP_TOKEN + local URL
-bash scripts/setup_tunnel.sh                # public https URL via Cloudflare Tunnel
+pip install discord.py
+# .env:
+#   DISCORD_WEBHOOK_URL=...   # channel webhook: 🔴🟡🟢 events, zero deps
+#   DISCORD_BOT_TOKEN=...     # bot from discord.com/developers (Message Content intent ON)
+#   DISCORD_CHANNEL_ID=...    # optional: restrict commands to one channel
+python -m storyforge.discord_bot
 ```
-Open the public URL on your phone → paste the token (⚙️) → **Share → Add to Home
-Screen** → tap **Enable push notifications**. (iOS only allows push from the
-installed home-screen app.)
+Commands: `!status` `!brain` `!pending` `!review n` `!approve n` `!reject n`
+`!run <ch> <lane> [mock]` `!daily [mock]` `!lanes <night> <day>` `!digest` `!feed`.
 
 ### 7) The daily flow
-- Cron/you run `python -m storyforge.scheduler picker` → a push asks you to assign
-  today's lanes. Tap in the PWA (**Today** tab) which channel is night vs day.
-- If you don't answer within `LANE_PICK_CUTOFF_MIN` (30m), it reuses yesterday's map.
-- Night lane queues Wan2GP clips; a morning cron assembles. Day lane runs its own cron.
-- Each finished Short lands in **Review** → watch, read the script + report → **Approve**
-  (moves to `approved/`) or **Reject** (deletes). Approval is required and stays required.
+- Cron runs `python -m storyforge.scheduler picker` → Discord asks you to assign
+  today's lanes. Reply `!lanes history_mysteries gaming_lore` (or swap).
+- No answer within `LANE_PICK_CUTOFF_MIN` (30m) → yesterday's mapping is reused.
+- Each finished Short lands in pending → `!pending`, `!review 1`, then `!approve 1`
+  (moves to `approved/`) or `!reject 1` (deletes). Approval stays required.
 
 ### 8) Enable auto-upload (optional, always PRIVATE)
 ```

@@ -1,8 +1,7 @@
 #Requires -Version 5.1
 <#
-  StoryForge x Odysseus — one-tap launcher / "opening widget".
-  Starts Odysseus (native, no Docker) + the StoryForge control app, waits for both,
-  then opens the StoryForge Command Center and Odysseus in your browser.
+  StoryForge x Odysseus — one-tap launcher.
+  Starts Odysseus (native, no Docker) + the StoryForge Discord bot.
 
   Usage:
     powershell -ExecutionPolicy Bypass -File .\scripts\launch_all.ps1
@@ -10,8 +9,7 @@
 #>
 param(
   [string]$OdysseusDir = "$env:USERPROFILE\odysseus",
-  [int]$OdysseusPort = 7000,
-  [int]$AppPort = 8787
+  [int]$OdysseusPort = 7000
 )
 $ErrorActionPreference = "Continue"
 $SF = Split-Path -Parent $PSScriptRoot   # StoryForge repo root
@@ -28,18 +26,9 @@ if (Test-Up "http://localhost:$OdysseusPort") {
   Write-Host "Odysseus not found at $OdysseusDir (skipping). Clone it or pass -OdysseusDir." -ForegroundColor Yellow
 }
 
-# 2) StoryForge control app (prints its APP_TOKEN in its own window).
-if (Test-Up "http://localhost:$AppPort") {
-  Write-Host "StoryForge app already up on :$AppPort" -ForegroundColor Green
-} else {
-  Write-Host "Starting StoryForge control app ..." -ForegroundColor Cyan
-  $env:APP_PORT = "$AppPort"
-  Start-Process powershell -ArgumentList "-NoExit","-ExecutionPolicy","Bypass","-Command","`$env:APP_PORT='$AppPort'; Set-Location '$SF'; python -m app.main"
-}
+# 2) StoryForge Discord bot (needs DISCORD_BOT_TOKEN in .env).
+Write-Host "Starting StoryForge Discord bot ..." -ForegroundColor Cyan
+Start-Process powershell -ArgumentList "-NoExit","-ExecutionPolicy","Bypass","-Command","Set-Location '$SF'; python -m storyforge.discord_bot"
 
-# 3) Wait, then open the Command Center + Odysseus.
-Write-Host "Waiting for services..." -ForegroundColor Cyan
-1..40 | ForEach-Object { if ((Test-Up "http://localhost:$AppPort")) { break }; Start-Sleep 1 }
-Start-Process "http://localhost:$AppPort/"
 if (Test-Up "http://localhost:$OdysseusPort") { Start-Process "http://localhost:$OdysseusPort/" }
-Write-Host "`nCommand Center: http://localhost:$AppPort/   (paste the APP_TOKEN shown in the StoryForge window)" -ForegroundColor Green
+Write-Host "`nControl StoryForge from Discord: !help in your bot channel." -ForegroundColor Green

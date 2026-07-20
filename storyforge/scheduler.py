@@ -2,8 +2,8 @@
 
 Each day the two channels are assigned to the two lanes (night=local Wan2GP,
 day=cloud) INTERACTIVELY: the scheduler pushes an "Assign lanes for today"
-notification, the user taps a choice in the PWA (which writes the assignment via
-the app), and the scheduler dispatches. If the user hasn't answered by a cutoff
+notification, the user answers `!lanes <night> <day>` in Discord (the bot writes
+the assignment), and the scheduler dispatches. If the user hasn't answered by a cutoff
 (default 30 min) it falls through to the previous day's mapping so nothing stalls.
 
 CLI:
@@ -65,10 +65,10 @@ def assignment_is_for_today() -> bool:
 def push_picker() -> None:
     chans = list_channels() or list(_default_pair())
     notify("yellow", "scheduler", "-", "lane-picker",
-           "Assign today's lanes: tap in the app to choose which channel goes "
-           "night (local) vs day (cloud).",
+           "Assign today's lanes: reply `!lanes <night_channel> <day_channel>` "
+           "(night=local Wan2GP, day=cloud).",
            details={"action": "lane_picker", "channels": chans})
-    log("info", "lane-picker notification pushed; awaiting tap in the PWA")
+    log("info", "lane-picker pushed to Discord; awaiting !lanes <night> <day>")
 
 
 def ensure_today_assignment(cutoff_min: int = DEFAULT_CUTOFF_MIN,
