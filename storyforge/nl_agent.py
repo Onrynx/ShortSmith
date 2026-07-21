@@ -13,6 +13,7 @@ from collections import deque
 from . import control
 from .llm import complete, select_model
 from .notify import nightly_digest
+from .story_doctrine import DOCTRINE_SUMMARY
 from .utils import log
 
 # ---- actions the model may call (kept tiny to keep prompts/tokens tiny) ---- #
@@ -48,6 +49,8 @@ SYSTEM MAP (explain any of this freely when asked):
   plain English. Events stream via webhook (red=failed, yellow=degraded, green=done).
 - Repo: run.py CLI, storyforge/ package, config/*.yaml per channel,
   .storyforge_state/ runtime state, scripts/ for Odysseus/Wan2GP setup.
+
+STORY DOCTRINE (you enforce this on every script): """+DOCTRINE_SUMMARY+"""
 
 Be friendly, concrete and brief (Discord). When asked for something actionable,
 pick ONE action. LIVE STATE is prepended to each message — use it, don't guess.

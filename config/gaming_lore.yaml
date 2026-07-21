@@ -7,7 +7,8 @@ voice: am_adam             # Kokoro fallback (free/local)
 voice_11: pNInz6obpgDQGcFmaJgB  # ElevenLabs 'Adam' — famous deep narrator (needs free key)
 voice_tiktok: en_us_006    # TikTok deep male (needs TIKTOK_TTS_URL)
 style: "epic concept art, dramatic fantasy/sci-fi environments, painterly"
-fiction: true               # stories are FICTION crafted to hook, not real history
+fiction: true             # stories are invented, not real history
+story_mode: lore          # exempt from the real-life-drama doctrine
 banned: "leaks, real people, direct copyrighted character likenesses"
 
 # --- Output format: YouTube SHORTS (vertical 9:16, under 60s) ---------------

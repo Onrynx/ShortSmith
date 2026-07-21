@@ -21,6 +21,7 @@ import re
 
 from ..config import format_spec
 from ..llm import complete, make_crew_llm
+from ..story_doctrine import DOCTRINE, violations
 from ..utils import log
 
 # Disable CrewAI telemetry so an offline machine never blocks on it.
@@ -79,6 +80,7 @@ def _targets(cfg: dict, hero_budget: tuple[int, int]) -> dict:
         "target_seconds": target_seconds, "max_seconds": spec["max_seconds"],
         "approx_words": words, "min_words": int(words * 0.8),
         "scene_count": scene_count, "fiction": bool(cfg.get("fiction")),
+        "story_mode": cfg.get("story_mode", "real_life_drama"),
         "scene_lo": lo_s, "scene_hi": hi_s,
         "hero_lo": hero_budget[0], "hero_hi": hero_budget[1],
     }
@@ -117,22 +119,21 @@ def _schema_spec(t: dict) -> str:
 
 
 def _format_note(t: dict) -> str:
-    fiction = ("\nFICTION MODE: every story is INVENTED for pure entertainment. "
-               "Freely create characters, places and events — never present it as "
-               "real history or news, and never use real people or brands. "
-               "Optimize ONLY for how gripping it is." if t.get("fiction") else "")
+    fiction = ("\nFICTION: the story is INVENTED — but it must feel like a real "
+               "thing that happened to a real person. Never real people or brands."
+               if t.get("fiction") else "")
+    # The doctrine governs every story channel; 'lore' channels keep the old craft.
+    rules = CRAFT if t.get("story_mode") == "lore" else DOCTRINE
     if t["format"] == "shorts":
         return (
             f"This is a YOUTUBE SHORT: vertical 9:16, {t['target_seconds']}s of "
             f"narration (HARD MINIMUM {t['min_words']} spoken words total, aim "
             f"~{t['approx_words']}; under {t['max_seconds']}s). Each scene = 2-3 "
-            "full spoken sentences, 25-35 words per scene. Frame visuals for a "
-            "phone.\n" + CRAFT + fiction
+            "full spoken sentences, 25-35 words per scene.\n\n" + rules + fiction
         )
     return (
         f"This is a long-form video: ~{t['target_seconds']//60} minutes at ~150 wpm "
-        f"(~{t['approx_words']} words). Cinematic, patient pacing, honest about "
-        "uncertainty.\n" + CRAFT + fiction
+        f"(~{t['approx_words']} words).\n\n" + rules + fiction
     )
 
 
@@ -173,7 +174,8 @@ def run_creative_crew(cfg: dict, lane: str, topic: str,
         role="Critic — ruthless retention editor",
         goal=("Cut weak sentences, verify the hook opens a loop fast, flag "
               "unverifiable claims for softening, and output STRICT JSON."),
-        backstory="You have edited a thousand viral scripts. You are merciless and precise.",
+        backstory=("You have edited a thousand viral scripts. You are merciless. "
+                   "You reject anything that smells fantasy, AI-written, or slow."),
         llm=llm, allow_delegation=False, verbose=False,
     )
 
@@ -242,20 +244,31 @@ def single_shot_script(cfg: dict, lane: str, topic: str,
     # for hook quality; runs are background jobs so latency is fine.
     data = extract_json(complete(system, user, model_info, json_mode=True,
                                  temperature=0.85, timeout=480))
-    words = _wc(data)
-    if words < t["min_words"]:  # too thin -> one retry demanding real length
-        log("warn", f"script only {words} words (< {t['min_words']}); retrying longer")
-        retry_user = (user + f"\n\nYOUR LAST DRAFT WAS ONLY {words} WORDS — far too "
-                      f"short. Rewrite the SAME story with MORE scenes and 2-3 full "
-                      f"sentences each, totalling AT LEAST {t['min_words']} spoken "
-                      "words. Add concrete details, not padding.")
+    # ENFORCE the doctrine + length: up to 2 rewrites, each naming exact faults.
+    lore = t.get("story_mode") == "lore"
+    for attempt in range(2):
+        faults = [] if lore else violations(data)
+        words = _wc(data)
+        if words < t["min_words"]:
+            faults.append(f"only {words} spoken words — need AT LEAST "
+                          f"{t['min_words']} (more scenes, 2-3 full sentences each; "
+                          "real detail, not padding)")
+        if not faults:
+            break
+        log("warn", f"script rejected ({attempt+1}): {'; '.join(faults)[:150]}")
+        fix = (user + "\n\nYOUR LAST DRAFT WAS REJECTED. Faults:\n- "
+               + "\n- ".join(faults) +
+               "\n\nRewrite completely, obeying every rule: modern real-life drama, "
+               "first person, conflict in sentence one, no fantasy whatsoever.")
         try:
-            data2 = extract_json(complete(system, retry_user, model_info,
-                                          json_mode=True, temperature=0.9, timeout=480))
-            if _wc(data2) > words:
-                data = data2
+            cand = extract_json(complete(system, fix, model_info, json_mode=True,
+                                         temperature=0.9, timeout=480))
+            cand_faults = [] if lore else violations(cand)
+            if len(cand_faults) < len(faults) or _wc(cand) > words:
+                data = cand
         except Exception as exc:  # noqa: BLE001
-            log("warn", f"length retry failed ({exc}); keeping first draft")
+            log("warn", f"rewrite failed ({exc}); keeping current draft")
+            break
     return data
 
 
