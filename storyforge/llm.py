@@ -44,22 +44,45 @@ def odysseus_base_url() -> str:
     return (env("ODYSSEUS_URL", "http://localhost:7000") or "http://localhost:7000").rstrip("/")
 
 
-def odysseus_api_base() -> str:
-    return odysseus_base_url() + (env("ODYSSEUS_API_PATH", "/v1") or "/v1")
+_ODY_PATHS = ("/api/v1", "/v1", "/api", "/api/openai/v1")  # tried in order
+_ody_found: str | None = None  # cached working API base for this process
 
 
 def _odysseus_key() -> str:
     return env("ODYSSEUS_API_KEY", "odysseus") or "odysseus"
 
 
-def _odysseus_models(api_base: str) -> list[str]:
+def _ody_headers() -> dict:
+    # builds differ on auth scheme — send both, servers ignore the extra one
+    k = _odysseus_key()
+    return {"Authorization": f"Bearer {k}", "X-API-Key": k}
+
+
+def _models_at(api_base: str) -> list[str]:
     try:
-        data = http_get_json(f"{api_base}/models",
-                             headers={"Authorization": f"Bearer {_odysseus_key()}"}, timeout=4)
+        data = http_get_json(f"{api_base}/models", headers=_ody_headers(), timeout=4)
         items = data.get("data", data) if isinstance(data, dict) else data
         return [m.get("id", "") for m in items] if isinstance(items, list) else []
     except Exception:
         return []
+
+
+def odysseus_api_base() -> str:
+    """The working OpenAI-compatible base. Configured path first, then discovery."""
+    global _ody_found
+    if _ody_found:
+        return _ody_found
+    base = odysseus_base_url()
+    cfg = env("ODYSSEUS_API_PATH")
+    for path in ([cfg] if cfg else []) + list(_ODY_PATHS):
+        if path and _models_at(base + path):
+            _ody_found = base + path
+            return _ody_found
+    return base + (cfg or "/v1")
+
+
+def _odysseus_models(api_base: str) -> list[str]:
+    return _models_at(api_base)
 
 
 def odysseus_ui_reachable() -> bool:
@@ -156,7 +179,7 @@ def complete(system: str, user: str, model_info: dict,
     """Chat-complete against the selected backend. Raises on failure."""
     backend = model_info.get("backend")
     if backend == "odysseus":
-        headers = {"Authorization": f"Bearer {_odysseus_key()}"}
+        headers = _ody_headers()
         payload = {
             "model": model_info["model"],
             "messages": [{"role": "system", "content": system},

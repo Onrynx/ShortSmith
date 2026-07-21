@@ -56,9 +56,52 @@ def build_bot(chan_id: int = 0):
     def allowed(ctx) -> bool:
         return chan_id == 0 or ctx.channel.id == chan_id
 
+    from discord.ext import tasks
+
+    from .utils import STATE_DIR, read_json, write_json
+    SEEN_FILE = STATE_DIR / "discord_seen.json"
+
+    @tasks.loop(seconds=30)
+    async def watch_pending():
+        """Auto-post every newly finished Short to the home channel."""
+        ch = bot.get_channel(home_channel()) if home_channel() else None
+        if not ch:
+            return
+        seen = set(read_json(SEEN_FILE, []) or [])
+        items = control.list_pending()
+        cur = {m["id"] for m in items}
+        if not SEEN_FILE.exists():          # first start: baseline, don't spam history
+            write_json(SEEN_FILE, sorted(cur))
+            return
+        new = [m for m in items if m["id"] not in seen]
+        for m in reversed(new):
+            files = []
+            v = control.media_path(m["id"], "video")
+            t = control.media_path(m["id"], "thumb")
+            if v and v.stat().st_size <= MAX_UPLOAD:
+                files.append(discord.File(str(v)))
+            elif t:
+                files.append(discord.File(str(t)))
+            note = "" if (v and v.stat().st_size <= MAX_UPLOAD) else f"\n📁 full file: `{v}`" if v else ""
+            try:
+                await ch.send(f"🎬 **New Short ready:** {m.get('title')} "
+                              f"({m.get('channel')}/{m.get('lane')}, {round(m.get('runtime_sec') or 0)}s)"
+                              f"{note}\n→ `!pending` · `!review 1` · `!approve 1` / `!reject 1`",
+                              files=files or None)
+            except Exception as exc:  # noqa: BLE001
+                log("warn", f"auto-post failed: {exc}")
+        if new:
+            write_json(SEEN_FILE, sorted(seen | cur))
+
+    @watch_pending.before_loop
+    async def _wp_wait():
+        await bot.wait_until_ready()
+
     @bot.event
     async def on_ready():
         log("ok", f"Discord bot online as {bot.user} (channel filter: {chan_id or 'all'})")
+        if not watch_pending.is_running():
+            watch_pending.start()
 
     # ---- natural-language chat (free local LLM via nl_agent) ---- #
     import asyncio
