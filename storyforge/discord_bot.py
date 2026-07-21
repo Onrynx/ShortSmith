@@ -28,7 +28,7 @@ from . import control
 from .notify import nightly_digest
 from .utils import env, log
 
-MAX_UPLOAD = 24 * 1024 * 1024  # stay under Discord's 25MB default
+MAX_UPLOAD = int(9.5 * 1024 * 1024)  # safe under a non-boosted server's ~10MB cap
 
 
 def _fmt_item(i: int, m: dict) -> str:
@@ -75,28 +75,38 @@ def build_bot(chan_id: int = 0):
             return
         new = [m for m in items if m["id"] not in seen]
         for m in reversed(new):
-            files = []
-            pv = control.discord_preview(m["id"], MAX_UPLOAD)   # master or auto-compressed
-            t = control.media_path(m["id"], "thumb")
-            if pv:
-                files.append(discord.File(str(pv)))
-            elif t:
-                files.append(discord.File(str(t)))
-            v = control.media_path(m["id"], "video")
-            note = "" if pv else (f"\n📁 full file: `{v}`" if v else "")
             try:
+                # compress off the event loop so the bot stays responsive
+                pv = await asyncio.to_thread(control.discord_preview, m["id"], MAX_UPLOAD)
+                t = control.media_path(m["id"], "thumb")
+                files = [discord.File(str(pv))] if pv else ([discord.File(str(t))] if t else [])
+                v = control.media_path(m["id"], "video")
+                note = "" if pv else (f"\n📁 full file: `{v}`" if v else "")
                 await ch.send(f"🎬 **New Short ready:** {m.get('title')} "
                               f"({m.get('channel')}/{m.get('lane')}, {round(m.get('runtime_sec') or 0)}s)"
-                              f"{note}\n→ `!pending` · `!review 1` · `!approve 1` / `!reject 1`",
+                              f"{note}\n→ `!approve 1` to keep · `!reject 1` to bin",
                               files=files or None)
-            except Exception as exc:  # noqa: BLE001
-                log("warn", f"auto-post failed: {exc}")
-        if new:
-            write_json(SEEN_FILE, sorted(seen | cur))
+                seen.add(m["id"])                 # mark seen ONLY after a successful post
+                write_json(SEEN_FILE, sorted(seen))
+            except Exception as exc:  # noqa: BLE001 — leave unseen so it retries next tick
+                log("warn", f"auto-post failed for {m['id']}: {exc}")
 
     @watch_pending.before_loop
     async def _wp_wait():
         await bot.wait_until_ready()
+
+    @bot.event
+    async def on_command_error(ctx, error):
+        if isinstance(error, commands.CommandNotFound):
+            return
+        if isinstance(error, commands.MissingRequiredArgument):
+            await ctx.send("That needs a value — e.g. `!review 1`, `!run history_mysteries night`. `!help` lists them.")
+            return
+        log("warn", f"command error: {error}")
+        try:
+            await ctx.send(f"⚠️ {error}")
+        except Exception:
+            pass
 
     @bot.event
     async def on_ready():
@@ -198,7 +208,7 @@ def build_bot(chan_id: int = 0):
         await ctx.send("\n".join(_fmt_item(i + 1, m) for i, m in enumerate(items[:10])))
 
     @bot.command()
-    async def review(ctx, arg: str):
+    async def review(ctx, arg: str = "1"):
         if not allowed(ctx):
             return
         item_id = _resolve(arg)
@@ -223,7 +233,7 @@ def build_bot(chan_id: int = 0):
                        f"`!approve {arg}` or `!reject {arg}`", files=files or None)
 
     @bot.command()
-    async def approve(ctx, arg: str):
+    async def approve(ctx, arg: str = "1"):
         if not allowed(ctx):
             return
         item_id = _resolve(arg)
@@ -231,7 +241,7 @@ def build_bot(chan_id: int = 0):
         await ctx.send("✅ approved → approved/" if r.get("ok") else f"❌ {r.get('error')}")
 
     @bot.command()
-    async def reject(ctx, arg: str):
+    async def reject(ctx, arg: str = "1"):
         if not allowed(ctx):
             return
         item_id = _resolve(arg)

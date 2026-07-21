@@ -116,12 +116,15 @@ def history(limit: int = 20) -> list[dict]:
     return items[:limit]
 
 
-def discord_preview(item_id: str, max_bytes: int = 24 * 1024 * 1024) -> Path | None:
-    """A video file that fits Discord's upload cap.
+DISCORD_LIMIT = int(9.5 * 1024 * 1024)  # safe under a non-boosted server's ~10MB cap
 
-    Returns the master if small enough; otherwise builds (and caches) a compressed
-    720p preview next to it. The full-quality master is untouched — previews are
-    only for reviewing in chat."""
+
+def discord_preview(item_id: str, max_bytes: int = DISCORD_LIMIT) -> Path | None:
+    """A video file guaranteed to fit Discord's upload cap.
+
+    Returns the master if already small; otherwise builds (and caches) a
+    progressively smaller preview until one fits. The full-quality master is never
+    touched — previews are only for reviewing in chat."""
     from .utils import run_ffmpeg
     v = media_path(item_id, "video")
     if not v:
@@ -131,13 +134,14 @@ def discord_preview(item_id: str, max_bytes: int = 24 * 1024 * 1024) -> Path | N
     prev = v.with_name(f"{item_id}.preview.mp4")
     if prev.exists() and 0 < prev.stat().st_size <= max_bytes:
         return prev
-    # ~720p, tighter CRF; a <60s vertical Short lands well under the cap
-    ok, _ = run_ffmpeg(["-i", str(v), "-vf", "scale=-2:1280",
-                        "-c:v", "libx264", "-preset", "veryfast", "-crf", "28",
-                        "-c:a", "aac", "-b:a", "96k", "-movflags", "+faststart",
-                        str(prev)], cwd=v.parent, timeout=600)
-    if ok and prev.exists() and prev.stat().st_size <= max_bytes:
-        return prev
+    # step down resolution/quality until it fits (540p is fine for review)
+    for height, crf in ((960, 30), (720, 32), (540, 34), (480, 36)):
+        ok, _ = run_ffmpeg(["-i", str(v), "-vf", f"scale=-2:{height}",
+                            "-c:v", "libx264", "-preset", "veryfast", "-crf", str(crf),
+                            "-c:a", "aac", "-b:a", "80k", "-movflags", "+faststart",
+                            str(prev)], cwd=v.parent, timeout=600)
+        if ok and prev.exists() and 0 < prev.stat().st_size <= max_bytes:
+            return prev
     return None  # caller falls back to thumbnail + path
 
 
