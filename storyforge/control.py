@@ -116,6 +116,31 @@ def history(limit: int = 20) -> list[dict]:
     return items[:limit]
 
 
+def discord_preview(item_id: str, max_bytes: int = 24 * 1024 * 1024) -> Path | None:
+    """A video file that fits Discord's upload cap.
+
+    Returns the master if small enough; otherwise builds (and caches) a compressed
+    720p preview next to it. The full-quality master is untouched — previews are
+    only for reviewing in chat."""
+    from .utils import run_ffmpeg
+    v = media_path(item_id, "video")
+    if not v:
+        return None
+    if v.stat().st_size <= max_bytes:
+        return v
+    prev = v.with_name(f"{item_id}.preview.mp4")
+    if prev.exists() and 0 < prev.stat().st_size <= max_bytes:
+        return prev
+    # ~720p, tighter CRF; a <60s vertical Short lands well under the cap
+    ok, _ = run_ffmpeg(["-i", str(v), "-vf", "scale=-2:1280",
+                        "-c:v", "libx264", "-preset", "veryfast", "-crf", "28",
+                        "-c:a", "aac", "-b:a", "96k", "-movflags", "+faststart",
+                        str(prev)], cwd=v.parent, timeout=600)
+    if ok and prev.exists() and prev.stat().st_size <= max_bytes:
+        return prev
+    return None  # caller falls back to thumbnail + path
+
+
 def media_path(item_id: str, kind: str) -> Path | None:
     for where in ("pending", "approved"):
         m = find_item(item_id, where)

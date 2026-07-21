@@ -76,13 +76,14 @@ def build_bot(chan_id: int = 0):
         new = [m for m in items if m["id"] not in seen]
         for m in reversed(new):
             files = []
-            v = control.media_path(m["id"], "video")
+            pv = control.discord_preview(m["id"], MAX_UPLOAD)   # master or auto-compressed
             t = control.media_path(m["id"], "thumb")
-            if v and v.stat().st_size <= MAX_UPLOAD:
-                files.append(discord.File(str(v)))
+            if pv:
+                files.append(discord.File(str(pv)))
             elif t:
                 files.append(discord.File(str(t)))
-            note = "" if (v and v.stat().st_size <= MAX_UPLOAD) else f"\n📁 full file: `{v}`" if v else ""
+            v = control.media_path(m["id"], "video")
+            note = "" if pv else (f"\n📁 full file: `{v}`" if v else "")
             try:
                 await ch.send(f"🎬 **New Short ready:** {m.get('title')} "
                               f"({m.get('channel')}/{m.get('lane')}, {round(m.get('runtime_sec') or 0)}s)"
@@ -212,11 +213,11 @@ def build_bot(chan_id: int = 0):
         thumb = control.media_path(item_id, "thumb")
         if thumb:
             files.append(discord.File(str(thumb)))
-        video = control.media_path(item_id, "video")
-        if video and video.stat().st_size <= MAX_UPLOAD:
+        video = control.discord_preview(item_id, MAX_UPLOAD)  # master or compressed preview
+        if video:
             files.append(discord.File(str(video)))
-        note = "" if (video and video.stat().st_size <= MAX_UPLOAD) else \
-            f"\n(video too big for Discord — at `{video}`)" if video else ""
+        note = "" if video else \
+            f"\n(preview failed — full file at `{control.media_path(item_id, 'video')}`)"
         await ctx.send(f"**{m.get('title')}** ({m.get('channel')}/{m.get('lane')}, "
                        f"{round(m.get('runtime_sec') or 0)}s)\n{script[:1500]}{note}\n"
                        f"`!approve {arg}` or `!reject {arg}`", files=files or None)
