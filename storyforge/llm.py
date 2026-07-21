@@ -185,6 +185,8 @@ def complete(system: str, user: str, model_info: dict,
         }
         if json_mode:
             payload["format"] = "json"
+        if model_info["model"].startswith(("qwen3", "deepseek-r1")):
+            payload["think"] = False  # thinking mode is 10x slower; not needed here
         data = http_post_json(f"{model_info['base_url']}/api/chat", payload, timeout=timeout)
         if isinstance(data, dict):
             return (data.get("message", {}) or {}).get("content", "") or ""

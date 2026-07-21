@@ -60,6 +60,31 @@ def build_bot(chan_id: int = 0):
     async def on_ready():
         log("ok", f"Discord bot online as {bot.user} (channel filter: {chan_id or 'all'})")
 
+    # ---- natural-language chat (free local LLM via nl_agent) ---- #
+    import asyncio
+
+    from . import nl_agent
+    admin_ids = {int(x) for x in (env("DISCORD_ADMIN_IDS", "") or "").replace(" ", "").split(",") if x}
+
+    @bot.event
+    async def on_message(msg):
+        if msg.author.bot:
+            return
+        await bot.process_commands(msg)          # keep !commands working
+        if msg.content.startswith("!"):
+            return
+        is_dm = msg.guild is None
+        mentioned = bot.user in msg.mentions
+        in_home = chan_id and msg.channel.id == chan_id
+        if not (is_dm or mentioned or in_home):  # only talk when talked to
+            return
+        text = msg.content.replace(f"<@{bot.user.id}>", "").strip() or "hello"
+        # empty allowlist = single-user mode: everyone is admin (set DISCORD_ADMIN_IDS to lock down)
+        is_admin = (not admin_ids) or (msg.author.id in admin_ids)
+        async with msg.channel.typing():
+            reply = await asyncio.to_thread(nl_agent.handle, text, msg.channel.id, is_admin)
+        await msg.channel.send(reply)
+
     @bot.command()
     async def help(ctx):
         if allowed(ctx):
