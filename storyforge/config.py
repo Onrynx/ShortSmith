@@ -149,6 +149,9 @@ def format_spec(cfg: dict) -> dict:
         "height": 1920 if vertical else 1080,
         "max_seconds": int(cfg.get("max_seconds", default_max)),
         "target_seconds": int(cfg.get("target_seconds", default_target)),
+        # exact_seconds > 0 => final video is EXACTLY this long (speed-fit if
+        # over, extend the last scene over the background + music if under)
+        "exact_seconds": int(cfg.get("exact_seconds", 0) or 0),
         "scene_bounds": bounds,
     }
 

@@ -39,7 +39,9 @@ SYSTEM MAP (explain any of this freely when asked):
     Minecraft-parkour-style clips into assets/backgrounds/) plays behind the
     narration + captions. Fallbacks: hero AI video (Wan2GP/cloud) -> stock ->
     free AI images (Pollinations) -> generative motion. Never fails.
-  * cutter: FFmpeg assembles scenes + narration + music bed + captions.
+  * cutter: FFmpeg assembles scenes + narration + captions into an EXACTLY
+    60-second vertical video; background music auto-picked by story mood from
+    assets/music/<mood>/ (user drops no-copyright tracks; CC0 beds otherwise).
   * herald: title/description/tags + AI disclosure line + thumbnail; optional
     PRIVATE YouTube upload. Human approval gate always on.
 - Everything is 100% free/local by default; cloud keys are optional extras.

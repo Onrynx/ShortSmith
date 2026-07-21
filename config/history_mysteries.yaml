@@ -12,9 +12,10 @@ banned: "gore, modern politics, living people"
 # --- Output format: YouTube SHORTS (vertical 9:16, under 60s) ---------------
 format: shorts              # shorts | long
 orientation: vertical       # vertical (9:16) | horizontal (16:9)
-target_seconds: 42          # aim ~42s
-max_seconds: 58             # hard cap (auto speed-fit if narration overshoots)
-scene_bounds: [5, 8]        # scenes per short
+target_seconds: 60          # aim ~42s
+max_seconds: 60
+exact_seconds: 60         # final video is EXACTLY 1 minute             # hard cap (auto speed-fit if narration overshoots)
+scene_bounds: [6, 9]        # scenes per short
 target_minutes: 6           # used only if format: long
 
 # Hero-scene budget per lane (how many scenes get AI video vs stock/motion).

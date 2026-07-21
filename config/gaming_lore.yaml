@@ -10,9 +10,10 @@ banned: "leaks, real people, direct copyrighted character likenesses"
 # --- Output format: YouTube SHORTS (vertical 9:16, under 60s) ---------------
 format: shorts
 orientation: vertical
-target_seconds: 45
-max_seconds: 58
-scene_bounds: [5, 8]
+target_seconds: 60
+max_seconds: 60
+exact_seconds: 60         # final video is EXACTLY 1 minute
+scene_bounds: [6, 9]
 target_minutes: 7           # used only if format: long
 
 lane_budgets:

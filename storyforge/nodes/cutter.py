@@ -27,11 +27,64 @@ MUSIC_PATH = ASSETS_DIR / "ambient_bed.wav"
 # --------------------------------------------------------------------------- #
 # Ambient music bed (synthesized CC0 fallback if the shipped asset is missing)
 # --------------------------------------------------------------------------- #
-def synth_ambient_bed(path: Path, seconds: int = 60, rate: int = 44100) -> Path:
+MUSIC_DIR = ASSETS_DIR / "music"
+_AUDIO_EXTS = (".mp3", ".wav", ".m4a", ".ogg", ".flac", ".aac")
+
+# mood -> (keywords scored against title/hook/tags, synth chord for the default bed)
+_MOODS = {
+    "mystery":   (["mystery", "vanish", "lost", "unsolved", "secret", "disappear", "clue"],
+                  [110.0, 130.81, 164.81, 196.0]),
+    "epic":      (["king", "war", "battle", "legend", "empire", "throne", "rise", "fall"],
+                  [73.42, 110.0, 146.83, 220.0]),
+    "dark":      (["curse", "death", "haunt", "ghost", "shadow", "forbidden", "doom"],
+                  [55.0, 65.41, 82.41, 98.0]),
+    "adventure": (["journey", "quest", "explore", "treasure", "discover", "expedition"],
+                  [98.0, 123.47, 146.83, 196.0]),
+    "chill":     (["calm", "peace", "gentle", "quiet"],
+                  [130.81, 164.81, 196.0, 246.94]),
+}
+_CHANNEL_DEFAULT_MOOD = {"history_mysteries": "mystery", "gaming_lore": "epic"}
+
+
+def pick_music(state: dict) -> tuple[Path | None, str]:
+    """Choose a background track matched to the story's mood.
+
+    Looks in assets/music/<mood>/ first (drop your no-copyright tracks there),
+    then anywhere under assets/music/, else synthesizes a CC0 mood bed."""
+    import random
+    script = state.get("script", {}) or {}
+    text = " ".join([script.get("title", ""), script.get("hook", ""),
+                     " ".join(script.get("tags", []))]).lower()
+    scores = {m: sum(k in text for k in keys) for m, (keys, _) in _MOODS.items()}
+    best = max(scores.values() or [0])
+    mood = (max(scores, key=scores.get) if best > 0
+            else _CHANNEL_DEFAULT_MOOD.get(state.get("channel", ""), "mystery"))
+
+    mood_dir = MUSIC_DIR / mood
+    tracks = [p for p in mood_dir.glob("*") if p.suffix.lower() in _AUDIO_EXTS] \
+        if mood_dir.exists() else []
+    if not tracks:  # any user track at all?
+        tracks = [p for p in MUSIC_DIR.rglob("*") if p.suffix.lower() in _AUDIO_EXTS]
+        tracks = [p for p in tracks if not p.name.startswith("default_")] or tracks
+    if tracks:
+        return random.choice(tracks), mood
+    # synthesize a mood-specific CC0 bed once, cache it in the mood folder
+    bed = mood_dir / f"default_{mood}.wav"
+    try:
+        if not bed.exists():
+            synth_ambient_bed(bed, chord=_MOODS[mood][1])
+        return bed, mood
+    except Exception as exc:  # noqa: BLE001
+        log("warn", f"mood bed synth failed: {exc}")
+        return (_ensure_music(), mood)
+
+
+def synth_ambient_bed(path: Path, seconds: int = 70, rate: int = 44100,
+                      chord: list | None = None) -> Path:
     import numpy as np
     path.parent.mkdir(parents=True, exist_ok=True)
     t = np.arange(int(seconds * rate)) / rate
-    chord = [110.0, 164.81, 220.0, 277.18]  # A minor-ish pad
+    chord = chord or [110.0, 164.81, 220.0, 277.18]  # A minor-ish pad
     sig = np.zeros_like(t)
     for k, f in enumerate(chord):
         lfo = 0.5 + 0.5 * np.sin(2 * np.pi * (0.03 + 0.01 * k) * t)  # slow swell
@@ -90,13 +143,16 @@ def _wrap(text: str, width: int = 42) -> str:
     return "\\N".join(lines[:2])
 
 
-def _scene_cues(scenes, durations, chunk=8):
-    """Split each scene's narration into ~`chunk`-word cues, timed proportionally.
-    Shorts use small chunks (punchy word-style captions)."""
+def _scene_cues(scenes, spoken, slots=None, chunk=8):
+    """Split narration into ~`chunk`-word cues. `spoken` = speech seconds per
+    scene (cues span these); `slots` = full slot length per scene on the timeline
+    (>= spoken when a scene is extended to hit an exact runtime) — captions stop
+    when the speech stops instead of lingering over the outro."""
+    slots = slots or spoken
     cues = []
     t = 0.0
     for i, sc in enumerate(scenes):
-        dur = durations[i] if i < len(durations) else 4.0
+        dur = spoken[i] if i < len(spoken) else 4.0
         words = (sc.get("narration") or "").split()
         chunks = [" ".join(words[j:j + chunk]) for j in range(0, len(words), chunk)] or [sc.get("narration", "")]
         total_w = sum(len(c.split()) for c in chunks) or 1
@@ -105,7 +161,7 @@ def _scene_cues(scenes, durations, chunk=8):
             d = dur * (len(c.split()) / total_w)
             cues.append((ct, ct + max(0.4, d), c))
             ct += d
-        t += dur
+        t += slots[i] if i < len(slots) else dur
     return cues
 
 
@@ -166,7 +222,9 @@ def _build_segment(idx, visual, kind, audio, dur, seg_dir, workdir, w, h, atempo
     narration (>1 speeds it up) so a Short stays under its duration cap."""
     seg = seg_dir / f"seg_{idx:02d}.mp4"
     frames = int(round(dur * FPS)) + 2
-    afilter = f"[1:a]atempo={max(0.5, min(2.0, atempo)):.4f}[a]"
+    # apad: silence-fill audio to the slot length (keeps A/V sync in concat and
+    # lets an extended last scene breathe over background + music)
+    afilter = f"[1:a]atempo={max(0.5, min(2.0, atempo)):.4f},apad[a]"
     tail = ["-r", str(FPS), "-c:v", "libx264", "-preset", "veryfast",
             "-crf", "20", "-pix_fmt", "yuv420p", "-c:a", "aac", "-ar", "24000",
             "-ac", "1", "-t", f"{dur:.3f}", _abs_fwd(seg)]
@@ -224,17 +282,22 @@ def node_cutter(state: dict) -> dict:
 
     spec = format_spec(state["channel_cfg"])
     w, h, max_seconds = spec["width"], spec["height"], spec["max_seconds"]
+    exact = spec.get("exact_seconds") or 0
+    cap = exact or max_seconds
 
-    # Duration cap: Shorts must stay under ~60s. If the narration overshoots,
-    # time-fit everything with a speed factor (audio atempo + shorter segments).
+    # Time-fit: speed up if the narration overshoots the cap...
     total_raw = sum(durations) if durations else 0.0
     factor = 1.0
-    if total_raw > max_seconds and total_raw > 0:
-        factor = min(2.0, round(total_raw / max_seconds, 3))
+    if total_raw > cap and total_raw > 0:
+        factor = min(2.0, round(total_raw / cap, 3))
         add_fallback(state, "cutter",
-                     f"runtime {total_raw:.0f}s > {max_seconds}s cap; speeding {factor:.2f}x "
-                     f"to fit {spec['format']}")
-    edur = [round(d / factor, 3) for d in durations]
+                     f"runtime {total_raw:.0f}s > {cap}s; speeding {factor:.2f}x")
+    spoken = [round(d / factor, 3) for d in durations]   # speech per scene
+    edur = list(spoken)                                  # slot per scene
+    # ...and if we're under an EXACT runtime, extend the last scene: background
+    # keeps playing, narration apads to silence, music carries the outro.
+    if exact and edur and sum(edur) < exact:
+        edur[-1] = round(edur[-1] + (exact - sum(edur)), 3)
 
     progress(state, "cutter",
              f"assembling {len(scenes)} scenes @ {w}x{h} ({spec['format']}, ~{sum(edur):.0f}s)")
@@ -267,17 +330,20 @@ def node_cutter(state: dict) -> dict:
     chunk = 4 if spec["format"] == "shorts" else 8
     captions_kind = "scene"
     srt = None
-    if not state.get("mock") and factor == 1.0:
-        srt = _word_srt_via_whisper(audio_paths, edur, workdir)
+    if not state.get("mock") and factor == 1.0 and not exact:
+        srt = _word_srt_via_whisper(audio_paths, spoken, workdir)
         if srt:
             captions_kind = "word"
     if not srt:
-        srt = _cues_to_srt(_scene_cues(scenes, edur, chunk=chunk))
+        srt = _cues_to_srt(_scene_cues(scenes, spoken, slots=edur, chunk=chunk))
         captions_kind = "scene"
     (workdir / "captions.srt").write_text(srt, encoding="utf-8")
 
-    # 4) final assembly (music + captions), with graceful degradation
-    music = _ensure_music()
+    # 4) final assembly — mood-matched music + captions, graceful degradation
+    music, mood = pick_music(state)
+    if music:
+        progress(state, "cutter", f"music: {music.name} (mood={mood})")
+        state["music_track"] = f"{music.name} ({mood})"
     total = round(sum(edur), 3) if edur else None
     final = workdir / f"{state['run_id']}.mp4"
 
