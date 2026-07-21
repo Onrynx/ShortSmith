@@ -17,7 +17,7 @@ import wave
 from pathlib import Path
 
 from ..config import format_spec
-from ..utils import (ASSETS_DIR, ensure_dir, has_ffmpeg, log, run_ffmpeg)
+from ..utils import (ASSETS_DIR, ensure_dir, env, has_ffmpeg, log, run_ffmpeg)
 from .common import add_error, add_fallback, progress
 
 FPS = 30
@@ -272,6 +272,9 @@ def _words_to_ass(words, w, h) -> str:
     fs = int(h * 0.046)
     posy = int(h * 0.655)          # a bit below center, clear of UI overlays
     outline = max(3, int(h * 0.0045))
+    # Cross-platform: "Arial Black" on Win/macOS; set CAPTION_FONT on Linux
+    # (e.g. "DejaVu Sans" / "Impact"). libass falls back if the name is missing.
+    font = env("CAPTION_FONT", "Arial Black") or "Arial Black"
     head = (
         "[Script Info]\nScriptType: v4.00+\n"
         f"PlayResX: {w}\nPlayResY: {h}\nWrapStyle: 2\nScaledBorderAndShadow: yes\n\n"
@@ -280,7 +283,7 @@ def _words_to_ass(words, w, h) -> str:
         "OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, "
         "ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, "
         "MarginL, MarginR, MarginV, Encoding\n"
-        f"Style: Cap,Arial Black,{fs},&H00FFFFFF,&H00FFFFFF,&H00000000,"
+        f"Style: Cap,{font},{fs},&H00FFFFFF,&H00FFFFFF,&H00000000,"
         f"&H80000000,-1,0,0,0,100,100,1,0,1,{outline},2,5,40,40,0,1\n\n"
         "[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
     )
