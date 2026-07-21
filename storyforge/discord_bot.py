@@ -65,6 +65,33 @@ def build_bot(chan_id: int = 0):
 
     from . import nl_agent
     admin_ids = {int(x) for x in (env("DISCORD_ADMIN_IDS", "") or "").replace(" ", "").split(",") if x}
+    from .utils import STATE_DIR
+    HOME_FILE = STATE_DIR / "discord_home.txt"
+
+    def home_channel() -> int:
+        if chan_id:
+            return chan_id
+        try:
+            return int(HOME_FILE.read_text(encoding="utf-8").strip())
+        except Exception:
+            return 0
+
+    @bot.command()
+    async def here(ctx):
+        """Make THIS channel Valentine's home — chat here with no @mention."""
+        if allowed(ctx):
+            HOME_FILE.write_text(str(ctx.channel.id), encoding="utf-8")
+            await ctx.send("💬 This is now my home channel — just talk to me here, no @ needed.")
+
+    @bot.command(name="leave")
+    async def leave_home(ctx):
+        """Stop auto-replying in the home channel (back to @mention / DM only)."""
+        if allowed(ctx):
+            try:
+                HOME_FILE.unlink()
+            except Exception:
+                pass
+            await ctx.send("Okay — @mention me or DM me to chat now.")
 
     @bot.event
     async def on_message(msg):
@@ -75,7 +102,7 @@ def build_bot(chan_id: int = 0):
             return
         is_dm = msg.guild is None
         mentioned = bot.user in msg.mentions
-        in_home = chan_id and msg.channel.id == chan_id
+        in_home = msg.channel.id == home_channel()
         if not (is_dm or mentioned or in_home):  # only talk when talked to
             return
         text = msg.content.replace(f"<@{bot.user.id}>", "").strip() or "hello"
