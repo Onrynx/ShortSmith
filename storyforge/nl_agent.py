@@ -34,9 +34,11 @@ SYSTEM MAP (explain any of this freely when asked):
   canvas -> cutter -> herald.
   * script: Scout/Scribe/Critic crew (CrewAI) -> fallback single LLM call ->
     canned. Runs on the local brain: Odysseus :7000 /v1 -> Ollama :11434 -> Gemini.
-  * voice: Kokoro TTS (local, free); placeholder tone if missing.
-  * canvas: per-scene visuals — hero: Wan2GP/cloud; else stock (Pexels/Pixabay);
-    floor: local FFmpeg generative-motion video. Always real video, never stills.
+  * voice: Kokoro TTS 'am_adam' (local, free) — the deep classic Shorts narrator.
+  * canvas: CLASSIC SHORTS FORMAT — continuous gameplay footage (user drops
+    Minecraft-parkour-style clips into assets/backgrounds/) plays behind the
+    narration + captions. Fallbacks: hero AI video (Wan2GP/cloud) -> stock ->
+    free AI images (Pollinations) -> generative motion. Never fails.
   * cutter: FFmpeg assembles scenes + narration + music bed + captions.
   * herald: title/description/tags + AI disclosure line + thumbnail; optional
     PRIVATE YouTube upload. Human approval gate always on.

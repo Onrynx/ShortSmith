@@ -5,7 +5,7 @@ key: history_mysteries
 name: History Mysteries
 niche: "unsolved history mysteries"
 angle: "one gripping unsolved story, honest about what's uncertain"
-voice: bm_george            # Kokoro voice id (British male, cinematic narrator)
+voice: am_adam              # Kokoro voice id — deep US male, the classic Shorts narrator sound
 style: "cinematic, moody, historical, volumetric light, film grain"
 banned: "gore, modern politics, living people"
 

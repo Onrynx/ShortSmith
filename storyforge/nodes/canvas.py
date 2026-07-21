@@ -10,7 +10,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from ..config import format_spec
-from ..providers import (CapReached, CloudProvider, MotionProvider, StockProvider,
+from ..providers import (AIImageProvider, BackgroundProvider, CapReached,
+                         CloudProvider, MotionProvider, StockProvider,
                          cap_remaining, gradient_card, lane_video_provider)
 from ..providers.wan2gp import DeferredRender
 from ..utils import retry
@@ -40,9 +41,20 @@ def node_canvas(state: dict) -> dict:
     spec = format_spec(cfg)
     # The visual FLOOR is generative MOTION video (never a static photo).
     motion = MotionProvider(cfg, width=spec["width"], height=spec["height"])
+    # Classic Shorts format: continuous gameplay footage (assets/backgrounds/)
+    # behind the whole video. Preferred whenever clips are present.
+    background = BackgroundProvider(cfg)
+    bg_avail = background.available()
+    # Free AI imagery of the actual subject (Pollinations, no key) — deep fallback.
+    ai_img = AIImageProvider(cfg, width=spec["width"], height=spec["height"])
+    ai_avail = (not mock) and ai_img.available()
     stock = StockProvider(cfg)
     hero_provider = lane_video_provider(lane, cfg) if not mock else None
     hero_avail = bool(hero_provider and hero_provider.available())
+    if not bg_avail:
+        add_fallback(state, "canvas",
+                     "no gameplay clips in assets/backgrounds/ — drop parkour mp4s there "
+                     "for the gameplay-background look")
 
     n_hero = sum(1 for s in scenes if s.get("hero"))
     cap_note = ""
@@ -65,16 +77,19 @@ def node_canvas(state: dict) -> dict:
         seconds = durations[i] if i < len(durations) else 5.0
         is_hero = bool(sc.get("hero"))
 
-        # Build the provider chain for this scene. The floor is always MOTION.
-        chain = []
+        # Provider chain. Gameplay background (classic Shorts look) leads whenever
+        # clips exist; generative MOTION is the never-fail floor.
+        #   with clips: background -> stock -> AI image -> motion
+        #   hero + AI video engine up: hero AI video first, then the same tail
+        tail = (([background] if bg_avail else []) +
+                ([stock] if stock.available() else []) +
+                ([ai_img] if ai_avail else []) + [motion])
         if mock:
-            chain = [motion]
+            chain = ([background] if bg_avail else []) + [motion]
         elif is_hero and hero_avail and not (cloud_capped and isinstance(hero_provider, CloudProvider)):
-            chain = [hero_provider, stock, motion]
-        elif stock.available():
-            chain = [stock, motion]
+            chain = [hero_provider] + tail
         else:
-            chain = [motion]
+            chain = tail
 
         path = None
         used = None

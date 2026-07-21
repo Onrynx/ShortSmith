@@ -6,6 +6,8 @@ One interface (base.VisualProvider); four implementations:
   wan2gp   (Wan2GPProvider)   — night lane, local Wan 2.2 @ 480p
   cloud    (CloudProvider)    — day lane, Veo / Seedance with a daily cap
 """
+from .ai_image import AIImageProvider
+from .background import BackgroundProvider, background_clips
 from .base import (GEN_NEGATIVE, GradientProvider, ProviderError, VisualProvider,
                    gradient_card)
 from .cloud import CapReached, CloudProvider, cap_remaining
@@ -21,7 +23,8 @@ def lane_video_provider(lane: str, cfg: dict) -> VisualProvider:
 
 __all__ = [
     "VisualProvider", "ProviderError", "GradientProvider", "gradient_card",
-    "GEN_NEGATIVE", "MotionProvider", "StockProvider", "keywords_from_scene",
-    "Wan2GPProvider", "DeferredRender", "CloudProvider", "CapReached",
-    "cap_remaining", "lane_video_provider",
+    "GEN_NEGATIVE", "MotionProvider", "AIImageProvider", "BackgroundProvider",
+    "background_clips", "StockProvider",
+    "keywords_from_scene", "Wan2GPProvider", "DeferredRender", "CloudProvider",
+    "CapReached", "cap_remaining", "lane_video_provider",
 ]

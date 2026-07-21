@@ -3,7 +3,7 @@ key: gaming_lore
 name: Gaming Lore
 niche: "video game lore and hidden stories"
 angle: "deep lore told cinematically"
-voice: am_michael           # Kokoro voice id (American male, warm narrator)
+voice: am_adam              # Kokoro voice id — deep US male, the classic Shorts narrator sound
 style: "epic concept art, dramatic fantasy/sci-fi environments, painterly"
 banned: "leaks, real people, direct copyrighted character likenesses"
 
