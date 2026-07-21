@@ -3,17 +3,20 @@ key: gaming_lore
 name: Gaming Lore
 niche: "video game lore and hidden stories"
 angle: "deep lore told cinematically"
-voice: am_adam              # Kokoro voice id — deep US male, the classic Shorts narrator sound
+voice: am_adam             # Kokoro fallback (free/local)
+voice_11: pNInz6obpgDQGcFmaJgB  # ElevenLabs 'Adam' — famous deep narrator (needs free key)
+voice_tiktok: en_us_006    # TikTok deep male (needs TIKTOK_TTS_URL)
 style: "epic concept art, dramatic fantasy/sci-fi environments, painterly"
+fiction: true               # stories are FICTION crafted to hook, not real history
 banned: "leaks, real people, direct copyrighted character likenesses"
 
 # --- Output format: YouTube SHORTS (vertical 9:16, under 60s) ---------------
 format: shorts
 orientation: vertical
-target_seconds: 60
-max_seconds: 60
-exact_seconds: 60         # final video is EXACTLY 1 minute
-scene_bounds: [6, 9]
+target_seconds: 100  # aim ~1m40s of narration
+max_seconds: 120
+exact_seconds: 0    # 0 = natural length (1-2 min); set e.g. 60 to force exact
+scene_bounds: [9, 14]
 target_minutes: 7           # used only if format: long
 
 lane_budgets:

@@ -1,0 +1,22 @@
+# Gossip Stories — fictional out-of-context drama/storytime; pure hook fuel.
+key: gossip_stories
+name: Gossip Stories
+niche: "unbelievable fictional gossip, drama and storytime confessions"
+angle: "wild 'you won't believe what happened' stories told like a friend spilling tea"
+voice: af_heart            # Kokoro fallback (free/local)
+voice_11: EXAVITQu4vr4xnSDxMaL   # ElevenLabs 'Bella' — famous storytime female (needs free key)
+voice_tiktok: en_us_002    # TikTok 'Jessie' — THE storytime voice (needs TIKTOK_TTS_URL)
+style: "colorful dramatic slice-of-life, expressive, cinematic lighting"
+banned: "real people, real brands, anything presented as real news, gore"
+fiction: true               # ALL stories are invented for entertainment
+
+format: shorts
+orientation: vertical
+target_seconds: 100
+max_seconds: 120
+exact_seconds: 0
+scene_bounds: [9, 14]
+
+lane_budgets:
+  night: [4, 8]
+  day: [2, 4]

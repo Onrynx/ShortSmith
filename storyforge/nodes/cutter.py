@@ -43,7 +43,8 @@ _MOODS = {
     "chill":     (["calm", "peace", "gentle", "quiet"],
                   [130.81, 164.81, 196.0, 246.94]),
 }
-_CHANNEL_DEFAULT_MOOD = {"history_mysteries": "mystery", "gaming_lore": "epic"}
+_CHANNEL_DEFAULT_MOOD = {"history_mysteries": "mystery", "gaming_lore": "epic",
+                         "gossip_stories": "chill"}
 
 
 def pick_music(state: dict) -> tuple[Path | None, str]:
@@ -211,6 +212,99 @@ def _word_srt_via_whisper(audio_paths, durations, workdir) -> str | None:
 
 
 # --------------------------------------------------------------------------- #
+# Viral-style captions (ASS): extra-bold uppercase word-pop, white + black
+# outline, slightly below center — the Hormozi/MrBeast-clip look.
+# --------------------------------------------------------------------------- #
+def _words_whisper(audio_paths, factor=1.0):
+    """True word timings from the narration via faster-whisper. None on failure."""
+    try:
+        import numpy as np
+        from faster_whisper import WhisperModel  # type: ignore
+        pcm, rate = [], 24000
+        for p in audio_paths:
+            with wave.open(p, "rb") as wf:
+                rate = wf.getframerate()
+                pcm.append(np.frombuffer(wf.readframes(wf.getnframes()), dtype="<i2"))
+        if not pcm:
+            return None
+        audio = np.concatenate(pcm).astype("float32") / 32768.0
+        if rate != 16000:  # whisper wants 16k
+            n = int(len(audio) * 16000 / rate)
+            audio = np.interp(np.linspace(0, len(audio), n, endpoint=False),
+                              np.arange(len(audio)), audio).astype("float32")
+        model = WhisperModel(os.environ.get("WHISPER_MODEL", "tiny"),
+                             device="cpu", compute_type="int8")
+        segs, _ = model.transcribe(audio, word_timestamps=True, language="en")
+        words = [(wd.start / factor, wd.end / factor, wd.word.strip())
+                 for s in segs for wd in (s.words or []) if wd.word.strip()]
+        return words or None
+    except Exception as exc:  # noqa: BLE001
+        log("warn", f"whisper word-timing failed: {exc}")
+        return None
+
+
+def _words_estimate(scenes, spoken, slots):
+    """Fallback word timings: distribute each scene's words across its speech."""
+    words = []
+    t = 0.0
+    for i, sc in enumerate(scenes):
+        toks = (sc.get("narration") or "").split()
+        dur = spoken[i] if i < len(spoken) else 4.0
+        weights = [len(w) + 2 for w in toks]
+        total = sum(weights) or 1
+        wt = t
+        for w, wgt in zip(toks, weights):
+            d = dur * wgt / total
+            words.append((wt, wt + d, w))
+            wt += d
+        t += slots[i] if i < len(slots) else dur
+    return words
+
+
+def _ass_ts(sec: float) -> str:
+    sec = max(0.0, sec)
+    h = int(sec // 3600); m = int(sec % 3600 // 60); s = sec % 60
+    return f"{h}:{m:02d}:{s:05.2f}"
+
+
+def _words_to_ass(words, w, h) -> str:
+    """Group words into <=3-word cues and render pop-in ASS events."""
+    fs = int(h * 0.046)
+    posy = int(h * 0.655)          # a bit below center, clear of UI overlays
+    outline = max(3, int(h * 0.0045))
+    head = (
+        "[Script Info]\nScriptType: v4.00+\n"
+        f"PlayResX: {w}\nPlayResY: {h}\nWrapStyle: 2\nScaledBorderAndShadow: yes\n\n"
+        "[V4+ Styles]\n"
+        "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, "
+        "OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, "
+        "ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, "
+        "MarginL, MarginR, MarginV, Encoding\n"
+        f"Style: Cap,Arial Black,{fs},&H00FFFFFF,&H00FFFFFF,&H00000000,"
+        f"&H80000000,-1,0,0,0,100,100,1,0,1,{outline},2,5,40,40,0,1\n\n"
+        "[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
+    )
+    # group: up to 3 words, break on >0.6s gaps or >1.6s span
+    cues, cur = [], []
+    for wd in words:
+        if cur and (len(cur) == 3 or wd[0] - cur[-1][1] > 0.6 or wd[1] - cur[0][0] > 1.6):
+            cues.append(cur)
+            cur = []
+        cur.append(wd)
+    if cur:
+        cues.append(cur)
+    ev = []
+    for n, cue in enumerate(cues):
+        start, end = cue[0][0], max(cue[-1][1], cue[0][0] + 0.35)
+        text = " ".join(c[2] for c in cue).upper().replace("{", "").replace("}", "")
+        color = r"\c&H00FFFF&" if (n % 5 == 4) else ""   # every 5th cue pops yellow
+        fx = (rf"{{\pos({w // 2},{posy})\fscx70\fscy70"
+              rf"\t(0,80,\fscx100\fscy100){color}}}")
+        ev.append(f"Dialogue: 0,{_ass_ts(start)},{_ass_ts(end)},Cap,,0,0,0,,{fx}{text}")
+    return head + "\n".join(ev) + "\n"
+
+
+# --------------------------------------------------------------------------- #
 # Segments
 # --------------------------------------------------------------------------- #
 def _abs_fwd(p: Path) -> str:
@@ -327,17 +421,16 @@ def node_cutter(state: dict) -> dict:
     list_path.write_text("".join(f"file '{_abs_fwd(s)}'\n" for s in segs), encoding="utf-8")
 
     # 3) captions (word-style small cues for Shorts)
-    chunk = 4 if spec["format"] == "shorts" else 8
-    captions_kind = "scene"
-    srt = None
-    if not state.get("mock") and factor == 1.0 and not exact:
-        srt = _word_srt_via_whisper(audio_paths, spoken, workdir)
-        if srt:
-            captions_kind = "word"
-    if not srt:
-        srt = _cues_to_srt(_scene_cues(scenes, spoken, slots=edur, chunk=chunk))
-        captions_kind = "scene"
-    (workdir / "captions.srt").write_text(srt, encoding="utf-8")
+    # Viral word-pop captions, truly synced to the voice via whisper word
+    # timestamps (estimated distribution as fallback).
+    words = None
+    if not state.get("mock"):
+        words = _words_whisper(audio_paths, factor)
+        captions_kind = "word-synced"
+    if not words:
+        words = _words_estimate(scenes, spoken, edur)
+        captions_kind = "word-estimated"
+    (workdir / "captions.ass").write_text(_words_to_ass(words, w, h), encoding="utf-8")
 
     # 4) final assembly — mood-matched music + captions, graceful degradation
     music, mood = pick_music(state)
@@ -347,16 +440,7 @@ def node_cutter(state: dict) -> dict:
     total = round(sum(edur), 3) if edur else None
     final = workdir / f"{state['run_id']}.mp4"
 
-    # Big, high captions for vertical Shorts; standard lower-third for long/horizontal.
-    if spec["vertical"]:
-        style = ("FontName=Arial,Fontsize=15,Bold=1,PrimaryColour=&H00FFFFFF,"
-                 "OutlineColour=&H00101010,BorderStyle=1,Outline=3,Shadow=1,"
-                 "Alignment=2,MarginV=90")
-    else:
-        style = ("FontName=Arial,Fontsize=16,PrimaryColour=&H00FFFFFF,"
-                 "OutlineColour=&H00101010,BorderStyle=1,Outline=2,Shadow=1,"
-                 "Alignment=2,MarginV=48")
-    sub_filter = f"subtitles=captions.srt:force_style='{style}'"
+    sub_filter = "ass=captions.ass"
 
     def _final_args(use_subs: bool, use_music: bool) -> list[str]:
         inputs = ["-f", "concat", "-safe", "0", "-i", "segments/list.txt"]

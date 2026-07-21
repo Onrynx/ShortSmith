@@ -223,6 +223,8 @@ def node_herald(state: dict) -> dict:
     # Hashtags near the top so YouTube shows the first 3 above the title (Shorts).
     hashtags = build_hashtags(tags, is_shorts=(spec["format"] == "shorts"))
     description = ensure_disclosure(script.get("description", ""))
+    if state.get("channel_cfg", {}).get("fiction") and "fiction" not in description.lower():
+        description += "\nThis is a fictional story created for entertainment."
     if hashtags:
         description = f"{hashtags}\n\n{description}"
 

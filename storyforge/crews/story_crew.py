@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import os
+import random
 import re
 
 from ..config import format_spec
@@ -65,17 +66,41 @@ def extract_json(text: str) -> dict:
 def _targets(cfg: dict, hero_budget: tuple[int, int]) -> dict:
     spec = format_spec(cfg)
     lo_s, hi_s = spec["scene_bounds"]
-    target_seconds = spec["target_seconds"]
+    # Shorts: RANDOM length per run inside 1-2 min so uploads never feel templated
+    if spec["format"] == "shorts" and not spec.get("exact_seconds"):
+        target_seconds = random.randint(68, 112)
+    else:
+        target_seconds = spec["target_seconds"]
     words = int(target_seconds / 60 * 150)
-    per_scene = 14 if spec["format"] == "shorts" else 55
+    per_scene = 20 if spec["format"] == "shorts" else 55
     scene_count = max(lo_s, min(hi_s, round(words / per_scene)))
     return {
         "format": spec["format"], "vertical": spec["vertical"],
         "target_seconds": target_seconds, "max_seconds": spec["max_seconds"],
-        "approx_words": words, "scene_count": scene_count,
+        "approx_words": words, "min_words": int(words * 0.8),
+        "scene_count": scene_count, "fiction": bool(cfg.get("fiction")),
         "scene_lo": lo_s, "scene_hi": hi_s,
         "hero_lo": hero_budget[0], "hero_hi": hero_budget[1],
     }
+
+
+# Story-craft rules injected into every script prompt. This is what separates
+# "generic AI slop" from a hook that holds retention for 1-2 minutes.
+CRAFT = """STORYTELLING RULES (non-negotiable):
+- Pick ONE specific story with a NAMED subject (a person, ship, city, battle,
+  artifact, glitch, guild...) — never a vague theme. Specifics sell: names,
+  dates, numbers, places in almost every scene.
+- HOOK (scene 1, <=20 words): drop the listener INTO the strangest fact of the
+  story mid-action, creating an information gap they must close. No throat-clearing.
+- BANNED phrases: "imagine", "what if I told you", "in this video", "let's dive
+  in", "join me", "have you ever wondered", "little did they know", "to this day"
+  as filler, and any generic listicle framing.
+- Arc: hook -> setup (who/where/when, concrete) -> escalation (each scene adds a
+  NEW surprising fact or reversal) -> twist that reframes everything -> ending
+  that answers the hook BUT opens one final question for the comments.
+- Short punchy sentences. Cliffhang scene endings. Vary rhythm. Read it aloud in
+  your head: if a sentence sounds like a textbook, rewrite it like you're telling
+  a friend a secret at 2am."""
 
 
 def _schema_spec(t: dict) -> str:
@@ -92,18 +117,22 @@ def _schema_spec(t: dict) -> str:
 
 
 def _format_note(t: dict) -> str:
+    fiction = ("\nFICTION MODE: every story is INVENTED for pure entertainment. "
+               "Freely create characters, places and events — never present it as "
+               "real history or news, and never use real people or brands. "
+               "Optimize ONLY for how gripping it is." if t.get("fiction") else "")
     if t["format"] == "shorts":
         return (
-            f"This is a YOUTUBE SHORT: vertical 9:16, UNDER {t['max_seconds']}s "
-            f"(aim ~{t['target_seconds']}s, ~{t['approx_words']} spoken words total). "
-            "The hook MUST land in the FIRST LINE (first ~2 seconds) — a pattern "
-            "interrupt or a question the viewer needs answered. Keep every scene to "
-            "1-2 short punchy sentences. One clear payoff. End on an open loop that "
-            "makes them rewatch or comment. Frame visuals for a vertical phone screen."
+            f"This is a YOUTUBE SHORT: vertical 9:16, {t['target_seconds']}s of "
+            f"narration (HARD MINIMUM {t['min_words']} spoken words total, aim "
+            f"~{t['approx_words']}; under {t['max_seconds']}s). Each scene = 2-3 "
+            "full spoken sentences, 25-35 words per scene. Frame visuals for a "
+            "phone.\n" + CRAFT + fiction
         )
     return (
         f"This is a long-form video: ~{t['target_seconds']//60} minutes at ~150 wpm "
-        f"(~{t['approx_words']} words). Cinematic, patient pacing, honest about uncertainty."
+        f"(~{t['approx_words']} words). Cinematic, patient pacing, honest about "
+        "uncertainty.\n" + CRAFT + fiction
     )
 
 
@@ -205,8 +234,29 @@ def single_shot_script(cfg: dict, lane: str, topic: str,
         f"Mark {t['hero_lo']}-{t['hero_hi']} scenes hero=true. scenes[0].narration must "
         "equal the hook.\n\n" + _schema_spec(t)
     )
-    raw = complete(system, user, model_info, json_mode=True, temperature=0.85)
-    return extract_json(raw)
+
+    def _wc(d):
+        return sum(len(str(s.get("narration", "")).split()) for s in d.get("scenes", []))
+
+    # 14B-class models on CPU need several minutes for a full script — worth it
+    # for hook quality; runs are background jobs so latency is fine.
+    data = extract_json(complete(system, user, model_info, json_mode=True,
+                                 temperature=0.85, timeout=480))
+    words = _wc(data)
+    if words < t["min_words"]:  # too thin -> one retry demanding real length
+        log("warn", f"script only {words} words (< {t['min_words']}); retrying longer")
+        retry_user = (user + f"\n\nYOUR LAST DRAFT WAS ONLY {words} WORDS — far too "
+                      f"short. Rewrite the SAME story with MORE scenes and 2-3 full "
+                      f"sentences each, totalling AT LEAST {t['min_words']} spoken "
+                      "words. Add concrete details, not padding.")
+        try:
+            data2 = extract_json(complete(system, retry_user, model_info,
+                                          json_mode=True, temperature=0.9, timeout=480))
+            if _wc(data2) > words:
+                data = data2
+        except Exception as exc:  # noqa: BLE001
+            log("warn", f"length retry failed ({exc}); keeping first draft")
+    return data
 
 
 # --------------------------------------------------------------------------- #
@@ -412,14 +462,67 @@ def _gaming_long() -> dict:
     }
 
 
+def _gossip_story() -> dict:
+    s = "colorful dramatic slice-of-life, expressive faces, cinematic lighting, 9:16"
+    rows = [
+        ("My sister showed up to my wedding in a white dress — and that was the SECOND "
+         "worst thing she did that day.",
+         f"A bride frozen at the altar as a woman in white walks in, guests gasping, {s}", True),
+        ("For context, Maya had spent our whole lives one step ahead of me. Same college, "
+         "same job offers, and somehow always dating whoever I liked first.",
+         f"Two sisters as kids, one always a step ahead, warm nostalgic tone, {s}", True),
+        ("So when I got engaged to Daniel, I should have known she couldn't just be happy "
+         "for me. But nothing prepared me for what she was planning.",
+         f"A woman looking at an engagement ring, another watching jealously from a doorway, {s}",
+         True),
+        ("The white dress was the opening move. Everyone stared. My mom went pale. And Maya "
+         "just smiled at me like she'd already won.",
+         f"A jealous woman in white smiling coldly across a wedding hall, {s}", True),
+        ("Then during the toasts, she grabbed the microphone. She said she had something the "
+         "bride 'needed to hear before it was too late.'",
+         f"A woman seizing a microphone at a wedding, crowd tense, dramatic spotlight, {s}", True),
+        ("She pulled out her phone and started reading texts — texts she claimed were between "
+         "Daniel and another woman. The room went dead silent.",
+         f"A phone held up showing messages, shocked wedding guests blurred behind, {s}", True),
+        ("Here's what she didn't know. Those texts weren't Daniel's. They were from a fake "
+         "number I had set up three weeks earlier, because I'd caught her going through his phone.",
+         f"A close-up of two phones, one labeled a decoy, clever reveal lighting, {s}", False),
+        ("I'd fed her just enough to make her think she'd found something. And she took the "
+         "bait in front of two hundred people.",
+         f"A calm bride watching a plan unfold, subtle knowing smile, {s}", True),
+        ("So when she finished her little speech, I walked up, took the mic, and asked her to "
+         "read the very last message out loud. The one she'd skipped.",
+         f"A bride confidently taking the microphone back, crowd leaning in, {s}", True),
+        ("It said: 'Maya, if you're reading this at the wedding, you just proved everything.' "
+         "Her face crumbled. My mom finally understood. And Daniel just started laughing.",
+         f"A woman's confident expression collapsing into shock, gasping crowd, {s}", True),
+        ("Maya left before the cake. We haven't spoken since. But honestly? Best wedding gift "
+         "she could have given me. Would you have forgiven her — or done exactly what I did?",
+         f"An empty chair at a wedding table, celebration continuing warmly behind it, {s}", False),
+    ]
+    return {
+        "title": "My Sister Wore White to My Wedding — Big Mistake",
+        "hook": rows[0][0], "scenes": _scenes(rows),
+        "description": ("Storytime: she tried to ruin my wedding and exposed only herself. "
+                        "Would you have forgiven her? #storytime #drama"),
+        "tags": ["storytime", "drama", "gossip", "reddit stories", "family drama",
+                 "wedding drama", "story", "revenge", "shorts", "storytime shorts"],
+    }
+
+
 def mock_script(cfg: dict, lane: str, topic: str, hero_budget: tuple[int, int]) -> dict:
     """Deterministic canned script keyed by channel + format; always valid material."""
-    is_gaming = cfg.get("key") == "gaming_lore" or "lore" in cfg.get("niche", "").lower()
-    shorts = format_spec(cfg)["format"] == "shorts"
-    if is_gaming:
+    key = cfg.get("key", "")
+    spec = format_spec(cfg)
+    # 6-scene short variants only fit channels whose bounds allow them; else the
+    # 11-scene variants (valid up to [9,14]).
+    shorts = spec["format"] == "shorts" and spec["scene_bounds"][0] <= 6
+    if key == "gossip_stories" or cfg.get("fiction") and "gossip" in cfg.get("niche", "").lower():
+        data = _gossip_story()
+    elif key == "gaming_lore" or "lore" in cfg.get("niche", "").lower():
         data = _gaming_short() if shorts else _gaming_long()
     else:
-        data = _history_short() if shorts else _history_long()
+        data = _gossip_story()
     if topic:
         log("info", f"mock script: topic '{topic}' noted (canned content used offline)")
     return data

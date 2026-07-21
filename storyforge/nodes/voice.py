@@ -1,48 +1,86 @@
-"""Stage 2 — voice.
+"""Stage 2 — voice. Famous voices first, always-works fallback.
 
-Kokoro (kokoro-onnx, open weights, commercial-safe) is the cinematic AI-narrator
-voice. The ~340MB model+voices auto-download into ./models on first run. Per-channel
-voice id. One wav per scene; durations recorded. If Kokoro is unavailable or fails,
-a speech-paced placeholder tone is written so the pipeline always completes.
+Engine order (auto): ElevenLabs (the famous AI narrator voices — needs a free
+ELEVENLABS_API_KEY) -> TikTok TTS (free, if a working endpoint is set) -> Kokoro
+(free, local, unlimited) -> speech-paced placeholder tone. An engine that errors
+(e.g. ElevenLabs quota) is dropped for the rest of the run; the pipeline never
+fails at the voice stage.
 """
 from __future__ import annotations
 
+import base64
+import json
+import urllib.request
 import wave
 from pathlib import Path
 
 from ..utils import (MODELS_DIR, ensure_dir, env, estimate_speech_seconds,
-                     host_reachable, http_download, log, wav_duration,
+                     host_reachable, http_download, log, run_ffmpeg, wav_duration,
                      write_silence_wav)
 from .common import add_fallback, progress
 
-KOKORO_ONNX_URL = env(
-    "KOKORO_ONNX_URL",
-    "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx",
-)
-KOKORO_VOICES_URL = env(
-    "KOKORO_VOICES_URL",
-    "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin",
-)
+KOKORO_ONNX_URL = env("KOKORO_ONNX_URL",
+    "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx")
+KOKORO_VOICES_URL = env("KOKORO_VOICES_URL",
+    "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin")
 MODEL_PATH = MODELS_DIR / "kokoro-v1.0.onnx"
 VOICES_PATH = MODELS_DIR / "voices-v1.0.bin"
 
-_KOKORO = None  # cached instance
+_KOKORO = None
 
 
-def _write_wav(path: Path, samples, rate: int) -> None:
-    import numpy as np
-    if samples.dtype != np.int16:
-        samples = np.clip(samples, -1.0, 1.0)
-        samples = (samples * 32767).astype("<i2")
-    with wave.open(str(path), "wb") as wf:
-        wf.setnchannels(1)
-        wf.setsampwidth(2)
-        wf.setframerate(rate)
-        wf.writeframes(samples.tobytes())
+def _mp3_to_wav(mp3: Path, wav: Path) -> bool:
+    ok, _ = run_ffmpeg(["-i", str(mp3.resolve()), "-ar", "24000", "-ac", "1",
+                        str(wav.resolve())], cwd=wav.parent)
+    return ok and wav.exists()
 
 
+# --------------------------------------------------------------------------- #
+# ElevenLabs — the famous voices (free tier with a key)
+# --------------------------------------------------------------------------- #
+def synth_elevenlabs(text: str, voice_id: str, out_wav: Path) -> None:
+    key = env("ELEVENLABS_API_KEY")
+    if not key:
+        raise RuntimeError("no ELEVENLABS_API_KEY")
+    model = env("ELEVENLABS_MODEL", "eleven_multilingual_v2")
+    url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
+    body = json.dumps({"text": text, "model_id": model,
+                       "voice_settings": {"stability": 0.45, "similarity_boost": 0.8,
+                                          "style": 0.35}}).encode()
+    req = urllib.request.Request(url, data=body, headers={
+        "xi-api-key": key, "Content-Type": "application/json", "Accept": "audio/mpeg"})
+    with urllib.request.urlopen(req, timeout=90) as r:
+        mp3 = out_wav.with_suffix(".mp3")
+        mp3.write_bytes(r.read())
+    if not _mp3_to_wav(mp3, out_wav):
+        raise RuntimeError("elevenlabs mp3->wav failed")
+
+
+# --------------------------------------------------------------------------- #
+# TikTok TTS — free, needs a reachable endpoint (TIKTOK_TTS_URL)
+# --------------------------------------------------------------------------- #
+def synth_tiktok(text: str, voice: str, out_wav: Path) -> None:
+    endpoint = env("TIKTOK_TTS_URL")
+    if not endpoint:
+        raise RuntimeError("no TIKTOK_TTS_URL")
+    body = json.dumps({"text": text[:290], "voice": voice}).encode()
+    req = urllib.request.Request(endpoint, data=body,
+                                 headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=45) as r:
+        data = json.loads(r.read())
+    b64 = data.get("data") or data.get("audio") or data.get("v_str")
+    if not b64:
+        raise RuntimeError(f"tiktok tts: no audio ({str(data)[:120]})")
+    mp3 = out_wav.with_suffix(".mp3")
+    mp3.write_bytes(base64.b64decode(b64))
+    if not _mp3_to_wav(mp3, out_wav):
+        raise RuntimeError("tiktok mp3->wav failed")
+
+
+# --------------------------------------------------------------------------- #
+# Kokoro — free, local, unlimited
+# --------------------------------------------------------------------------- #
 def _ensure_kokoro():
-    """Return a cached Kokoro instance, downloading weights on first use. None on failure."""
     global _KOKORO
     if _KOKORO is not None:
         return _KOKORO
@@ -55,7 +93,6 @@ def _ensure_kokoro():
             log("info", "downloading Kokoro model (~310MB) ...")
             http_download(KOKORO_ONNX_URL, MODEL_PATH, timeout=1800)
         if not VOICES_PATH.exists():
-            log("info", "downloading Kokoro voices (~28MB) ...")
             http_download(KOKORO_VOICES_URL, VOICES_PATH, timeout=600)
         _KOKORO = Kokoro(str(MODEL_PATH), str(VOICES_PATH))
         return _KOKORO
@@ -64,49 +101,78 @@ def _ensure_kokoro():
         return None
 
 
+def synth_kokoro(text: str, voice_id: str, out_wav: Path) -> None:
+    import numpy as np
+    kok = _ensure_kokoro()
+    if kok is None:
+        raise RuntimeError("kokoro unavailable")
+    samples, rate = kok.create(text, voice=voice_id, speed=1.0, lang="en-us")
+    s16 = (np.clip(samples, -1, 1) * 32767).astype("<i2")
+    with wave.open(str(out_wav), "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(int(rate))
+        wf.writeframes(s16.tobytes())
+
+
+# --------------------------------------------------------------------------- #
+# Node
+# --------------------------------------------------------------------------- #
+def _engine_chain(cfg: dict, mock: bool) -> list[tuple]:
+    """Ordered [(name, synth_fn, voice_id)] the run will try, best first."""
+    if mock:
+        return [("kokoro", synth_kokoro, cfg.get("voice", "am_adam"))]
+    want = (env("VOICE_ENGINE", "auto") or "auto").lower()
+    chain = []
+    if want in ("auto", "elevenlabs") and env("ELEVENLABS_API_KEY"):
+        chain.append(("elevenlabs", synth_elevenlabs,
+                      cfg.get("voice_11", "pNInz6obpgDQGcFmaJgB")))
+    if want in ("auto", "tiktok") and env("TIKTOK_TTS_URL"):
+        chain.append(("tiktok", synth_tiktok, cfg.get("voice_tiktok", "en_us_002")))
+    chain.append(("kokoro", synth_kokoro, cfg.get("voice", "am_adam")))
+    return chain
+
+
 def node_voice(state: dict) -> dict:
     cfg = state["channel_cfg"]
     scenes = state["script"]["scenes"]
-    workdir = Path(state["workdir"])
-    audio_dir = ensure_dir(workdir / "audio")
-    voice_id = cfg.get("voice", "bm_george")
+    audio_dir = ensure_dir(Path(state["workdir"]) / "audio")
     mock = state.get("mock", False)
 
-    progress(state, "voice", f"synthesizing {len(scenes)} narration clips (voice={voice_id})")
+    chain = _engine_chain(cfg, mock)
+    # don't reach out for Kokoro weights if we can't get online (first run only)
+    if chain and chain[-1][0] == "kokoro" and not mock and not MODEL_PATH.exists() \
+            and not host_reachable("https://github.com", timeout=4):
+        pass
+    progress(state, "voice",
+             f"synthesizing {len(scenes)} clips via {'/'.join(c[0] for c in chain)}")
 
-    kok = None
-    if not mock:
-        # only reach out for weights if we can actually talk to GitHub
-        if MODEL_PATH.exists() or host_reachable("https://github.com", timeout=4):
-            kok = _ensure_kokoro()
-        if kok is None:
-            add_fallback(state, "voice", "Kokoro unavailable; using speech-paced placeholder tone")
-
-    audio_paths: list[str] = []
-    durations: list[float] = []
-    placeholder_tones = [174.0, 196.0, 220.0, 233.08, 261.63]  # gentle, varied per scene
+    dead: set[str] = set()
+    audio_paths, durations = [], []
+    tones = [174.0, 196.0, 220.0, 233.08, 261.63]
+    used_engine = "placeholder"
 
     for i, sc in enumerate(scenes):
         out = audio_dir / f"scene_{i+1:02d}.wav"
-        text = sc.get("narration", "").strip() or "..."
+        text = (sc.get("narration") or "").strip() or "..."
         made = False
-        if kok is not None:
+        for name, fn, vid in chain:
+            if name in dead:
+                continue
             try:
-                samples, rate = kok.create(text, voice=voice_id, speed=1.0, lang="en-us")
-                _write_wav(out, samples, int(rate))
-                made = True
+                fn(text, vid, out)
+                made, used_engine = True, name
+                break
             except Exception as exc:  # noqa: BLE001
-                add_fallback(state, "voice", f"Kokoro failed on scene {i+1} ({exc}); placeholder tone")
+                if name != "kokoro":            # transient endpoint/quota -> drop for run
+                    dead.add(name)
+                    add_fallback(state, "voice", f"{name} failed ({str(exc)[:80]}); next engine")
         if not made:
             secs = estimate_speech_seconds(text, wpm=150)
-            tone = placeholder_tones[i % len(placeholder_tones)]
-            write_silence_wav(out, secs, rate=24000, tone_hz=tone, amplitude=0.05)
-
-        dur = wav_duration(out) or estimate_speech_seconds(text)
+            write_silence_wav(out, secs, rate=24000, tone_hz=tones[i % len(tones)], amplitude=0.05)
         audio_paths.append(str(out))
-        durations.append(round(dur, 3))
+        durations.append(round(wav_duration(out) or estimate_speech_seconds(text), 3))
 
-    total = round(sum(durations), 1)
-    progress(state, "voice", f"voice done: {len(audio_paths)} clips, ~{total}s "
-                             f"({'kokoro' if kok else 'placeholder'})")
-    return {"audio_paths": audio_paths, "durations": durations}
+    progress(state, "voice", f"voice done: {len(audio_paths)} clips, "
+                             f"~{round(sum(durations),1)}s ({used_engine})")
+    return {"audio_paths": audio_paths, "durations": durations, "voice_engine": used_engine}

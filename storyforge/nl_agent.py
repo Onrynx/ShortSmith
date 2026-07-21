@@ -28,19 +28,18 @@ everything.
 SYSTEM MAP (explain any of this freely when asked):
 - Output: 2 vertical Shorts/day (1080x1920, <=58s, burned captions, thumbnail),
   saved to output/<channel>/pending/ for human approval, then approved/.
-- 2 channels: history_mysteries, gaming_lore. 2 lanes/day: night=local Wan2GP
+- 2 channels: gossip_stories (fictional viral storytime drama — the MAIN one) and gaming_lore. ALL scripts are FICTION crafted purely to hook, never real. 2 lanes/day: night=local Wan2GP
   hero clips, day=cloud (optional, capped, off unless a key is set).
 - Pipeline (LangGraph-style, checkpointed, storyforge/nodes/): script -> voice ->
   canvas -> cutter -> herald.
   * script: Scout/Scribe/Critic crew (CrewAI) -> fallback single LLM call ->
     canned. Runs on the local brain: Odysseus :7000 /v1 -> Ollama :11434 -> Gemini.
-  * voice: Kokoro TTS 'am_adam' (local, free) — the deep classic Shorts narrator.
+  * voice: famous voices — ElevenLabs (Bella/Adam, needs free key) or TikTok, with local Kokoro as free fallback.
   * canvas: CLASSIC SHORTS FORMAT — continuous gameplay footage (user drops
     Minecraft-parkour-style clips into assets/backgrounds/) plays behind the
     narration + captions. Fallbacks: hero AI video (Wan2GP/cloud) -> stock ->
     free AI images (Pollinations) -> generative motion. Never fails.
-  * cutter: FFmpeg assembles scenes + narration + captions into an EXACTLY
-    60-second vertical video; background music auto-picked by story mood from
+  * cutter: FFmpeg assembles scenes + narration + captions into an 1-2 minute (random per run) vertical video; background music auto-picked by story mood from
     assets/music/<mood>/ (user drops no-copyright tracks; CC0 beds otherwise).
   * herald: title/description/tags + AI disclosure line + thumbnail; optional
     PRIVATE YouTube upload. Human approval gate always on.
@@ -56,7 +55,7 @@ pick ONE action. LIVE STATE is prepended to each message — use it, don't guess
 Actions (name: args):
  status:{} brain:{} pending:{} digest:{} feed:{}
  review:{n:int}  approve:{n:int}  reject:{n:int}   (n = number from the pending list)
- run:{channel:"history_mysteries"|"gaming_lore", lane:"night"|"day", mock:bool}
+ run:{channel:"gossip_stories"|"gaming_lore", lane:"night"|"day", mock:bool}
  daily:{mock:bool}   lanes:{night:str, day:str}
 
 Reply ONLY strict JSON: {"say":"...", "action":null or {"name":"...","args":{...}}}
@@ -128,6 +127,10 @@ def handle(text: str, channel_id: int, is_admin: bool = True) -> str:
     if mi["backend"] == "mock":
         return ("My brain is offline (no Odysseus/Ollama reachable). "
                 "Commands still work: try `!help`.")
+    # Chat stays on a FAST model; the big model is reserved for script writing.
+    if mi["backend"] == "ollama":
+        from .utils import env as _env
+        mi = {**mi, "model": _env("OLLAMA_CHAT_MODEL", "qwen3:8b") or "qwen3:8b"}
     h = _hist.setdefault(channel_id, deque(maxlen=8))
     convo = "\n".join(f"{r}: {t}" for r, t in h) or "(new conversation)"
     try:
