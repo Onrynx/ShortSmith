@@ -16,8 +16,9 @@ from .notify import recent_events
 from .providers.cloud import cap_remaining
 from .scheduler import get_assignment, set_assignment
 from .state import approved_dir
-from .utils import (OUTPUT_DIR, ROOT, STATE_DIR, ensure_dir, env, read_json,
-                    read_status, utcnow_iso, write_json)
+from .utils import (CREATE_NEW_PROCESS_GROUP, CREATE_NO_WINDOW, OUTPUT_DIR, ROOT,
+                    STATE_DIR, ensure_dir, env, read_json, read_status, utcnow_iso,
+                    write_json)
 
 
 def config_info() -> dict:
@@ -172,10 +173,14 @@ def odysseus_status() -> dict:
 def _spawn(cmd: list[str], tag: str) -> dict:
     logdir = ensure_dir(STATE_DIR / "runs")
     logfile = logdir / f"{tag}_{utcnow_iso().replace(':', '').replace('-', '')}.log"
-    kwargs = ({"creationflags": 0x00000208} if os.name == "nt"
-              else {"start_new_session": True})
+    # CREATE_NO_WINDOW (not DETACHED_PROCESS): the render keeps a hidden console
+    # that its ffmpeg children inherit, so nothing ever flashes on screen.
+    # DETACHED_PROCESS leaves children console-less, making each one pop its own.
+    kwargs = ({"creationflags": CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP}
+              if os.name == "nt" else {"start_new_session": True})
     fh = open(logfile, "w", encoding="utf-8")
-    proc = subprocess.Popen(cmd, cwd=str(ROOT), stdout=fh, stderr=subprocess.STDOUT, **kwargs)
+    proc = subprocess.Popen(cmd, cwd=str(ROOT), stdout=fh, stderr=subprocess.STDOUT,
+                            stdin=subprocess.DEVNULL, **kwargs)
     return {"ok": True, "pid": proc.pid, "log": str(logfile), "cmd": " ".join(cmd)}
 
 

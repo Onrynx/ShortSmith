@@ -310,6 +310,22 @@ def write_silence_wav(path: Path | str, seconds: float, rate: int = 24000,
 # --------------------------------------------------------------------------- #
 # FFmpeg
 # --------------------------------------------------------------------------- #
+# Windows: keep child processes (ffmpeg/ffprobe/python) from flashing console
+# windows over whatever you're doing. A render fires dozens of ffmpeg calls, so
+# without this the desktop strobes for minutes.
+CREATE_NO_WINDOW = 0x08000000
+CREATE_NEW_PROCESS_GROUP = 0x00000200
+
+
+def no_window_kwargs() -> dict:
+    """subprocess kwargs that suppress console windows on Windows (no-op elsewhere)."""
+    if os.name != "nt":
+        return {}
+    si = subprocess.STARTUPINFO()
+    si.dwFlags |= subprocess.STARTF_USESHOWWINDOW  # hide even if a console appears
+    return {"creationflags": CREATE_NO_WINDOW, "startupinfo": si}
+
+
 def ffmpeg_path() -> str:
     return shutil.which("ffmpeg") or "ffmpeg"
 
@@ -331,6 +347,7 @@ def run_ffmpeg(args: list[str], cwd: Optional[Path | str] = None,
         proc = subprocess.run(
             cmd, cwd=str(cwd) if cwd else None,
             capture_output=True, text=True, timeout=timeout,
+            **no_window_kwargs(),
         )
         ok = proc.returncode == 0
         tail = (proc.stderr or "").strip()
@@ -354,7 +371,7 @@ def ffprobe_duration(path: Path | str) -> float:
         out = subprocess.run(
             [exe, "-v", "error", "-show_entries", "format=duration",
              "-of", "default=nw=1:nk=1", str(path)],
-            capture_output=True, text=True, timeout=30,
+            capture_output=True, text=True, timeout=30, **no_window_kwargs(),
         )
         return float((out.stdout or "0").strip() or 0.0)
     except Exception:
