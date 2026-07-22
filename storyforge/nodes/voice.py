@@ -101,12 +101,47 @@ def _ensure_kokoro():
         return None
 
 
+# Voice styles you can pick per video.
+#   adam    = the deep classic Shorts narrator (~177 wpm, the viral 160-180 band)
+#   squeaky = the chipmunk "brainrot" voice: same words, pitch shifted up and
+#             sped up (that effect is post-processing, not a separate voice model)
+VOICE_STYLES = {
+    "adam":    {"speed": 1.18, "pitch": 1.00, "label": "Adam — deep narrator"},
+    "squeaky": {"speed": 1.30, "pitch": 1.38, "label": "Squeaky — high-pitched chipmunk"},
+}
+DEFAULT_STYLE = "adam"
+
+
+def resolve_style(state: dict, cfg: dict) -> tuple[str, dict]:
+    name = (state.get("voice_style") or cfg.get("voice_style") or
+            env("VOICE_STYLE", "") or DEFAULT_STYLE)
+    name = str(name).strip().lower()
+    aliases = {"deep": "adam", "normal": "adam", "male": "adam", "default": "adam",
+               "high": "squeaky", "chipmunk": "squeaky", "funny": "squeaky",
+               "brainrot": "squeaky", "helium": "squeaky"}
+    name = aliases.get(name, name)
+    return (name, VOICE_STYLES.get(name, VOICE_STYLES[DEFAULT_STYLE]))
+
+
 def voice_speed(cfg: dict) -> float:
     """Narration pace. Shorts live or die on pace — default is deliberately fast."""
     try:
         return max(0.6, min(1.6, float(env("VOICE_SPEED", "") or cfg.get("voice_speed", 1.18))))
     except Exception:
         return 1.18
+
+
+def _pitch_up(wav: Path, pitch: float, rate: int = 24000) -> None:
+    """Raise pitch without changing length (asetrate up, atempo back down)."""
+    if abs(pitch - 1.0) < 0.02:
+        return
+    tmp = wav.with_name(wav.stem + "_pt.wav")
+    ok, _ = run_ffmpeg(["-i", str(wav.resolve()), "-filter:a",
+                        f"asetrate={int(rate*pitch)},aresample={rate},"
+                        f"atempo={1/pitch:.4f}",
+                        "-ar", str(rate), "-ac", "1", str(tmp.resolve())], cwd=wav.parent)
+    if ok and tmp.exists():
+        tmp.replace(wav)
 
 
 def _speed_up(wav: Path, speed: float) -> None:
@@ -171,7 +206,9 @@ def node_voice(state: dict) -> dict:
     audio_paths, durations = [], []
     tones = [174.0, 196.0, 220.0, 233.08, 261.63]
     used_engine = "placeholder"
-    speed = voice_speed(cfg)
+    style_name, style = resolve_style(state, cfg)
+    speed = round(voice_speed(cfg) * (style["speed"] / VOICE_STYLES["adam"]["speed"]), 3)
+    pitch = style["pitch"]
 
     for i, sc in enumerate(scenes):
         out = audio_dir / f"scene_{i+1:02d}.wav"
@@ -186,6 +223,7 @@ def node_voice(state: dict) -> dict:
                 else:
                     fn(text, vid, out)
                     _speed_up(out, speed)            # tempo-shift the rest
+                _pitch_up(out, pitch)                # squeaky style only
                 made, used_engine = True, name
                 break
             except Exception as exc:  # noqa: BLE001
@@ -199,5 +237,7 @@ def node_voice(state: dict) -> dict:
         durations.append(round(wav_duration(out) or estimate_speech_seconds(text), 3))
 
     progress(state, "voice", f"voice done: {len(audio_paths)} clips, "
-                             f"~{round(sum(durations),1)}s ({used_engine} @ {speed:.2f}x)")
-    return {"audio_paths": audio_paths, "durations": durations, "voice_engine": used_engine}
+                             f"~{round(sum(durations),1)}s ({used_engine}, "
+                             f"{style['label']} @ {speed:.2f}x)")
+    return {"audio_paths": audio_paths, "durations": durations,
+            "voice_engine": used_engine, "voice_style": style_name}

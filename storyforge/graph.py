@@ -184,11 +184,14 @@ def run_pipeline(state: PipelineState) -> PipelineState:
 
 
 def run_one(channel: str, lane: str, *, mock: bool = False, publish: bool = False,
-            topic: str = "", run_id: str | None = None) -> PipelineState:
+            topic: str = "", run_id: str | None = None,
+            voice: str | None = None) -> PipelineState:
     """Build state for one lane+channel and run the pipeline. Used by run.py + scheduler."""
     cfg = load_channel(channel)
     model_info = select_model(mock)
     state = new_run_state(channel, cfg, lane, mock=mock, publish=publish,
                           topic=topic, run_id=run_id)
     state["model_info"] = model_info
+    if voice:
+        state["voice_style"] = voice
     return run_pipeline(state)

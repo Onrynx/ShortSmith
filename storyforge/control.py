@@ -184,12 +184,15 @@ def _spawn(cmd: list[str], tag: str) -> dict:
     return {"ok": True, "pid": proc.pid, "log": str(logfile), "cmd": " ".join(cmd)}
 
 
-def run_now(channel: str, lane: str, mock: bool = False) -> dict:
+def run_now(channel: str, lane: str, mock: bool = False,
+            voice: str | None = None) -> dict:
     if channel not in (list_channels() or []):
         return {"ok": False, "error": f"unknown channel {channel}"}
     cmd = [sys.executable, str(ROOT / "run.py"), "--channel", channel, "--lane", lane]
     if mock:
         cmd.append("--mock")
+    if voice in ("adam", "squeaky"):
+        cmd += ["--voice", voice]
     return _spawn(cmd, f"{channel}_{lane}")
 
 

@@ -29,6 +29,8 @@ def main(argv=None) -> int:
     p.add_argument("--mock", action="store_true", help="mock mode: no keys/network/GPU")
     p.add_argument("--topic", default="", help="optional forced topic")
     p.add_argument("--publish", action="store_true", help="upload PRIVATE if creds exist")
+    p.add_argument("--voice", default=None, choices=["adam", "squeaky"],
+                   help="narrator style: adam (deep) | squeaky (chipmunk)")
     p.add_argument("--run-id", default=None, help="resume an existing run id")
     p.add_argument("--list", action="store_true", help="list channels and exit")
     args = p.parse_args(argv)
@@ -50,7 +52,7 @@ def main(argv=None) -> int:
     print("=" * 60)
 
     state = run_one(channel, args.lane, mock=args.mock, publish=args.publish,
-                    topic=args.topic, run_id=args.run_id)
+                    topic=args.topic, run_id=args.run_id, voice=args.voice)
 
     final = state.get("final_video_path")
     print()
