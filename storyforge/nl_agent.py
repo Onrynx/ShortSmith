@@ -58,7 +58,8 @@ pick ONE action. LIVE STATE is prepended to each message — use it, don't guess
 Actions (name: args):
  status:{} brain:{} pending:{} digest:{} feed:{}
  review:{n:int}  approve:{n:int}  reject:{n:int}   (n = number from the pending list)
- run:{channel:"gossip_stories"|"gaming_lore", lane:"night"|"day", mock:bool}
+ run:{channel:"gossip_stories"|"gaming_lore", lane:"night"|"day", mock:false}
+   (ALWAYS mock:false — real AI story. Only use mock:true if the user says "test"/"mock".)
  daily:{mock:bool}   lanes:{night:str, day:str}
 
 Reply ONLY strict JSON: {"say":"...", "action":null or {"name":"...","args":{...}}}
@@ -103,8 +104,10 @@ def _exec(name: str, args: dict) -> str:
                            for i, s in enumerate(m.get("scenes") or []))
             return f"**{m.get('title')}**\n{sc[:1200]}"
         if name == "run":
+            # REAL videos by default. mock=True returns the same canned story every
+            # time — only ever use it when explicitly asked to test the plumbing.
             r = control.run_now(args.get("channel", ""), args.get("lane", "night"),
-                                bool(args.get("mock", True)))
+                                bool(args.get("mock", False)))
             return f"▶ started (pid {r['pid']})" if r.get("ok") else f"❌ {r.get('error')}"
         if name == "daily":
             r = control.run_scheduler_daily(bool(args.get("mock", False)))

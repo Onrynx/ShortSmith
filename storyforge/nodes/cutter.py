@@ -287,10 +287,11 @@ def _words_to_ass(words, w, h) -> str:
         f"&H80000000,-1,0,0,0,100,100,1,0,1,{outline},2,5,40,40,0,1\n\n"
         "[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
     )
-    # group: up to 3 words, break on >0.6s gaps or >1.6s span
+    # Fast, punchy pops: <=2 words, break on small gaps or a short span. Matches
+    # the sped-up narration so captions never lag behind the voice.
     cues, cur = [], []
     for wd in words:
-        if cur and (len(cur) == 3 or wd[0] - cur[-1][1] > 0.6 or wd[1] - cur[0][0] > 1.6):
+        if cur and (len(cur) == 2 or wd[0] - cur[-1][1] > 0.35 or wd[1] - cur[0][0] > 0.9):
             cues.append(cur)
             cur = []
         cur.append(wd)

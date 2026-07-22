@@ -3,7 +3,8 @@ key: gaming_lore
 name: Gaming Lore
 niche: "video game lore and hidden stories"
 angle: "deep lore told cinematically"
-voice: am_adam             # Kokoro fallback (free/local)
+voice: am_adam             # Kokoro 'Adam' — famous deep male narrator
+voice_speed: 1.18          # fast, punchy pacing
 voice_11: pNInz6obpgDQGcFmaJgB  # ElevenLabs 'Adam' — famous deep narrator (needs free key)
 voice_tiktok: en_us_006    # TikTok deep male (needs TIKTOK_TTS_URL)
 style: "epic concept art, dramatic fantasy/sci-fi environments, painterly"

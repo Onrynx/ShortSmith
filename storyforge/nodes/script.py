@@ -65,6 +65,14 @@ def node_script(state: dict) -> dict:
         raw = mock_script(cfg, lane, topic, hero_budget)
         script, source = _finalize(raw, hero_budget, scene_bounds),"mock"
 
+    # Remember LLM-written stories so future runs can't repeat them.
+    if source in ("crew", "single_shot"):
+        try:
+            from ..story_memory import remember
+            remember(script.get("title", ""), script.get("hook", ""))
+        except Exception as exc:  # noqa: BLE001
+            log("warn", f"could not record story memory: {exc}")
+
     heroes = sum(1 for s in script["scenes"] if s.get("hero"))
     progress(state, "script",
              f"script ready via {source}: '{script['title']}' "

@@ -101,12 +101,32 @@ def _ensure_kokoro():
         return None
 
 
-def synth_kokoro(text: str, voice_id: str, out_wav: Path) -> None:
+def voice_speed(cfg: dict) -> float:
+    """Narration pace. Shorts live or die on pace — default is deliberately fast."""
+    try:
+        return max(0.6, min(1.6, float(env("VOICE_SPEED", "") or cfg.get("voice_speed", 1.18))))
+    except Exception:
+        return 1.18
+
+
+def _speed_up(wav: Path, speed: float) -> None:
+    """Post-hoc tempo change (for engines with no native speed control)."""
+    if abs(speed - 1.0) < 0.02:
+        return
+    tmp = wav.with_name(wav.stem + "_sp.wav")
+    ok, _ = run_ffmpeg(["-i", str(wav.resolve()), "-filter:a", f"atempo={speed:.3f}",
+                        "-ar", "24000", "-ac", "1", str(tmp.resolve())], cwd=wav.parent)
+    if ok and tmp.exists():
+        tmp.replace(wav)
+
+
+def synth_kokoro(text: str, voice_id: str, out_wav: Path, speed: float = 1.0) -> None:
     import numpy as np
     kok = _ensure_kokoro()
     if kok is None:
         raise RuntimeError("kokoro unavailable")
-    samples, rate = kok.create(text, voice=voice_id, speed=1.0, lang="en-us")
+    # Kokoro changes pace natively (better quality than post-stretching)
+    samples, rate = kok.create(text, voice=voice_id, speed=speed, lang="en-us")
     s16 = (np.clip(samples, -1, 1) * 32767).astype("<i2")
     with wave.open(str(out_wav), "wb") as wf:
         wf.setnchannels(1)
@@ -151,6 +171,7 @@ def node_voice(state: dict) -> dict:
     audio_paths, durations = [], []
     tones = [174.0, 196.0, 220.0, 233.08, 261.63]
     used_engine = "placeholder"
+    speed = voice_speed(cfg)
 
     for i, sc in enumerate(scenes):
         out = audio_dir / f"scene_{i+1:02d}.wav"
@@ -160,7 +181,11 @@ def node_voice(state: dict) -> dict:
             if name in dead:
                 continue
             try:
-                fn(text, vid, out)
+                if name == "kokoro":
+                    fn(text, vid, out, speed)        # native pace control
+                else:
+                    fn(text, vid, out)
+                    _speed_up(out, speed)            # tempo-shift the rest
                 made, used_engine = True, name
                 break
             except Exception as exc:  # noqa: BLE001
@@ -174,5 +199,5 @@ def node_voice(state: dict) -> dict:
         durations.append(round(wav_duration(out) or estimate_speech_seconds(text), 3))
 
     progress(state, "voice", f"voice done: {len(audio_paths)} clips, "
-                             f"~{round(sum(durations),1)}s ({used_engine})")
+                             f"~{round(sum(durations),1)}s ({used_engine} @ {speed:.2f}x)")
     return {"audio_paths": audio_paths, "durations": durations, "voice_engine": used_engine}

@@ -22,6 +22,7 @@ import re
 from ..config import format_spec
 from ..llm import complete, make_crew_llm
 from ..story_doctrine import DOCTRINE, violations
+from .. import story_memory
 from ..utils import log
 
 # Disable CrewAI telemetry so an offline machine never blocks on it.
@@ -78,7 +79,7 @@ def _targets(cfg: dict, hero_budget: tuple[int, int]) -> dict:
     return {
         "format": spec["format"], "vertical": spec["vertical"],
         "target_seconds": target_seconds, "max_seconds": spec["max_seconds"],
-        "approx_words": words, "min_words": int(words * 0.8),
+        "approx_words": words, "min_words": int(words * 0.72),
         "scene_count": scene_count, "fiction": bool(cfg.get("fiction")),
         "story_mode": cfg.get("story_mode", "real_life_drama"),
         "scene_lo": lo_s, "scene_hi": hi_s,
@@ -223,15 +224,21 @@ def single_shot_script(cfg: dict, lane: str, topic: str,
     t = _targets(cfg, hero_budget)
     topic_line = (f"Topic (honor it): {topic}" if topic
                   else "Choose the single most curiosity-driving topic yourself.")
+    lore = t.get("story_mode") == "lore"
     system = (
+        "You are a three-in-one YouTube team: a Scout (topic), a Scribe (narration), "
+        "and a Critic (ruthless retention editor)."
+        if not lore else
         "You are a three-in-one YouTube team: a Scout (topic), a Scribe (cinematic "
         "narration), and a Critic (ruthless retention editor). You never invent facts; "
         "when uncertain you say so and make that the hook."
     )
+    # A fresh random premise + the do-not-repeat list keep every video original.
+    fresh = "" if lore else f"{story_memory.seed_prompt()}\n{story_memory.avoid_list()}\n\n"
     user = (
         f"Channel niche: {cfg.get('niche')}\nAngle: {cfg.get('angle')}\n"
         f"Visual style: {cfg.get('style')}\nBANNED (never use): {cfg.get('banned')}\n"
-        f"{topic_line}\n\n{_format_note(t)}\n\n"
+        f"{topic_line}\n\n{fresh}{_format_note(t)}\n\n"
         f"Write ~{t['scene_count']} scenes ({t['scene_lo']}-{t['scene_hi']}). "
         f"Mark {t['hero_lo']}-{t['hero_hi']} scenes hero=true. scenes[0].narration must "
         "equal the hook.\n\n" + _schema_spec(t)
@@ -244,10 +251,13 @@ def single_shot_script(cfg: dict, lane: str, topic: str,
     # for hook quality; runs are background jobs so latency is fine.
     data = extract_json(complete(system, user, model_info, json_mode=True,
                                  temperature=0.85, timeout=480))
-    # ENFORCE the doctrine + length: up to 2 rewrites, each naming exact faults.
-    lore = t.get("story_mode") == "lore"
+    # ENFORCE the doctrine + length + originality: 2 rewrites naming exact faults.
     for attempt in range(2):
         faults = [] if lore else violations(data)
+        dup = story_memory.duplicate_of(data)
+        if dup:
+            faults.append(f"repeats an earlier video ('{dup}') — invent a"
+                          " completely different premise, cast and setting")
         words = _wc(data)
         if words < t["min_words"]:
             faults.append(f"only {words} spoken words — need AT LEAST "

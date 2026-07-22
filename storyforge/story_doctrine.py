@@ -43,9 +43,9 @@ favoritism, jealousy, pranks gone wrong, exposed lies, texting the wrong person.
 NARRATION: FIRST PERSON, always. "I walked in..." never "John walked in...".
 It should feel like hearing a confession.
 
-OPENING: the FIRST sentence must contain the conflict.
-  GOOD: "My dad kicked me out after believing my cousin." / "My boss accidentally
-  wired me $120,000." / "My roommate sold my laptop."
+OPENING: the FIRST sentence must contain the conflict — someone did something to
+the narrator, stated flatly, in under 15 words. Shape: "My <person> <did the
+damaging thing>." Invent your OWN; do not copy any example you have ever seen.
   BANNED openers: "My name is...", "When I was growing up...", "It was a sunny
   day...", "Imagine...", "What if I told you...".
 
@@ -77,6 +77,9 @@ justice — without melodrama.
 VIRAL: end on something people argue about (Was it justified? Would you forgive
 them? Would you keep the money?).
 
+ORIGINALITY: every example in these rules is an ILLUSTRATION ONLY — never reuse
+an example sentence, premise or character as your story. Invent a fresh one.
+
 QUALITY TEST before answering — modern setting; first person; conflict in first
 sentence; escalation every few sentences; one major twist; believable; fast; thin
 description; moral ambiguity; satisfying ending; no fantasy; no worldbuilding; no
@@ -105,6 +108,13 @@ _BAD_OPENERS = [
     "what if i told you", "in this video", "let me tell you about a time",
     "have you ever wondered", "picture this",
 ]
+# Openers small local models love to parrot from prompt examples. Copying one
+# means every video starts the same way, so they're rejected outright.
+_CLICHE_OPENERS = [
+    "roommate sold my laptop", "boss accidentally wired me",
+    "dad kicked me out after believing my cousin", "sister stole my college fund",
+    "teacher accused me of cheating", "girlfriend secretly tested my loyalty",
+]
 
 
 def violations(script: dict) -> list[str]:
@@ -125,6 +135,9 @@ def violations(script: dict) -> list[str]:
         out.append("opening is not FIRST PERSON")
     if any(fl.startswith(b) for b in _BAD_OPENERS):
         out.append(f"banned opener: '{first[:40]}...'")
+    if any(c in fl for c in _CLICHE_OPENERS):
+        out.append("you copied a stock example opening — invent an original "
+                   "first line with a different person, object and situation")
     # conflict in the first line: needs a charged verb/noun, not scene-setting
     if len(first.split()) > 28:
         out.append("first sentence too long — hit the conflict immediately")
