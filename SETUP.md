@@ -130,7 +130,7 @@ These are **not** in the download (they're big and personal). Add your own:
 
 ---
 
-### STEP 8 — Turn it on (one command, any OS)
+## 6) Turn it on — one command, any OS
 ```bash
 python3 scripts/install_autostart.py
 ```
@@ -145,24 +145,24 @@ python3 scripts/install_autostart.py --uninstall    # stop it starting at login
 > system); on Windows a hidden `pythonw` startup entry. Idle cost is ~50MB RAM
 > and ~0% CPU — the AI model is only loaded while a video is actually rendering.
 
-### STEP 9 — Use it
+## 7) Use it
 Make sure the **Ollama** app is running (llama icon in the menu bar / system tray),
-then in her Discord channel:
+then in your Discord channel:
 ```
 !here                       ← one time only
 make me a gossip short
 ```
-She picks **adam** or **squeaky**, and ~8–12 min later the finished video posts
+It asks **adam** or **squeaky**, then ~8–12 min later the finished video posts
 itself into the chat. `!approve 1` keeps it, `!reject 1` deletes it.
 
 ---
 
-## 7) Troubleshooting
+## 8) Troubleshooting
 
 | Problem | Fix |
 |---|---|
 | Bot never comes online | `python3 scripts/install_autostart.py --status`, then check `.storyforge_state/bot.log` |
-| Bot online but ignores you | MESSAGE CONTENT INTENT is off — step 3.3, then restart the bot |
+| Bot online but ignores you | MESSAGE CONTENT INTENT is off — step 3.3, then re-run the installer |
 | "Private application cannot have a default authorization link" | Installation → Install Link → **None** |
 | Stories are the same canned one every time | Ollama isn't running — open the Ollama app; check `!brain` |
 | Takes 5–10 min per video | Normal. The 14B model writes on your CPU. Use a smaller `OLLAMA_MODEL` to speed it up |
