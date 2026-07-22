@@ -187,8 +187,10 @@ def _start_video(channel: str, voice: str, is_admin: bool, topic: str = "") -> s
     r = control.run_now(channel, "night", False, voice=voice, topic=topic)
     if not r.get("ok"):
         return f"❌ {r.get('error')}"
-    return (f"▶️ Making a **{channel.replace('_', ' ')}** short with the **{voice}** voice.\n"
-            f"~8–12 min. It'll post here automatically when it's done.")
+    extra = f"\n📌 Your starter: _{topic[:140]}_" if topic else ""
+    return (f"▶️ Making a **{channel.replace('_', ' ')}** short — **{voice}** voice, "
+            f"1.9–2.4 min.{extra}\n"
+            f"~8–12 min to render. It'll post here automatically when it's done.")
 
 
 def fast_route(text: str, channel_id: int, is_admin: bool) -> str | None:
