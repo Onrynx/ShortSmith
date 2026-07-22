@@ -19,12 +19,21 @@ _SETTINGS = [
     "a restaurant shift", "a high school", "a gym", "a funeral", "a house party",
     "a hotel", "a supermarket", "a parking lot", "a rideshare", "a beach vacation",
     "a company retreat", "a courtroom waiting room", "a moving day",
+    "a hospital waiting room", "a car dealership", "a wedding rehearsal dinner",
+    "a construction site", "a school parents evening", "a storage unit auction",
+    "a golf trip", "a family group chat", "a bank branch", "a police station",
+    "a gym locker room", "a food delivery shift", "a poker night",
+    "a hotel lobby at 2am", "a shared driveway", "a will reading",
 ]
 _PEOPLE = [
     "my sister", "my best friend", "my roommate", "my boss", "a coworker",
     "my stepmom", "my neighbour", "my landlord", "my ex", "my cousin",
     "my mother-in-law", "my brother", "my dad", "a teacher", "a customer",
-    "my fiance's family", "a stranger who knew my name", "my childhood friend",
+    "my fiancee's family", "a stranger who knew my name", "my childhood friend",
+    "my wife", "my girlfriend", "my stepdad", "my uncle", "my business partner",
+    "my old college roommate", "my son's teacher", "my brother-in-law",
+    "my grandmother", "my new manager", "a groomsman", "my downstairs tenant",
+    "my sister's fiance", "my estranged twin", "my father's lawyer",
 ]
 _ENGINES = [
     "an inheritance nobody was supposed to know about", "a cheating rumour",
@@ -34,6 +43,11 @@ _ENGINES = [
     "blatant favouritism", "a scam that almost worked", "a leaked group chat",
     "a prank that went too far", "a lie told years ago", "a secret recording",
     "someone pretending to be broke", "a fake emergency",
+    "a forged signature", "an inheritance quietly rewritten", "a paternity secret",
+    "a business partner skimming money", "a fake injury claim",
+    "a deposit that never got paid", "a rigged family vote", "a stolen promotion",
+    "an anonymous complaint to HR", "a doorbell camera recording",
+    "a debt someone hid for years", "a tenant who was never on the lease",
 ]
 _TWISTS = [
     "the 'villain' was actually protecting someone",
@@ -43,6 +57,11 @@ _TWISTS = [
     "the anonymous messages were coming from a parent",
     "the person everyone defended had staged the whole thing",
     "the narrator had quietly set the trap weeks earlier",
+    "the one person everyone blamed had been covering for someone else",
+    "the evidence proved the opposite of what everyone assumed",
+    "the narrator was the only one who did not know the truth",
+    "the 'mistake' had been deliberate from the very first day",
+    "the person who exposed it had the most to lose",
 ]
 
 
@@ -63,28 +82,59 @@ def remember(title: str, hook: str) -> None:
 def seed_prompt() -> str:
     """A fresh random premise every run so stories never converge."""
     return (
-        "STORY SEED for THIS video (your starting point — build something original "
-        f"from it, do not copy the wording): a conflict with {random.choice(_PEOPLE)} "
+        f"STORY SEED #{random.randint(1000, 9999)} for THIS video (your starting "
+        "point — build something original from it, never copy the wording): "
+        f"the narrator is a MAN in conflict with {random.choice(_PEOPLE)} "
         f"at {random.choice(_SETTINGS)}, driven by {random.choice(_ENGINES)}, "
         f"and the twist is that {random.choice(_TWISTS)}."
     )
 
 
+_COMMON = {"about", "after", "with", "that", "this", "they", "them", "then", "when",
+           "what", "were", "into", "from", "your", "just", "know", "told", "said",
+           "over", "back", "took", "made", "went", "came", "would", "could", "there",
+           "their", "story", "shorts", "short", "video"}
+
+
+def _elements(row: dict) -> set[str]:
+    """Distinctive words that define a story (people, objects, situations)."""
+    return (_norm(row.get("title", "")) | _norm(row.get("hook", ""))) - _COMMON
+
+
 def duplicate_of(script: dict) -> str | None:
-    """Return the clashing past title if this story repeats a recent one."""
-    t, h = _norm(script.get("title", "")), _norm(script.get("hook", ""))
+    """Return the clashing past title if this story echoes a recent one.
+
+    Deliberately strict — near-misses are what make a channel feel repetitive."""
+    cur = _elements(script)
+    if not cur:
+        return None
     for row in recent():
-        pt, ph = _norm(row.get("title", "")), _norm(row.get("hook", ""))
-        for a, b in ((t, pt), (h, ph)):
-            if a and b and len(a & b) / max(1, len(a | b)) > 0.5:
-                return row.get("title", "")
+        prev = _elements(row)
+        if not prev:
+            continue
+        overlap = len(cur & prev) / max(1, len(cur | prev))
+        if overlap > 0.3 or len(cur & prev) >= 4:
+            return row.get("title", "")
     return None
 
 
-def avoid_list(limit: int = 18) -> str:
+def avoid_list(limit: int = 25) -> str:
+    """Everything already used — titles, openings, and the raw elements — so the
+    model cannot drift back into a premise it has written before."""
     rows = recent(limit)
     if not rows:
         return ""
     titles = "; ".join(f'"{r.get("title","")}"' for r in rows if r.get("title"))
-    return ("ALREADY USED — do not repeat these premises, characters or titles:\n"
-            + titles) if titles else ""
+    used: set[str] = set()
+    for r in rows:
+        used |= _elements(r)
+    parts = ["ALREADY USED — this channel has ALREADY published these. Your story "
+             "must share NO premise, character role, object or setup with any of them:"]
+    if titles:
+        parts.append("Titles: " + titles)
+    if used:
+        parts.append("Do NOT build the plot around any of these elements again: "
+                     + ", ".join(sorted(used)[:60]))
+    parts.append("Pick a DIFFERENT relationship, a DIFFERENT place and a DIFFERENT "
+                 "kind of betrayal than every one of the above.")
+    return "\n".join(parts)

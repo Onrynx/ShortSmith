@@ -43,6 +43,11 @@ favoritism, jealousy, pranks gone wrong, exposed lies, texting the wrong person.
 NARRATION: FIRST PERSON, always. "I walked in..." never "John walked in...".
 It should feel like hearing a confession.
 
+THE NARRATOR IS ALWAYS A MAN. The voice reading this is male, so the speaker must
+read as male throughout. Never write the narrator as female — never "as a woman",
+"my husband", "us girls", or female self-description. Male-coded relationships are
+fine and encouraged: my wife, my girlfriend, my brother, my brother-in-law, my son.
+
 OPENING: the FIRST sentence must contain the conflict — someone did something to
 the narrator, stated flatly, in under 15 words. Shape: "My <person> <did the
 damaging thing>." Invent your OWN; do not copy any example you have ever seen.
@@ -141,6 +146,12 @@ def violations(script: dict) -> list[str]:
     # conflict in the first line: needs a charged verb/noun, not scene-setting
     if len(first.split()) > 28:
         out.append("first sentence too long — hit the conflict immediately")
+    fem = [p for p in ("my husband", "as a woman", "as a girl", "i'm a woman",
+                       "i am a woman", "i'm a girl", "us girls", "my boyfriend",
+                       "my wife and i are both women") if p in text]
+    if fem:
+        out.append(f"narrator reads as FEMALE ({', '.join(fem[:3])}) — the voice is "
+                   "male, so rewrite the narrator as a man")
     last = str(scenes[-1].get("narration", ""))
     if "?" not in last:
         out.append("the final scene must end on a question that makes viewers "

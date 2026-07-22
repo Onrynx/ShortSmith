@@ -266,12 +266,97 @@ def single_shot_script(cfg: dict, lane: str, topic: str,
     def _wc(d):
         return sum(len(str(s.get("narration", "")).split()) for s in d.get("scenes", []))
 
-    # 14B-class models on CPU need several minutes for a full script — worth it
-    # for hook quality; runs are background jobs so latency is fine.
-    data = extract_json(complete(system, user, model_info, json_mode=True,
-                                 temperature=0.85, timeout=480))
+    def _expand(d: dict) -> dict:
+        """Fatten an existing draft instead of demanding length up front.
+
+        Small local models reliably write ~200 words no matter what you ask for,
+        but they're good at 'say this same beat in more detail'. So we hand the
+        draft back and ask for richer narration, same beats, same order."""
+        scenes = d.get("scenes") or []
+        skeleton = [{"narration": s.get("narration", ""), "hero": bool(s.get("hero"))}
+                    for s in scenes]
+        u = ("Below is a finished story, scene by scene. Keep the SAME scenes, the "
+             "SAME order and the SAME plot — change nothing about what happens.\n"
+             "Your ONLY job: rewrite each scene's narration so it is 25-35 spoken "
+             "words (2-3 short sentences) instead of one line. Add concrete detail "
+             "— what was said, what it looked like, what the narrator felt — but "
+             "invent NO new events. Keep first person. Keep the final question.\n\n"
+             f"Return the same JSON schema with all {len(scenes)} scenes.\n\n"
+             + json.dumps({"title": d.get("title", ""), "hook": d.get("hook", ""),
+                           "scenes": skeleton}, ensure_ascii=False))
+        out = extract_json(complete(system, u, model_info, json_mode=True,
+                                    temperature=0.7, timeout=900))
+        new = out.get("scenes") or []
+        if len(new) < len(scenes) * 0.7:
+            return d                                   # it mangled the structure
+        merged = []
+        for i, s in enumerate(scenes):
+            narr = str(new[i].get("narration", "")) if i < len(new) else ""
+            merged.append({
+                "narration": narr if len(narr.split()) > len(str(s.get("narration", "")).split()) else s.get("narration", ""),
+                "image_prompt": s.get("image_prompt", ""),   # keep original visuals
+                "hero": bool(s.get("hero")),
+            })
+        return {**d, "scenes": merged}
+
+    # ---- CHUNKED CONTINUATION -------------------------------------------- #
+    # A small local model reliably writes ~200 words no matter what you ask for.
+    # So don't ask for 400 at once: write the story in batches of a few scenes,
+    # feeding the story-so-far back each round, until the word target is met.
+    # Each call is a small, easy task, which is why this actually holds up.
+    CHUNK = 5
+
+    def _chunk(prior: list, need: int, closing: bool) -> dict:
+        if not prior:
+            u = (user + f"\n\nWrite ONLY the FIRST {need} scenes now, plus title, "
+                        "hook, description and tags. The story will continue after.")
+        else:
+            so_far = "\n".join(f"{i+1}. {s.get('narration','')}"
+                               for i, s in enumerate(prior))
+            u = (user + f"\n\nSTORY SO FAR (scenes 1-{len(prior)}):\n{so_far}\n\n"
+                 f"Continue this EXACT story with the NEXT {need} scenes only. "
+                 "Never repeat, restate or restart earlier scenes. "
+                 + ("THIS IS THE ENDING: land the twist, resolve it, and make the "
+                    "very last scene end on a question viewers will argue about."
+                    if closing else
+                    "Escalate — every scene adds a new reveal, reversal or consequence.")
+                 + '\nReturn JSON: {"scenes":[{"narration":"25-35 words",'
+                   '"image_prompt":"...","hero":true|false}]}')
+        return extract_json(complete(system, u, model_info, json_mode=True,
+                                     temperature=0.85, timeout=600))
+
+    data: dict = {}
+    scenes: list = []
+    for _ in range(5):                                   # safety bound on rounds
+        wc_now = sum(len(str(s.get("narration", "")).split()) for s in scenes)
+        if scenes and (wc_now >= t["min_words"] or len(scenes) >= t["scene_hi"]):
+            break
+        need = min(CHUNK, max(1, t["scene_hi"] - len(scenes)))
+        closing = (len(scenes) + need >= t["scene_hi"]
+                   or wc_now + need * 28 >= t["approx_words"])
+        try:
+            part = _chunk(scenes, need, closing)
+        except Exception as exc:  # noqa: BLE001
+            log("warn", f"chunk failed ({exc})")
+            break
+        if not data:
+            data = {k: part.get(k) for k in ("title", "hook", "description", "tags")}
+        got = [s for s in (part.get("scenes") or []) if str(s.get("narration", "")).strip()]
+        if not got:
+            break
+        scenes.extend(got)
+        log("info", f"chunk +{len(got)} scenes (total {len(scenes)}, "
+                    f"{sum(len(str(s.get('narration','')).split()) for s in scenes)} words)")
+    if not scenes:                                       # chunking failed entirely
+        data = extract_json(complete(system, user, model_info, json_mode=True,
+                                     temperature=0.85, timeout=900))
+    else:
+        data = {**data, "scenes": scenes}
+        if not data.get("hook"):
+            data["hook"] = scenes[0].get("narration", "")
+        data["scenes"][0]["narration"] = data["hook"]    # scene 1 must equal hook
     # ENFORCE the doctrine + length + originality: 2 rewrites naming exact faults.
-    for attempt in range(2):
+    for attempt in range(1):
         faults = [] if lore else violations(data)
         dup = story_memory.duplicate_of(data)
         if dup:
@@ -298,6 +383,23 @@ def single_shot_script(cfg: dict, lane: str, topic: str,
         except Exception as exc:  # noqa: BLE001
             log("warn", f"rewrite failed ({exc}); keeping current draft")
             break
+
+    # Length is won by EXPANDING the draft, not by asking for more up front.
+    for _ in range(2):
+        have = _wc(data)
+        if have >= t["min_words"]:
+            break
+        log("warn", f"expanding narration: {have} -> target {t['approx_words']} words")
+        try:
+            grown = _expand(data)
+            if _wc(grown) <= have:
+                break                                  # no progress, stop burning time
+            data = grown
+        except Exception as exc:  # noqa: BLE001
+            log("warn", f"expansion failed ({exc}); keeping draft")
+            break
+    log("info", f"script final length: {_wc(data)} words "
+                f"(~{round(_wc(data) / t['wpm'] * 60)}s at {t['wpm']} wpm)")
     return data
 
 

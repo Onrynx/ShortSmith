@@ -204,7 +204,12 @@ def complete(system: str, user: str, model_info: dict,
                 {"role": "user", "content": user},
             ],
             "stream": False,
-            "options": {"temperature": temperature},
+            # Ollama defaults to a 4096 context — far too small once the story
+            # doctrine + the draft being continued are in the prompt, which
+            # silently truncates and produces stubby scripts.
+            "options": {"temperature": temperature,
+                        "num_ctx": int(env("OLLAMA_NUM_CTX", "16384") or 16384),
+                        "num_predict": int(env("OLLAMA_NUM_PREDICT", "2048") or 2048)},
         }
         if json_mode:
             payload["format"] = "json"

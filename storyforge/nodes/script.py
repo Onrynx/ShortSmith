@@ -60,10 +60,14 @@ def node_script(state: dict) -> dict:
             except Exception as exc2:  # noqa: BLE001
                 add_fallback(state, "script", f"single-shot failed ({exc2}); using canned script")
 
-    # 3) canned mock (the floor)
+    # 3) canned mock (the floor — must NEVER fail validation or the lane dies).
+    # Relax scene bounds to whatever the canned script actually has: a valid
+    # 11-scene video beats no video at all.
     if script is None:
         raw = mock_script(cfg, lane, topic, hero_budget)
-        script, source = _finalize(raw, hero_budget, scene_bounds),"mock"
+        n = len(raw.get("scenes") or []) or scene_bounds[0]
+        relaxed = (min(scene_bounds[0], n), max(scene_bounds[1], n))
+        script, source = _finalize(raw, hero_budget, relaxed), "mock"
 
     # Remember LLM-written stories so future runs can't repeat them.
     if source in ("crew", "single_shot"):

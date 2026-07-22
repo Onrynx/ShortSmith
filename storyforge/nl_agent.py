@@ -110,14 +110,9 @@ def _exec(name: str, args: dict) -> str:
                            for i, s in enumerate(m.get("scenes") or []))
             return f"**{m.get('title')}**\n{sc[:1200]}"
         if name == "run":
-            # REAL videos by default. mock=True returns the same canned story every
-            # time — only ever use it when explicitly asked to test the plumbing.
-            v = str(args.get("voice", "") or "").lower() or None
-            r = control.run_now(args.get("channel", ""), args.get("lane", "night"),
-                                bool(args.get("mock", False)), voice=v)
-            vlabel = f" · {v} voice" if v else ""
-            return (f"▶ started (pid {r['pid']}){vlabel}" if r.get("ok")
-                    else f"❌ {r.get('error')}")
+            # The LLM may NEVER start a render on its own — it used to skip the
+            # voice question. Starting videos is deterministic (fast_route) only.
+            return _VOICE_Q
         if name == "daily":
             r = control.run_scheduler_daily(bool(args.get("mock", False)))
             return f"▶ daily cycle started (pid {r['pid']})"
@@ -143,8 +138,8 @@ def _exec(name: str, args: dict) -> str:
 # the model is never in the critical path and simply cannot improvise.
 # --------------------------------------------------------------------------- #
 _VIDEO_RE = re.compile(
-    r"\b(make|create|generate|start|run|produce|build|do)\b[^.?!]{0,40}"
-    r"\b(short|shorts|video|vid|reel|clip)\b", re.I)
+    r"\b(make|create|generate|start|run|produce|build|do|need|want|give|lets|let's)\b"
+    r"[^.?!]{0,60}\b(short|shorts|video|vid|reel|clip|story)\b", re.I)
 _ANOTHER_RE = re.compile(r"\b(another|one more|do it again|next one)\b", re.I)
 _ADAM_RE = re.compile(r"\b(adam|deep|normal|default|male|regular|1|first|one)\b", re.I)
 _SQUEAK_RE = re.compile(r"\b(squeak\w*|chipmunk|high[\s-]?pitch\w*|helium|funny|2|second|two)\b", re.I)
@@ -289,6 +284,13 @@ def handle(text: str, channel_id: int, is_admin: bool = True) -> str:
     out = say
     if isinstance(act, dict) and act.get("name"):
         name = str(act["name"])
+        if name == "run":
+            # Route every render request back through the deterministic path so
+            # the voice question is ALWAYS asked, whatever the model decided.
+            args = act.get("args") or {}
+            ch = args.get("channel") or _pick_channel(text)
+            _awaiting[channel_id] = {"channel": ch, "topic": _extract_topic(text)}
+            return _VOICE_Q
         if name in ADMIN and not is_admin:
             out = f"{say}\n🔒 `{name}` is owner-only on this server."
         elif name in SAFE | ADMIN:
