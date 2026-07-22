@@ -153,6 +153,9 @@ _PENDING_RE = re.compile(r"^\s*(pending|what'?s (waiting|pending)|list( videos)?
 _APPROVE_RE = re.compile(r"\b(approve|keep|accept)\b\s*#?(\d+)?", re.I)
 _REJECT_RE = re.compile(r"\b(reject|delete|bin|discard|trash)\b\s*#?(\d+)?", re.I)
 _SCRIPT_REQ_RE = re.compile(r"\b(write|show|give|read)\b.{0,20}\b(script|story)\b", re.I)
+QUOTED_RE = "[\"“]([^\"”]{8,300})[\"”]"
+TOPIC_RE = (r"(?:^|\s)(?:about|where|on the topic of|starter|story|idea)"
+            r"[:\s]+(.{6,300})$")
 
 # channel_id -> pending video request awaiting a voice choice
 _awaiting: dict[int, dict] = {}
@@ -163,14 +166,25 @@ _VOICE_Q = ("Which voice?\n"
             "_Reply `adam` or `squeaky`._")
 
 
+def _extract_topic(text: str) -> str:
+    """Pull a story starter out of the request, if the user gave one."""
+    m = re.search(QUOTED_RE, text)                 # "...an exact opening line..."
+    if m:
+        return m.group(1).strip()
+    m = re.search(TOPIC_RE, text, re.I | re.S)     # ...about X / starter: X
+    if m:
+        return re.sub(r"\s+", " ", m.group(1)).strip(" .")
+    return ""
+
+
 def _pick_channel(text: str) -> str:
     return "gaming_lore" if re.search(r"\b(gaming|game|lore)\b", text, re.I) else "gossip_stories"
 
 
-def _start_video(channel: str, voice: str, is_admin: bool) -> str:
+def _start_video(channel: str, voice: str, is_admin: bool, topic: str = "") -> str:
     if not is_admin:
         return "🔒 only the owner can start renders on this server."
-    r = control.run_now(channel, "night", False, voice=voice)
+    r = control.run_now(channel, "night", False, voice=voice, topic=topic)
     if not r.get("ok"):
         return f"❌ {r.get('error')}"
     return (f"▶️ Making a **{channel.replace('_', ' ')}** short with the **{voice}** voice.\n"
@@ -186,10 +200,10 @@ def fast_route(text: str, channel_id: int, is_admin: bool) -> str | None:
     if pend:
         if _SQUEAK_RE.search(t):
             _awaiting.pop(channel_id, None)
-            return _start_video(pend["channel"], "squeaky", is_admin)
+            return _start_video(pend["channel"], "squeaky", is_admin, pend.get("topic", ""))
         if _ADAM_RE.search(t):
             _awaiting.pop(channel_id, None)
-            return _start_video(pend["channel"], "adam", is_admin)
+            return _start_video(pend["channel"], "adam", is_admin, pend.get("topic", ""))
         if len(t) < 25:                       # a short non-answer: re-ask, don't ramble
             return _VOICE_Q
         _awaiting.pop(channel_id, None)       # they changed the subject

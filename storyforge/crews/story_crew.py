@@ -68,18 +68,26 @@ def extract_json(text: str) -> dict:
 def _targets(cfg: dict, hero_budget: tuple[int, int]) -> dict:
     spec = format_spec(cfg)
     lo_s, hi_s = spec["scene_bounds"]
-    # Shorts: RANDOM length per run inside 1-2 min so uploads never feel templated
-    if spec["format"] == "shorts" and not spec.get("exact_seconds"):
-        target_seconds = random.randint(68, 112)
+    # Random length per run inside the channel's window, so uploads never feel
+    # templated (e.g. 114-144s = 1.9-2.4 min).
+    if spec["format"] == "shorts" and not spec.get("exact_seconds") and spec.get("min_seconds"):
+        target_seconds = random.randint(spec["min_seconds"],
+                                        max(spec["min_seconds"], spec["target_seconds"]))
     else:
         target_seconds = spec["target_seconds"]
-    words = int(target_seconds / 60 * 150)
-    per_scene = 20 if spec["format"] == "shorts" else 55
+    # CRITICAL: budget words at the pace the narration is ACTUALLY delivered.
+    # Kokoro speaks ~150 wpm at 1.0x, so voice_speed 1.18 => ~177 wpm. Budgeting
+    # at 150 made every video finish ~15% short of target.
+    wpm = 150.0 * float(spec.get("voice_speed", 1.18) or 1.18)
+    words = int(target_seconds / 60 * wpm)
+    per_scene = 28 if spec["format"] == "shorts" else 55
     scene_count = max(lo_s, min(hi_s, round(words / per_scene)))
     return {
         "format": spec["format"], "vertical": spec["vertical"],
         "target_seconds": target_seconds, "max_seconds": spec["max_seconds"],
-        "approx_words": words, "min_words": int(words * 0.72),
+        "wpm": round(wpm),
+        # tight floor: a short script is the #1 cause of stubby videos
+        "approx_words": words, "min_words": int(words * 0.9),
         "scene_count": scene_count, "fiction": bool(cfg.get("fiction")),
         "story_mode": cfg.get("story_mode", "real_life_drama"),
         "scene_lo": lo_s, "scene_hi": hi_s,
@@ -222,8 +230,18 @@ def run_creative_crew(cfg: dict, lane: str, topic: str,
 def single_shot_script(cfg: dict, lane: str, topic: str,
                        hero_budget: tuple[int, int], model_info: dict) -> dict:
     t = _targets(cfg, hero_budget)
-    topic_line = (f"Topic (honor it): {topic}" if topic
-                  else "Choose the single most curiosity-driving topic yourself.")
+    # A user-supplied starter is authoritative. If it reads like an opening line
+    # (a first-person sentence) it BECOMES the hook; otherwise it's the subject.
+    topic = (topic or "").strip()
+    looks_like_line = bool(re.match(r"^(my|i|he|she|they|we|our)\b", topic, re.I)) and len(topic.split()) >= 4
+    if topic and looks_like_line:
+        topic_line = (f'STARTER LINE (use this EXACT sentence as scenes[0].narration and '
+                      f'as "hook", then build the whole story out of it): "{topic}"')
+    elif topic:
+        topic_line = (f"REQUIRED SUBJECT — the story must be about: {topic}. "
+                      "Write an original first-person story on exactly this.")
+    else:
+        topic_line = "Choose the single most curiosity-driving topic yourself."
     lore = t.get("story_mode") == "lore"
     system = (
         "You are a three-in-one YouTube team: a Scout (topic), a Scribe (narration), "
@@ -234,7 +252,8 @@ def single_shot_script(cfg: dict, lane: str, topic: str,
         "when uncertain you say so and make that the hook."
     )
     # A fresh random premise + the do-not-repeat list keep every video original.
-    fresh = "" if lore else f"{story_memory.seed_prompt()}\n{story_memory.avoid_list()}\n\n"
+    # A user-supplied topic REPLACES the random seed (never fight the user).
+    fresh = "" if (lore or topic) else f"{story_memory.seed_prompt()}\n{story_memory.avoid_list()}\n\n"
     user = (
         f"Channel niche: {cfg.get('niche')}\nAngle: {cfg.get('angle')}\n"
         f"Visual style: {cfg.get('style')}\nBANNED (never use): {cfg.get('banned')}\n"

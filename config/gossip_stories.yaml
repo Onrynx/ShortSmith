@@ -14,10 +14,11 @@ fiction: true               # ALL stories are invented for entertainment
 
 format: shorts
 orientation: vertical
-target_seconds: 100
-max_seconds: 120
+min_seconds: 114           # 1.9 min — shortest allowed
+target_seconds: 144        # 2.4 min — longest allowed (random pick in between)
+max_seconds: 155           # hard ceiling before speed-fit kicks in
 exact_seconds: 0
-scene_bounds: [9, 14]
+scene_bounds: [12, 18]
 
 lane_budgets:
   night: [4, 8]

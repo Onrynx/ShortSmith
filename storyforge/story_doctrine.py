@@ -141,4 +141,8 @@ def violations(script: dict) -> list[str]:
     # conflict in the first line: needs a charged verb/noun, not scene-setting
     if len(first.split()) > 28:
         out.append("first sentence too long — hit the conflict immediately")
+    last = str(scenes[-1].get("narration", ""))
+    if "?" not in last:
+        out.append("the final scene must end on a question that makes viewers "
+                   "argue in the comments (e.g. 'was I wrong?')")
     return out

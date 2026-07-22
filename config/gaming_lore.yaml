@@ -15,10 +15,11 @@ banned: "leaks, real people, direct copyrighted character likenesses"
 # --- Output format: YouTube SHORTS (vertical 9:16, under 60s) ---------------
 format: shorts
 orientation: vertical
-target_seconds: 100  # aim ~1m40s of narration
-max_seconds: 120
+min_seconds: 114           # 1.9 min — shortest allowed
+target_seconds: 144        # 2.4 min — longest allowed (random pick in between)
+max_seconds: 155           # hard ceiling before speed-fit kicks in
 exact_seconds: 0    # 0 = natural length (1-2 min); set e.g. 60 to force exact
-scene_bounds: [9, 14]
+scene_bounds: [12, 18]
 target_minutes: 7           # used only if format: long
 
 lane_budgets:
