@@ -8,6 +8,7 @@ We execute the action via control.py and append the result. Zero paid services.
 from __future__ import annotations
 
 import json
+import re
 from collections import deque
 
 from . import control
@@ -135,8 +136,110 @@ def _exec(name: str, args: dict) -> str:
     return f"unknown action {name}"
 
 
+# --------------------------------------------------------------------------- #
+# DETERMINISTIC FAST ROUTER — runs BEFORE the LLM.
+# Small local models love to "helpfully" write a script into the chat instead of
+# starting a render. Every common command is therefore handled in plain Python so
+# the model is never in the critical path and simply cannot improvise.
+# --------------------------------------------------------------------------- #
+_VIDEO_RE = re.compile(
+    r"\b(make|create|generate|start|run|produce|build|do)\b[^.?!]{0,40}"
+    r"\b(short|shorts|video|vid|reel|clip)\b", re.I)
+_ANOTHER_RE = re.compile(r"\b(another|one more|do it again|next one)\b", re.I)
+_ADAM_RE = re.compile(r"\b(adam|deep|normal|default|male|regular|1|first|one)\b", re.I)
+_SQUEAK_RE = re.compile(r"\b(squeak\w*|chipmunk|high[\s-]?pitch\w*|helium|funny|2|second|two)\b", re.I)
+_STATUS_RE = re.compile(r"^\s*(status|what'?s (the )?status|how'?s it going|progress)\s*\??\s*$", re.I)
+_PENDING_RE = re.compile(r"^\s*(pending|what'?s (waiting|pending)|list( videos)?)\s*\??\s*$", re.I)
+_APPROVE_RE = re.compile(r"\b(approve|keep|accept)\b\s*#?(\d+)?", re.I)
+_REJECT_RE = re.compile(r"\b(reject|delete|bin|discard|trash)\b\s*#?(\d+)?", re.I)
+_SCRIPT_REQ_RE = re.compile(r"\b(write|show|give|read)\b.{0,20}\b(script|story)\b", re.I)
+
+# channel_id -> pending video request awaiting a voice choice
+_awaiting: dict[int, dict] = {}
+
+_VOICE_Q = ("Which voice?\n"
+            "**1) Adam** — deep narrator (default)\n"
+            "**2) Squeaky** — high-pitched chipmunk\n"
+            "_Reply `adam` or `squeaky`._")
+
+
+def _pick_channel(text: str) -> str:
+    return "gaming_lore" if re.search(r"\b(gaming|game|lore)\b", text, re.I) else "gossip_stories"
+
+
+def _start_video(channel: str, voice: str, is_admin: bool) -> str:
+    if not is_admin:
+        return "🔒 only the owner can start renders on this server."
+    r = control.run_now(channel, "night", False, voice=voice)
+    if not r.get("ok"):
+        return f"❌ {r.get('error')}"
+    return (f"▶️ Making a **{channel.replace('_', ' ')}** short with the **{voice}** voice.\n"
+            f"~8–12 min. It'll post here automatically when it's done.")
+
+
+def fast_route(text: str, channel_id: int, is_admin: bool) -> str | None:
+    """Handle a message deterministically, or return None to let the LLM chat."""
+    t = text.strip()
+
+    # 1) Answering the voice question we asked
+    pend = _awaiting.get(channel_id)
+    if pend:
+        if _SQUEAK_RE.search(t):
+            _awaiting.pop(channel_id, None)
+            return _start_video(pend["channel"], "squeaky", is_admin)
+        if _ADAM_RE.search(t):
+            _awaiting.pop(channel_id, None)
+            return _start_video(pend["channel"], "adam", is_admin)
+        if len(t) < 25:                       # a short non-answer: re-ask, don't ramble
+            return _VOICE_Q
+        _awaiting.pop(channel_id, None)       # they changed the subject
+
+    # 2) "make me a short" (+ optional voice in the same sentence)
+    if _VIDEO_RE.search(t) or (_ANOTHER_RE.search(t) and re.search(r"\b(short|video|one)\b", t, re.I)):
+        channel = _pick_channel(t)
+        if _SQUEAK_RE.search(t):
+            return _start_video(channel, "squeaky", is_admin)
+        if re.search(r"\b(adam|deep voice|normal voice)\b", t, re.I):
+            return _start_video(channel, "adam", is_admin)
+        _awaiting[channel_id] = {"channel": channel}
+        return _VOICE_Q
+
+    # 3) Never write a script into chat — that's the pipeline's job
+    if _SCRIPT_REQ_RE.search(t):
+        return ("I don't write scripts in chat — the pipeline writes them into the "
+                "video. Say **make me a short** to create one, or `!review 1` to read "
+                "the script of a finished video.")
+
+    # 4) Cheap exact commands
+    if _STATUS_RE.match(t):
+        return _exec("status", {})
+    if _PENDING_RE.match(t):
+        return _exec("pending", {})
+    m = _APPROVE_RE.search(t)
+    if m and not _VIDEO_RE.search(t):
+        return _exec("approve", {"n": int(m.group(2) or 1)})
+    m = _REJECT_RE.search(t)
+    if m and not _VIDEO_RE.search(t):
+        return _exec("reject", {"n": int(m.group(2) or 1)})
+    return None
+
+
+def _sanitize(reply: str) -> str:
+    """Strip model rambling: no scripts, no essays, no invented video content."""
+    lines = [l for l in reply.splitlines() if l.strip()]
+    numbered = sum(1 for l in lines if re.match(r"^\s*(\d+[\.\)]|scene\s*\d)", l, re.I))
+    if numbered >= 3:      # it wrote a script instead of answering
+        return ("I don't write stories in chat — say **make me a short** and I'll "
+                "render one properly.")
+    out = "\n".join(lines)
+    return (out[:700] + "…") if len(out) > 700 else out
+
+
 def handle(text: str, channel_id: int, is_admin: bool = True) -> str:
-    """One user message -> one reply. Single LLM call + optional action exec."""
+    """One user message -> one reply. Deterministic router first, LLM only for chat."""
+    routed = fast_route(text, channel_id, is_admin)
+    if routed is not None:
+        return routed
     mi = select_model(False)
     if mi["backend"] == "mock":
         return ("My brain is offline (no Odysseus/Ollama reachable). "
@@ -173,6 +276,7 @@ def handle(text: str, channel_id: int, is_admin: bool = True) -> str:
             out = f"{say}\n🔒 `{name}` is owner-only on this server."
         elif name in SAFE | ADMIN:
             out = f"{say}\n{_exec(name, act.get('args') or {})}".strip()
+    out = _sanitize(out)          # no scripts / essays / invented content in chat
     h.append(("user", text[:200]))
     h.append(("valentine", out[:200]))
     return out[:1990]

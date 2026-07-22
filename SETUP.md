@@ -130,36 +130,30 @@ These are **not** in the download (they're big and personal). Add your own:
 
 ---
 
-## 6) Run it
+### STEP 8 — Turn it on (one command, any OS)
+```bash
+python3 scripts/install_autostart.py
+```
+That's it. The bot now **starts silently every time the computer starts** — no
+Terminal window, ever. Same command works on Windows, macOS and Linux.
 
 ```bash
-python3 -m storyforge.discord_bot      # macOS/Linux
-# or: ./scripts/launch_all.sh
+python3 scripts/install_autostart.py --status      # is it running?
+python3 scripts/install_autostart.py --uninstall    # stop it starting at login
 ```
-Windows: `python -m storyforge.discord_bot`
+> On macOS this installs a **LaunchAgent** (Apple's official background-app
+> system); on Windows a hidden `pythonw` startup entry. Idle cost is ~50MB RAM
+> and ~0% CPU — the AI model is only loaded while a video is actually rendering.
 
-The bot goes **online** in your server. In your channel type:
-
+### STEP 9 — Use it
+Make sure the **Ollama** app is running (llama icon in the menu bar / system tray),
+then in her Discord channel:
 ```
-!here                    ← makes this channel its home (no @ needed afterwards)
-make me a gossip short   ← just talk to it normally
+!here                       ← one time only
+make me a gossip short
 ```
-
-Wait ~5–10 minutes (the story model is thinking). The finished vertical video
-**posts itself into the channel**. Then:
-
-```
-!approve 1     keep it  (moves to output/gossip_stories/approved/)
-!reject 1      bin it
-```
-
-Upload approved videos to YouTube yourself — StoryForge never touches your
-YouTube account unless you deliberately set that up later.
-
-### Commands
-`!help` `!status` `!brain` `!pending` `!review 1` `!approve 1` `!reject 1`
-`!run gossip_stories night` `!daily` `!lanes <night> <day>` `!digest` `!feed`
-…or just chat in plain English.
+She picks **adam** or **squeaky**, and ~8–12 min later the finished video posts
+itself into the chat. `!approve 1` keeps it, `!reject 1` deletes it.
 
 ---
 
@@ -167,6 +161,7 @@ YouTube account unless you deliberately set that up later.
 
 | Problem | Fix |
 |---|---|
+| Bot never comes online | `python3 scripts/install_autostart.py --status`, then check `.storyforge_state/bot.log` |
 | Bot online but ignores you | MESSAGE CONTENT INTENT is off — step 3.3, then restart the bot |
 | "Private application cannot have a default authorization link" | Installation → Install Link → **None** |
 | Stories are the same canned one every time | Ollama isn't running — open the Ollama app; check `!brain` |
