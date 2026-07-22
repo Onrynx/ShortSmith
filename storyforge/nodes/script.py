@@ -37,6 +37,17 @@ def node_script(state: dict) -> dict:
     topic = state.get("topic", "")
     mock = state.get("mock", False)
     hero_budget = lane_budget(cfg, lane)
+
+    # The chosen narrator changes how fast the words are spoken, so it changes how
+    # MANY words a 2.5-minute video needs. Squeaky runs at 1.30x (~195 wpm) vs
+    # Adam's 1.18x (~177 wpm), so it needs a proportionally LONGER script to fill
+    # the same runtime. Bake the real speed into cfg before budgeting words.
+    from .voice import VOICE_STYLES, resolve_style
+    style_name, style = resolve_style(state, cfg)
+    ratio = style["speed"] / VOICE_STYLES["adam"]["speed"]
+    cfg = {**cfg, "voice_speed": float(cfg.get("voice_speed", 1.18) or 1.18) * ratio}
+    state["voice_style"] = style_name
+
     scene_bounds = format_spec(cfg)["scene_bounds"]
 
     model_info = state.get("model_info") or select_model(mock)

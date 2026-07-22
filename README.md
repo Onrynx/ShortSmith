@@ -21,6 +21,14 @@ and **runs end-to-end on the first try with zero keys, zero network, zero GPU.**
 
 ---
 
+> ## 📖 Setting this up? Use the full guide for your computer:
+> ### → **[Windows: README_WINDOWS.md](README_WINDOWS.md)**
+> ### → **[macOS: README_MAC.md](README_MAC.md)**
+> Both assume zero coding experience and cover every dependency, the Discord bot,
+> settings and troubleshooting. ([SETUP.md](SETUP.md) is the short version.)
+
+---
+
 ## Design principle: degrade, never die
 
 The core pipeline depends only on the **Python stdlib + numpy + Pillow + FFmpeg**.
