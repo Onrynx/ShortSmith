@@ -213,11 +213,12 @@ def fast_route(text: str, channel_id: int, is_admin: bool) -> str | None:
     # 2) "make me a short" (+ optional voice in the same sentence)
     if _VIDEO_RE.search(t) or (_ANOTHER_RE.search(t) and re.search(r"\b(short|video|one)\b", t, re.I)):
         channel = _pick_channel(t)
+        topic = _extract_topic(t)          # optional story starter from the user
         if _SQUEAK_RE.search(t):
-            return _start_video(channel, "squeaky", is_admin)
+            return _start_video(channel, "squeaky", is_admin, topic)
         if re.search(r"\b(adam|deep voice|normal voice)\b", t, re.I):
-            return _start_video(channel, "adam", is_admin)
-        _awaiting[channel_id] = {"channel": channel}
+            return _start_video(channel, "adam", is_admin, topic)
+        _awaiting[channel_id] = {"channel": channel, "topic": topic}
         return _VOICE_Q
 
     # 3) Never write a script into chat — that's the pipeline's job
