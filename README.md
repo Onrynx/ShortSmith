@@ -5,16 +5,17 @@ Two AI-generated vertical Shorts a day, on two engine-isolated lanes, seven agen
 one voice, human-approved before anything goes public — all free, default local,
 and **runs end-to-end on the first try with zero keys, zero network, zero GPU.**
 
-- 📱 **Vertical 9:16 Shorts, ≤60s** — punchy hook in the first 2 seconds, big burned
-  captions, auto speed-fit to stay under the cap.
-- 🎞️ **AI-generated video, not photos** — hero clips from local **Wan2GP** (night) or a
-  **cloud** free tier (day); the rest from stock motion; and when there's no GPU/network,
-  a built-in **generative-motion** provider renders real animated video per scene.
+- 📱 **Vertical 9:16 Shorts, 2.5–2.9 min** — conflict in the very first sentence,
+  word-by-word pop captions, random length each run, capped under YouTube's 3-min limit.
+- 🎮 **The classic Shorts format** — continuous gameplay (Minecraft parkour) behind the
+  narration, random clip + random section every video, auto-cropped to 9:16. Falls back
+  to AI video (Wan2GP/cloud) → stock → free AI images → generative motion. Never fails.
 - 🧠 **Runs on PewDiePie's [Odysseus](https://github.com/pewdiepie-archdaemon/odysseus)** —
   his self-hosted AI workspace — as the preferred brain (own your AI, don't rent it),
   falling back to raw Ollama → Gemini → a canned generator. A run never hard-fails.
-- 🤖 **7 agents**: Scout · Scribe · Critic (CrewAI creative crew) → script · voice ·
-  canvas · cutter · herald (LangGraph checkpointed assembly line).
+- ✍️ **An enforced story doctrine** — Reddit-confession style, first person, male narrator,
+  one twist, comment-bait ending. Fantasy/AI-slop is mechanically rejected and rewritten.
+- 🤖 **7 agents**: Scout · Scribe · Critic → script · voice · canvas · cutter · herald.
 - 💬 **Discord is the interface** — events stream to your server via webhook; a bot
   gives `!status`, `!review`, `!approve`, `!run`, `!lanes` from any device.
 - ✅ **Compliance baked in** for YouTube's 2025–2026 inauthentic-content policy.
@@ -57,8 +58,8 @@ scheduler ──> daily lane picker (Discord !lanes, 30-min cutoff → reuse yes
   without re-running the expensive script/clip stages (a stdlib checkpointed
   runner takes over if LangGraph isn't installed).
 
-The two channels are **History Mysteries** and **Gaming Lore**. Either can be
-night or day on any given day — you assign lanes interactively each morning.
+The two channels are **Gossip Stories** (modern real-life drama — the main one) and
+**Gaming Lore**. Either can be night or day; you assign lanes in Discord.
 
 ---
 
@@ -69,10 +70,10 @@ night or day on any given day — you assign lanes interactively each morning.
 cd "Youtube Ecosystem"
 python -m pip install numpy pillow          # usually already present
 # FFmpeg must be on PATH (winget install Gyan.FFmpeg  /  brew install ffmpeg  /  apt install ffmpeg)
-python run.py --channel history_mysteries --lane night --mock
+python run.py --channel gossip_stories --lane night --mock
 ```
 → a real vertical **1080×1920 .mp4** + thumbnail + approval report land in
-`output/history_mysteries/pending/`. Try `--channel gaming_lore --lane day --mock` too.
+`output/gossip_stories/pending/`. Try `--channel gaming_lore --lane day --mock` too.
 
 ### 2) Add a local brain (Ollama)
 ```bash
@@ -93,7 +94,7 @@ it automatically. Verify: `python -c "from storyforge.llm import select_model; p
 ```bash
 bash scripts/setup_wan2gp.sh       # clone + install; prints the low-VRAM 480p launch line
 # launch it, then in .env:  WAN2GP_URL=http://localhost:7860
-python run.py --channel history_mysteries --lane night
+python run.py --channel gossip_stories --lane night
 ```
 
 ### 5) Add stock + cloud keys (free)
@@ -127,7 +128,7 @@ Commands: `!status` `!brain` `!pending` `!review n` `!approve n` `!reject n`
 ```
 pip install -r requirements-cloud.txt
 # .env:  PUBLISH=true   YOUTUBE_CLIENT_SECRETS=client.json   YOUTUBE_TOKEN_JSON=token.json
-python run.py --channel history_mysteries --lane night --publish
+python run.py --channel gossip_stories --lane night --publish
 ```
 Uploads **private** with the self-declared synthetic-content disclosure set. Never public.
 
@@ -140,7 +141,7 @@ python run.py --channel <key> --lane {night|day} [--mock] [--topic "..."] [--pub
 python run.py --list
 
 python -m storyforge.scheduler picker                 # push "assign lanes"
-python -m storyforge.scheduler set --night history_mysteries --day gaming_lore
+python -m storyforge.scheduler set --night gossip_stories --day gaming_lore
 python -m storyforge.scheduler daily   [--mock]       # ensure assignment, run both lanes
 python -m storyforge.scheduler dispatch --lane night  # run today's night channel
 python -m storyforge.scheduler digest                 # push the nightly digest
