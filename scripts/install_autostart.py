@@ -27,6 +27,14 @@ LOG = STATE / "bot.log"
 LABEL = "com.storyforge.bot"
 MODULE = "storyforge.discord_bot"
 
+# This is a break-glass tool people run when things are broken, so it must never
+# itself crash on a Windows cp1252 console when printing status emoji.
+for _s in (sys.stdout, sys.stderr):
+    try:
+        _s.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
+    except Exception:
+        pass
+
 
 def _py() -> str:
     """Interpreter that shows NO console window (pythonw on Windows)."""
@@ -196,6 +204,99 @@ IMPL = {
 }
 
 
+def restart() -> None:
+    """Stop then start the bot (picks up a new token / code / clips)."""
+    import time
+    if OS == "Windows":
+        win_stop()
+        time.sleep(1)
+        win_start()
+    elif OS == "Darwin":
+        mac_install()                       # unload + load = restart
+    else:
+        _run(["systemctl", "--user", "restart", "storyforge-bot"])
+    time.sleep(3)
+
+
+def _check(label: str, ok: bool, hint: str = "") -> bool:
+    print(f"  [{'OK' if ok else 'XX'}] {label}" + ("" if ok or not hint else f"\n         -> {hint}"))
+    return ok
+
+
+def doctor() -> int:
+    """Diagnose exactly why the bot is offline. Checks every requirement."""
+    import shutil
+    import urllib.request
+    print(f"\nStoryForge doctor  ({OS})\n" + "-" * 48)
+    fatal_ok = True
+
+    _check(f"Python {platform.python_version()}  [{sys.executable}]",
+           sys.version_info[:2] >= (3, 9), "need Python 3.9 or newer")
+
+    try:
+        import discord  # type: ignore
+        dver, dok = getattr(discord, "__version__", "?"), True
+    except Exception:
+        dver, dok = "", False
+    fatal_ok &= _check(f"discord.py installed ({dver})", dok,
+                       "pip install discord.py   (use the SAME python shown above)")
+
+    fatal_ok &= _check("ffmpeg on PATH", shutil.which("ffmpeg") is not None,
+                       "Windows: winget install Gyan.FFmpeg  ·  Mac: brew install ffmpeg")
+
+    token = ""
+    envf = ROOT / ".env"
+    if envf.exists():
+        for line in envf.read_text(encoding="utf-8", errors="ignore").splitlines():
+            if line.strip().startswith("DISCORD_BOT_TOKEN="):
+                token = line.split("=", 1)[1].strip().strip('"').strip("'")
+    fatal_ok &= _check(".env has a DISCORD_BOT_TOKEN", len(token) > 20,
+                       "no token -> the bot exits instantly. Discord Dev Portal -> Bot "
+                       "-> Reset Token -> paste into .env after DISCORD_BOT_TOKEN=")
+
+    try:
+        urllib.request.urlopen("http://localhost:11434/api/tags", timeout=3)
+        oll = True
+    except Exception:
+        oll = False
+    _check("Ollama running (localhost:11434)", oll,
+           "open the Ollama app (llama icon). Bot still comes ONLINE without it, "
+           "but stories fall back to the canned one")
+
+    bg = ROOT / "assets" / "backgrounds"
+    clips = len([p for p in bg.glob("*")
+                 if p.suffix.lower() in (".mp4", ".mkv", ".webm", ".mov", ".m4v")]) if bg.exists() else 0
+    _check(f"gameplay clips present ({clips})", clips > 0,
+           "drop parkour .mp4s into assets/backgrounds/ (else videos are plain colour)")
+
+    _, _, running = IMPL[OS]
+    is_up = running()
+    _check("bot process running", is_up, "run:  python scripts/install_autostart.py --restart")
+
+    if LOG.exists():
+        tail = LOG.read_text(encoding="utf-8", errors="ignore").splitlines()[-25:]
+        errs = [l for l in tail if any(k in l for k in
+                ("Error", "Traceback", "LoginFailure", "Improper token", "Privileged",
+                 "Intents", "Exception", "ModuleNotFound"))]
+        if errs:
+            print("\n  Last errors in bot.log (the real reason it won't start):")
+            for l in errs[-6:]:
+                print("     " + l[:170])
+
+    print("-" * 48)
+    if fatal_ok and is_up:
+        print("Everything needed is OK. If Discord still shows it offline, wait 30s or\n"
+              "check your internet — the bot needs a connection to Discord.")
+    elif fatal_ok:
+        print("Requirements OK but the bot isn't running. Start it:\n"
+              "   python scripts/install_autostart.py --restart")
+    else:
+        print("Fix the [XX] item(s) above, then:\n"
+              "   python scripts/install_autostart.py --restart")
+    print()
+    return 0
+
+
 def main() -> int:
     if OS not in IMPL:
         print(f"[!] unsupported OS: {OS}")
@@ -205,7 +306,21 @@ def main() -> int:
     arg = (sys.argv[1] if len(sys.argv) > 1 else "").lstrip("-").lower()
 
     if arg == "status":
-        print(f"StoryForge bot on {OS}: {'RUNNING ✅' if running() else 'not running'}")
+        print(f"StoryForge bot on {OS}: {'RUNNING' if running() else 'NOT running'}")
+        return 0
+    if arg == "doctor":
+        return doctor()
+    if arg in ("restart", "start"):
+        print("Restarting the StoryForge bot ...")
+        restart()
+        print("bot running:", "yes" if running() else "NO — run --doctor to see why")
+        return 0
+    if arg == "stop":
+        if OS == "Windows":
+            win_stop()
+        else:
+            uninstall()
+        print("bot stopped.")
         return 0
     if arg == "uninstall":
         if OS == "Windows":
@@ -228,8 +343,10 @@ def main() -> int:
  Done. The bot now starts silently at login — no window, ever.
  Talk to it in Discord: `!here` once, then just chat.
 
-   check it:    python scripts/install_autostart.py --status
-   remove it:   python scripts/install_autostart.py --uninstall
+   is it on?   python scripts/install_autostart.py --status
+   diagnose:   python scripts/install_autostart.py --doctor
+   restart:    python scripts/install_autostart.py --restart
+   remove:     python scripts/install_autostart.py --uninstall
 
  Note: Ollama must also be running for the AI (it starts itself on
  Mac/Windows once installed). Idle cost of the bot is ~50MB RAM.

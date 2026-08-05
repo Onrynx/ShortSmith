@@ -157,6 +157,57 @@ itself into the chat. `!approve 1` keeps it, `!reject 1` deletes it.
 
 ---
 
+## 🔴 Bot won't turn on / shows offline in Discord — full fix
+
+**Step 1 — always run the doctor first.** It checks every requirement and prints
+the real reason from the log:
+```
+python3 scripts/install_autostart.py --doctor     # Mac/Linux
+python  scripts\install_autostart.py --doctor     # Windows
+```
+**Step 2 — restart it:**
+```
+python3 scripts/install_autostart.py --restart
+```
+
+Want to watch the error happen live? Run the bot in the foreground — it prints
+the crash reason straight to the terminal:
+```
+python3 -m storyforge.discord_bot                 # Mac/Linux  (python on Windows)
+```
+Ctrl+C to stop, then go back to background with `--restart`.
+
+### The exact causes, most common first
+
+1. **The computer was off, asleep, or logged out.** The bot runs only while the
+   machine is on and you are logged in — it is NOT a cloud service. Discord shows
+   it offline whenever the laptop is off. Wake / log in → it reconnects in ~10s.
+2. **No internet / flaky Wi-Fi.** If the log says `Cannot connect to host …
+   discord.gg` or `getaddrinfo failed`, it's your connection. It auto-reconnects.
+3. **Bad or reset token** (`LoginFailure` / `Improper token` in the log). If you
+   ever clicked *Reset Token*, the old one is dead. Paste the new one into `.env`
+   after `DISCORD_BOT_TOKEN=` → `--restart`.
+4. **discord.py not installed** (`ModuleNotFoundError: 'discord'`). Install it with
+   the SAME Python the doctor prints: `pip install discord.py` (add
+   `--break-system-packages` on Mac if needed).
+5. **Autostart never installed, or you moved the folder.** Re-run
+   `python3 scripts/install_autostart.py` from the folder's current location.
+6. **Just started — give it 30s** to connect, then check `--status`.
+7. **(Windows) it crashed and didn't restart.** Windows starts it at login but
+   won't auto-restart on crash → run `--restart` (Mac auto-restarts itself).
+
+### It's ONLINE but ignores every message
+Different problem: **MESSAGE CONTENT INTENT is OFF.** Developer Portal → your app →
+**Bot** → turn **MESSAGE CONTENT INTENT** on → Save → `--restart`.
+
+### Read the log yourself (the last line is the reason 99% of the time)
+```
+Mac/Linux:  tail -40 .storyforge_state/bot.log
+Windows:    Get-Content .storyforge_stateot.log -Tail 40
+```
+
+---
+
 ## 8) Troubleshooting
 
 | Problem | Fix |

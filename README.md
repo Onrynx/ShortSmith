@@ -1,157 +1,151 @@
 # 🎬 StoryForge
 
-A personal, fully-autonomous, multi-agent **YouTube Shorts** studio for one user.
-Two AI-generated vertical Shorts a day, on two engine-isolated lanes, seven agents,
-one voice, human-approved before anything goes public — all free, default local,
-and **runs end-to-end on the first try with zero keys, zero network, zero GPU.**
+A **free, fully-local** YouTube Shorts factory you run on your own laptop and
+control by chatting with your own Discord bot. Ask for a video; a few minutes
+later a finished vertical Short — original story, AI narration, gameplay
+background, synced captions, music, thumbnail — posts itself back to you for
+approval. Nothing is uploaded anywhere until *you* do it.
 
-- 📱 **Vertical 9:16 Shorts, 2.5–2.9 min** — conflict in the very first sentence,
-  word-by-word pop captions, random length each run, capped under YouTube's 3-min limit.
-- 🎮 **The classic Shorts format** — continuous gameplay (Minecraft parkour) behind the
-  narration, random clip + random section every video, auto-cropped to 9:16. Falls back
-  to AI video (Wan2GP/cloud) → stock → free AI images → generative motion. Never fails.
-- 🧠 **Runs on PewDiePie's [Odysseus](https://github.com/pewdiepie-archdaemon/odysseus)** —
-  his self-hosted AI workspace — as the preferred brain (own your AI, don't rent it),
-  falling back to raw Ollama → Gemini → a canned generator. A run never hard-fails.
-- ✍️ **An enforced story doctrine** — Reddit-confession style, first person, male narrator,
-  one twist, comment-bait ending. Fantasy/AI-slop is mechanically rejected and rewritten.
-- 🤖 **7 agents**: Scout · Scribe · Critic → script · voice · canvas · cutter · herald.
-- 💬 **Discord is the interface** — events stream to your server via webhook; a bot
-  gives `!status`, `!review`, `!approve`, `!run`, `!lanes` from any device.
-- ✅ **Compliance baked in** for YouTube's 2025–2026 inauthentic-content policy.
-
----
-
-> ## 📖 Setting this up? Use the full guide for your computer:
+> ## 📖 Setting it up? Follow the guide for your computer — every step, zero coding assumed:
 > ### → **[Windows: README_WINDOWS.md](README_WINDOWS.md)**
 > ### → **[macOS: README_MAC.md](README_MAC.md)**
-> Both assume zero coding experience and cover every dependency, the Discord bot,
-> settings and troubleshooting. ([SETUP.md](SETUP.md) is the short version.)
+> Short version: **[SETUP.md](SETUP.md)**.
 
 ---
 
-## Design principle: degrade, never die
+## What one video actually contains
 
-The core pipeline depends only on the **Python stdlib + numpy + Pillow + FFmpeg**.
-Everything heavy — Odysseus/Ollama, CrewAI, LangGraph, Kokoro TTS, faster-whisper,
-FastAPI, pywebpush, Wan2GP, cloud APIs — is **optional and guarded**: real when
-present, graceful fallback when absent. Every stage has a fallback, so one flaky
-layer never kills a lane.
-
----
-
-## Architecture
-
-```
-scheduler ──> daily lane picker (Discord !lanes, 30-min cutoff → reuse yesterday)
-    │
-    ├── LANE A (night / local)  channel → Wan2GP hero clips @480p + stock/motion
-    └── LANE B (day / cloud)    channel → Veo/Seedance hero clips + stock/motion
-                                    │
-   CrewAI creative crew  ─────► [ script ] ─► voice ─► canvas ─► cutter ─► herald
-   (Scout→Scribe→Critic,          (one LangGraph node)   (provider router)   (pending/)
-    ONE LangGraph node)         └──────── LangGraph StateGraph (SqliteSaver) ───────┘
-```
-
-- **CrewAI** runs the collaborative creative crew (shared context).
-- **LangGraph** runs the checkpointed assembly line — a crash mid-render resumes
-  without re-running the expensive script/clip stages (a stdlib checkpointed
-  runner takes over if LangGraph isn't installed).
-
-The two channels are **Gossip Stories** (modern real-life drama — the main one) and
-**Gaming Lore**. Either can be night or day; you assign lanes in Discord.
+- 📱 **Vertical 9:16, ~2.5–2.9 min** (a random length each run; capped under
+  YouTube's 3-minute Shorts limit).
+- ✍️ **An original story**, written by a local AI, in the viral Reddit-confession
+  style — first person, male narrator, conflict in the first sentence, a twist,
+  and a comment-bait ending. An enforced "story doctrine" rejects fantasy / AI
+  slop and rewrites it; a memory of past videos prevents repeats.
+- 🎙️ **AI narration** — the deep "Adam" voice or a high-pitched "squeaky" one
+  (you pick in chat). Fast pacing (~177 wpm), the viral range.
+- 🎮 **Gameplay background** — your own Minecraft-parkour clips, a *random clip
+  and random section every time*, auto-cropped to 9:16.
+- 🔤 **Word-by-word pop captions**, synced to the voice.
+- 🎵 **Mood-matched background music**, picked to fit the story.
+- 🖼️ **A thumbnail**, plus a report with the full script and a compliance checklist.
 
 ---
 
-## Getting started
+## How it works
 
-### 1) Run it in MOCK mode (4 commands — no keys, no network, no GPU)
-```bash
-cd "Youtube Ecosystem"
-python -m pip install numpy pillow          # usually already present
-# FFmpeg must be on PATH (winget install Gyan.FFmpeg  /  brew install ffmpeg  /  apt install ffmpeg)
-python run.py --channel gossip_stories --lane night --mock
 ```
-→ a real vertical **1080×1920 .mp4** + thumbnail + approval report land in
-`output/gossip_stories/pending/`. Try `--channel gaming_lore --lane day --mock` too.
-
-### 2) Add a local brain (Ollama)
-```bash
-# install Ollama (https://ollama.com), then:
-ollama pull qwen2.5:14b        # or llama3.2:3b if you have < 16GB free RAM
-```
-StoryForge auto-detects Ollama and routes the crew through it. Drop `--mock` to use it.
-
-### 3) Add PewDiePie's Odysseus (preferred brain)
-```bash
-bash scripts/setup_odysseus.sh     # clones + `docker compose up`, runs at :7000
-# then in .env:  ODYSSEUS_URL=http://localhost:7000   ODYSSEUS_MODEL=qwen2.5:14b
-```
-Odysseus fronts your Ollama with an OpenAI-compatible `/v1` API; StoryForge prefers
-it automatically. Verify: `python -c "from storyforge.llm import select_model; print(select_model())"`.
-
-### 4) Add the NIGHT lane's local video engine (Wan2GP)
-```bash
-bash scripts/setup_wan2gp.sh       # clone + install; prints the low-VRAM 480p launch line
-# launch it, then in .env:  WAN2GP_URL=http://localhost:7860
-python run.py --channel gossip_stories --lane night
+You in Discord:  "make me a short"
+        │                       Valentine (your bot) asks: Adam or squeaky?
+        ▼
+   Your laptop runs the 5-stage pipeline:
+   script ─► voice ─► canvas ─► cutter ─► herald
+     │        │         │         │         │
+  local AI  Kokoro   parkour    FFmpeg:   thumbnail +
+  (Ollama)  TTS      background  captions  saved to
+  writes    narrates + crop 9:16 + music   output/…/pending/
+        │
+        ▼
+   The finished video posts itself back into your Discord channel
+        │
+        ▼
+   You:  !approve 1   (→ output/…/approved/)   or   !reject 1
 ```
 
-### 5) Add stock + cloud keys (free)
-```
-# .env
-PEXELS_API_KEY=...      PIXABAY_API_KEY=...     # unlimited stock motion backfill
-GEMINI_API_KEY=...                              # DAY lane hero clips via Veo (free tier)
-CLOUD_DAILY_CAP=5                               # cap → stock backfill + 🟡 push when hit
-```
-
-### 6) Discord — the control surface
-```bash
-pip install discord.py
-# .env:
-#   DISCORD_WEBHOOK_URL=...   # channel webhook: 🔴🟡🟢 events, zero deps
-#   DISCORD_BOT_TOKEN=...     # bot from discord.com/developers (Message Content intent ON)
-#   DISCORD_CHANNEL_ID=...    # optional: restrict commands to one channel
-python -m storyforge.discord_bot
-```
-Commands: `!status` `!brain` `!pending` `!review n` `!approve n` `!reject n`
-`!run <ch> <lane> [mock]` `!daily [mock]` `!lanes <night> <day>` `!digest` `!feed`.
-
-### 7) The daily flow
-- Cron runs `python -m storyforge.scheduler picker` → Discord asks you to assign
-  today's lanes. Reply `!lanes history_mysteries gaming_lore` (or swap).
-- No answer within `LANE_PICK_CUTOFF_MIN` (30m) → yesterday's mapping is reused.
-- Each finished Short lands in pending → `!pending`, `!review 1`, then `!approve 1`
-  (moves to `approved/`) or `!reject 1` (deletes). Approval stays required.
-
-### 8) Enable auto-upload (optional, always PRIVATE)
-```
-pip install -r requirements-cloud.txt
-# .env:  PUBLISH=true   YOUTUBE_CLIENT_SECRETS=client.json   YOUTUBE_TOKEN_JSON=token.json
-python run.py --channel gossip_stories --lane night --publish
-```
-Uploads **private** with the self-declared synthetic-content disclosure set. Never public.
+**Discord is only the remote control.** All the writing, rendering and approving
+happens on your machine — Discord needs almost no permissions, and if the token
+ever leaked the worst anyone could do is post messages.
 
 ---
 
-## CLI & scheduler
+## What it's built from (and what's optional)
 
-```bash
-python run.py --channel <key> --lane {night|day} [--mock] [--topic "..."] [--publish]
-python run.py --list
+| Job | What actually runs by default | Free? |
+|---|---|---|
+| **Story writing** | one local model, **qwen2.5:14b via Ollama**, using a chunked-continuation loop + the enforced story doctrine + anti-repeat memory | ✅ local |
+| **Orchestration** | a lightweight built-in pipeline runner (`run_lite`) | ✅ |
+| **Voice** | **Kokoro** (`am_adam`), local, commercial-safe | ✅ local |
+| **Caption sync** | **faster-whisper** (`tiny`) | ✅ local |
+| **Visuals** | your gameplay clips + FFmpeg | ✅ local |
+| Chat brain (the bot's replies) | Ollama `qwen3:8b` | ✅ local |
 
-python -m storyforge.scheduler picker                 # push "assign lanes"
-python -m storyforge.scheduler set --night gossip_stories --day gaming_lore
-python -m storyforge.scheduler daily   [--mock]       # ensure assignment, run both lanes
-python -m storyforge.scheduler dispatch --lane night  # run today's night channel
-python -m storyforge.scheduler digest                 # push the nightly digest
+**Optional upgrades** (not installed, not required):
+
+| Add | Get | How |
+|---|---|---|
+| `GEMINI_API_KEY` | far stronger + faster story writing | free Google key in `.env` |
+| `ELEVENLABS_API_KEY` | the famous studio "Adam" voice | free-tier key in `.env` |
+| `PEXELS_API_KEY` / `PIXABAY_API_KEY` | real stock footage as a backup visual | free keys |
+| `pip install crewai langgraph` | a multi-agent (Scout/Scribe/Critic) writing mode + LangGraph orchestration | heavier; not worth it on a small GPU |
+| Odysseus / Wan2GP | self-hosted model gateway / local AI video clips | see `scripts/` |
+
+> **Design principle — degrade, never die.** The core depends only on Python +
+> numpy + Pillow + FFmpeg + Ollama. Every heavier piece is optional and guarded:
+> if it's missing, StoryForge falls back instead of failing. That's why a missing
+> CrewAI or LangGraph simply means the single-model path is used.
+
+---
+
+## Everyday use
+
+Once installed and the bot is online, in your Discord channel:
+
+```
+!here                                  ← one time: talk without @mentioning
+make me a short                        ← it asks Adam or squeaky, then renders
+make a short about my uncle's will      ← give it your own subject
+make a video "My wife hid a second phone for a year"   ← a quote becomes the opening line
 ```
 
-## Channels & format
-`config/*.yaml` — niche, angle, Kokoro voice, banned list, per-lane hero budgets,
-and format (`shorts` vertical 9:16 by default; set `format: long` for 16:9 long-form).
+The finished video posts itself back in ~8–15 minutes. Then:
+
+| Command | Does |
+|---|---|
+| `!approve 1` | keep it → `output/<channel>/approved/` |
+| `!reject 1` | delete it |
+| `!pending` | list videos waiting for review |
+| `!review 1` | re-watch #1 + read its full script |
+| `!status` | what the pipeline is doing right now |
+| `!brain` | which AI model is being used |
+| `!feed` | recent activity + any errors |
+| `!help` | everything |
+
+Plain English works too. There is **no scheduling and no "night/day"** to manage —
+you simply ask for a video whenever you want one.
+
+---
+
+## The channels
+
+`config/*.yaml` defines each channel. Two ship by default:
+
+- **`gossip_stories`** — modern real-life drama (the main one). Enforced
+  Reddit-confession doctrine.
+- **`gaming_lore`** — cinematic game-lore storytelling (`story_mode: lore`,
+  exempt from the drama doctrine).
+
+Edit a channel's YAML to change voice, length window, number of scenes, and the
+banned-subjects list. Every setting is documented in the per-OS guides.
+
+---
+
+## Bot showing offline? One command tells you why
+
+```bash
+python scripts/install_autostart.py --doctor
+```
+It checks Python, discord.py, ffmpeg, your token, Ollama, your clips, whether the
+bot is running, and prints the real error from the log. Then:
+```bash
+python scripts/install_autostart.py --restart
+```
+Full offline troubleshooting is in the per-OS guides.
+
+---
 
 ## Compliance
-See [COMPLIANCE.md](COMPLIANCE.md). AI disclosure in every description, no invented
-facts, no copyrighted IP in prompts, synthetic-content flag on upload, and a
-mandatory human approval gate.
+
+Human approval on every video is **required and permanent** — YouTube's 2025–2026
+policy demonetises mass-produced content with no meaningful human involvement, and
+that review is the safeguard. Descriptions carry the AI-content disclosure, stories
+are fiction (never presented as real), and prompts exclude real people and brands.
+See [COMPLIANCE.md](COMPLIANCE.md).
