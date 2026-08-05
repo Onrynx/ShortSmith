@@ -204,6 +204,17 @@ IMPL = {
 }
 
 
+def stop_only() -> None:
+    """Stop the running bot but LEAVE autostart enabled — it comes back at the
+    next login/reboot (this is the 'temporarily off' path)."""
+    if OS == "Windows":
+        win_stop()
+    elif OS == "Darwin":
+        _run(["launchctl", "unload", str(_mac_plist())])   # plist kept -> reloads at login
+    else:
+        _run(["systemctl", "--user", "stop", "storyforge-bot"])
+
+
 def restart() -> None:
     """Stop then start the bot (picks up a new token / code / clips)."""
     import time
@@ -316,11 +327,9 @@ def main() -> int:
         print("bot running:", "yes" if running() else "NO — run --doctor to see why")
         return 0
     if arg == "stop":
-        if OS == "Windows":
-            win_stop()
-        else:
-            uninstall()
-        print("bot stopped.")
+        stop_only()
+        print("Bot stopped (temporarily). It will start again at your next login,\n"
+              "or bring it back now with:  --restart")
         return 0
     if arg == "uninstall":
         if OS == "Windows":

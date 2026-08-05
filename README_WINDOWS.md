@@ -415,6 +415,29 @@ Windows:    Get-Content .storyforge_stateot.log -Tail 40
 
 ---
 
+## ⏻ Turning it off & back on
+
+**Temporarily switch it off (pause for now):**
+```
+python scripts/install_autostart.py --stop
+```
+Stops the bot right now. It comes back on its own the next time you turn the
+computer on — or bring it back immediately with `python scripts/install_autostart.py --restart`.
+
+**Switch it off permanently (never runs at startup again):**
+```
+python scripts/install_autostart.py --uninstall
+```
+Removes it from startup so it will never launch by itself again. Your videos,
+settings, `.env` and downloaded models are all left untouched. (To also free up
+disk space later: `ollama rm qwen2.5:14b` and delete the "Youtube Ecosystem" folder.)
+
+> **▶️ To start it up again after uninstalling:** just re-run the "Turn it on" step —
+> `python scripts/install_autostart.py`. Everything else is already installed, so you
+> do **not** repeat any of the earlier setup steps.
+
+---
+
 ## 14. Troubleshooting
 
 | Problem | Cause & fix |
