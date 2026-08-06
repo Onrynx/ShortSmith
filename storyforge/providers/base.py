@@ -90,11 +90,3 @@ def gradient_card(scene: dict, workdir: str, index: int = 0,
     out.parent.mkdir(parents=True, exist_ok=True)
     Image.fromarray(arr, "RGB").save(out)
     return str(out)
-
-
-class GradientProvider(VisualProvider):
-    """Last-resort / mock provider. Always available, never touches the network."""
-    name = "gradient"
-
-    def generate(self, scene: dict, workdir: str, seconds: float) -> str:
-        return gradient_card(scene, workdir, index=int(scene.get("_index", 0)))

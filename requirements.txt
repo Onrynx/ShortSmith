@@ -2,7 +2,7 @@
 #
 # NONE of these are needed for MOCK mode: the mock pipeline runs on the Python
 # stdlib + numpy + Pillow + FFmpeg alone and still emits a real vertical .mp4.
-# Install these to unlock the real crew, checkpointing, TTS voice, and word captions.
+# Install these to unlock the real AI voice (Kokoro) and synced word captions.
 
 # already-common (listed for completeness / fresh envs)
 numpy>=1.26
@@ -10,10 +10,9 @@ Pillow>=10.0
 PyYAML>=6.0
 psutil>=5.9
 
-# creative crew + orchestration
-crewai>=0.60
-langgraph>=0.2
-langgraph-checkpoint-sqlite>=1.0
+# (Optional multi-agent writer + LangGraph orchestration are NOT installed by
+#  default — the single-model writer + built-in runner are used. To enable them:
+#    pip install crewai langgraph langgraph-checkpoint-sqlite )
 
 # voice (Kokoro TTS, open weights, commercial-safe)
 kokoro-onnx>=0.3.0
