@@ -151,6 +151,8 @@ What each is for:
 Everything has a fallback: if an optional package is missing, StoryForge
 degrades instead of failing.
 
+> 🔉 **About the voice — nothing to connect.** The narrator is **Kokoro**, and it needs **no key and no signup**. The `kokoro-onnx` package you just installed downloads its ~340 MB voice model **automatically the first time you make a video** (so that very first render is a few minutes slower — this is normal, one time only). Kokoro is the default free voice; ElevenLabs (later, optional) is only if you want to upgrade it.
+
 ---
 
 ## 7. Create YOUR Discord bot
@@ -204,6 +206,8 @@ Save (Ctrl+S) and close. Everything else is optional — see
 [section 13](#13-every-setting-explained).
 
 > `.env` holds your passwords. It is gitignored and never uploaded anywhere.
+
+> 🔗 **This token IS the connection between the code and your bot.** When the bot program starts on your computer, it logs into Discord using this token — that's the only wiring between the code and your Valentine bot. There is nothing else to link up.
 
 ---
 

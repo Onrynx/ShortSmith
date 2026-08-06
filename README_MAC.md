@@ -184,6 +184,8 @@ What each is for:
 Everything has a fallback: a missing optional package degrades gracefully rather
 than breaking the run.
 
+> 🔉 **About the voice — nothing to connect.** The narrator is **Kokoro**, and it needs **no key and no signup**. The `kokoro-onnx` package you just installed downloads its ~340 MB voice model **automatically the first time you make a video** (so that very first render is a few minutes slower — this is normal, one time only). Kokoro is the default free voice; ElevenLabs (later, optional) is only if you want to upgrade it.
+
 ---
 
 ## 9. Create YOUR Discord bot
@@ -236,6 +238,8 @@ Save with **⌘ + S**, close. Everything else is optional — see
 [section 15](#15-every-setting-explained).
 
 > `.env` holds your passwords. It is gitignored and never uploaded anywhere.
+
+> 🔗 **This token IS the connection between the code and your bot.** When the bot program starts on your computer, it logs into Discord using this token — that's the only wiring between the code and your Valentine bot. There is nothing else to link up.
 
 ---
 
