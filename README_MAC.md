@@ -367,74 +367,35 @@ you still flip it public yourself.
 
 ---
 
-## 🔌 Optional add-ons — the manual connections
+## 🔌 Optional add-ons — connect only what you want
 
-Everything below is **OFF by default** and the app works fully without any of it.
-To turn one on: open `.env`, add the line(s), save, then restart the bot:
+All optional; the app is fully free and works without any of these. To enable one:
+open `.env`, add the line, save, then restart the bot:
 ```
 python3 scripts/install_autostart.py --restart
 ```
 
-### 🎙️ ElevenLabs — the famous studio narrator voice (most-wanted)
-1. Sign up free at **https://elevenlabs.io** → click your avatar (top-right) →
+### 🎙️ ElevenLabs — the famous studio narrator voice (recommended)
+1. Free account at **https://elevenlabs.io** → click your avatar (top-right) →
    **API Keys** → **Create API Key** → copy it.
 2. Add to `.env`:
    ```
    ELEVENLABS_API_KEY=paste-key-here
    ```
-Free tier ≈ 10,000 characters/month (~5–6 videos); it automatically falls back to
-the free local voice when the quota runs out. The exact voice per channel is the
-`voice_11` line in `config/*.yaml`.
+Free tier ≈ 10,000 characters/month (~5–6 videos); it falls back to the free local
+voice automatically when the quota runs out.
 
-### 🧠 Gemini — much stronger & faster story writing
+### 🧠 Gemini — stronger, faster story writing (optional)
 1. Free key at **https://aistudio.google.com/app/apikey** → **Create API key** → copy.
 2. Add to `.env`:
    ```
    GEMINI_API_KEY=paste-key-here
    ```
-Used automatically whenever local Ollama isn't reachable. (To make Gemini the
-primary writer while keeping the laptop private, simply don't run Ollama.)
+Used automatically whenever local Ollama isn't running.
 
-### 🎨 Pexels + Pixabay — real stock footage as a backup visual
-Only used if your `assets/backgrounds/` clips are missing or fail. Free keys:
-**https://www.pexels.com/api/** and **https://pixabay.com/api/docs/**
-```
-PEXELS_API_KEY=...
-PIXABAY_API_KEY=...
-```
-
-### 🔊 TikTok voices (the classic short voices) — free, needs an endpoint
-The public TikTok-TTS servers are frequently offline. If you have a working one:
-```
-TIKTOK_TTS_URL=https://your-endpoint/api/generation
-```
-
-### 📤 YouTube auto-upload (optional; always uploads PRIVATE)
-Off by default — normally you upload the approved `.mp4` yourself. To automate:
-1. `pip install -r requirements-cloud.txt`
-2. At **https://console.cloud.google.com** enable **YouTube Data API v3**, create
-   an **OAuth client** (Desktop), download the client-secrets JSON, and do the
-   one-time sign-in to produce a token JSON.
-3. Add to `.env`:
-   ```
-   AUTO_PUBLISH=private
-   YOUTUBE_CLIENT_SECRETS=full/path/to/client_secret.json
-   YOUTUBE_TOKEN_JSON=full/path/to/token.json
-   ```
-It uploads as **PRIVATE** with the AI-content disclosure set; you flip it public
-in YouTube Studio. `AUTO_PUBLISH=public` is the only way it ever goes public
-automatically — opt in at your own risk.
-
-### 🖥️ Odysseus / Wan2GP (advanced, self-hosted)
-- **Odysseus** (self-hosted model gateway): `bash scripts/setup_odysseus.sh`, then
-  `ODYSSEUS_URL=http://localhost:7000` in `.env`.
-- **Wan2GP** (real AI-generated video clips instead of gameplay):
-  `bash scripts/setup_wan2gp.sh`, then `WAN2GP_URL=http://localhost:7860` in `.env`.
-
-### 🔔 Discord event feed (optional)
-Get a channel webhook (Discord → channel → Edit Channel → Integrations → Webhooks
-→ New Webhook → Copy URL) and add `DISCORD_WEBHOOK_URL=...` to stream 🔴🟡🟢 render
-events into that channel.
+> That's all you need. A few advanced extras (stock-footage keys, self-hosted
+> models, YouTube auto-upload) live in `.env.example` if you ever want them — you
+> can safely ignore them.
 
 ---
 
