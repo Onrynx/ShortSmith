@@ -177,15 +177,10 @@ def build_bot(chan_id: int = 0):
     async def status(ctx):
         if not allowed(ctx):
             return
+        from . import nl_agent
         s = control.status()
-        lines = []
-        for lane in ("night", "day"):
-            st = s["lanes"].get(lane) or {}
-            lines.append(f"**{lane}**: {st.get('stage','idle')} — {st.get('message','')[:120]}")
-        a = s["assignment"]
-        lines.append(f"lanes today: night={a.get('night','?')} day={a.get('day','?')}")
-        lines.append(f"cloud cap left: {s['cloud_cap_remaining']} · pending review: {s['pending_count']}")
-        await ctx.send("\n".join(lines))
+        line = f"{nl_agent._render_progress()}\n_{s['pending_count']} video(s) waiting for review._"
+        await ctx.send(line)
 
     @bot.command()
     async def brain(ctx):
