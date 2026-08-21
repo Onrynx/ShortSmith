@@ -92,7 +92,8 @@ _DEFAULTS = {
     "target_minutes": 6,
     "style": "cinematic, moody, atmospheric",
     "banned": "gore, real people, copyrighted characters",
-    "lane_budgets": {"night": [8, 15], "day": [3, 6]},
+    # "render" is the only slot used now (on-demand). night/day kept for back-compat.
+    "lane_budgets": {"render": [8, 15], "night": [8, 15], "day": [3, 6]},
 }
 
 
@@ -117,6 +118,7 @@ def load_channel(name: str) -> dict:
     if not isinstance(lb, dict):
         lb = {}
     cfg["lane_budgets"] = {
+        "render": tuple(lb.get("render", lb.get("night", _DEFAULTS["lane_budgets"]["render"]))),
         "night": tuple(lb.get("night", _DEFAULTS["lane_budgets"]["night"])),
         "day": tuple(lb.get("day", _DEFAULTS["lane_budgets"]["day"])),
     }

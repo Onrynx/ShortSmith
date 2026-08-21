@@ -381,15 +381,30 @@ def node_cutter(state: dict) -> dict:
     spec = format_spec(state["channel_cfg"])
     w, h, max_seconds = spec["width"], spec["height"], spec["max_seconds"]
     exact = spec.get("exact_seconds") or 0
-    cap = exact or max_seconds
+    # An explicit "make it 45 seconds" request outranks the channel's window.
+    req = state.get("requested_seconds")
+    cap = exact or (float(req) * 1.15 if req else max_seconds)
 
-    # Time-fit: speed up if the narration overshoots the cap...
+    # Time-fit of LAST resort. The script stage plans to the target and the voice
+    # stage revises against measured audio, so by here we should already be close.
+    # Speeding narration up is audible — it makes the narrator sound rushed — so
+    # it is capped hard. If we're still far over, the honest outcome is a slightly
+    # longer video, not a chipmunk.
     total_raw = sum(durations) if durations else 0.0
     factor = 1.0
     if total_raw > cap and total_raw > 0:
-        factor = min(2.0, round(total_raw / cap, 3))
+        factor = min(1.12, round(total_raw / cap, 3))
+        if total_raw / cap > 1.12:
+            add_fallback(state, "cutter",
+                         f"runtime {total_raw:.0f}s over {cap:.0f}s target; nudging "
+                         f"{factor:.2f}x (kept natural rather than over-speeding)")
+    # Hard backstop: a Short MUST stay under YouTube's limit, so if the gentle
+    # nudge isn't enough we do speed up further — correctness beats prettiness.
+    if spec["format"] == "shorts" and total_raw / factor > max_seconds:
+        factor = min(1.6, round(total_raw / max_seconds, 3))
         add_fallback(state, "cutter",
-                     f"runtime {total_raw:.0f}s > {cap}s; speeding {factor:.2f}x")
+                     f"runtime would exceed the {max_seconds:.0f}s Shorts limit; "
+                     f"speeding {factor:.2f}x to stay compliant")
     spoken = [round(d / factor, 3) for d in durations]   # speech per scene
     edur = list(spoken)                                  # slot per scene
     # ...and if we're under an EXACT runtime, extend the last scene: background

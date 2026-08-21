@@ -3,16 +3,15 @@
 Outbound events go via DISCORD_WEBHOOK_URL (notify/push.py, no bot required).
 This bot adds two-way control from any Discord client (phone included):
 
-  !status                     lanes, stages, cloud cap, pending count
+  !status                     what's rendering right now / what's ready
   !brain                      Odysseus / LLM backend status
   !pending                    list videos awaiting review
   !review <n|id>              thumbnail + script + report for one item
   !approve <n|id>             move to approved/
   !reject <n|id>              delete
-  !run <channel> <lane> [mock]
-  !daily [mock]               run both lanes for today's assignment
-  !lanes <night_ch> <day_ch>  assign today's lanes (the daily picker)
-  !digest                     nightly digest
+  !cancel                     stop the render in progress
+  !run <channel> [mock]       start a render (or just say "make me a short")
+  !digest                     activity digest
   !feed [n]                   recent bottleneck events
 
 Setup: pip install discord.py ; create a bot (discord.com/developers), enable the
@@ -32,7 +31,7 @@ MAX_UPLOAD = int(9.5 * 1024 * 1024)  # safe under a non-boosted server's ~10MB c
 
 
 def _fmt_item(i: int, m: dict) -> str:
-    return (f"`{i}` **{m.get('title','?')}** — {m.get('channel')}/{m.get('lane')}"
+    return (f"`{i}` **{m.get('title','?')}** — {m.get('channel','')}"
             f" · {round(m.get('runtime_sec') or 0)}s{' · mock' if m.get('mock') else ''}")
 
 
@@ -83,7 +82,7 @@ def build_bot(chan_id: int = 0):
                 v = control.media_path(m["id"], "video")
                 note = "" if pv else (f"\n📁 full file: `{v}`" if v else "")
                 await ch.send(f"🎬 **New Short ready:** {m.get('title')} "
-                              f"({m.get('channel')}/{m.get('lane')}, {round(m.get('runtime_sec') or 0)}s)"
+                              f"({m.get('channel','')}, {round(m.get('runtime_sec') or 0)}s)"
                               f"{note}\n→ `!approve 1` to keep · `!reject 1` to bin",
                               files=files or None)
                 seen.add(m["id"])                 # mark seen ONLY after a successful post
@@ -100,7 +99,7 @@ def build_bot(chan_id: int = 0):
         if isinstance(error, commands.CommandNotFound):
             return
         if isinstance(error, commands.MissingRequiredArgument):
-            await ctx.send("That needs a value — e.g. `!review 1`, `!run history_mysteries night`. `!help` lists them.")
+            await ctx.send("That needs a value — e.g. `!review 1`, `!run gossip_stories`. `!help` lists them.")
             return
         log("warn", f"command error: {error}")
         try:
@@ -169,18 +168,16 @@ def build_bot(chan_id: int = 0):
     @bot.command()
     async def help(ctx):
         if allowed(ctx):
-            await ctx.send("**StoryForge** — `!status` `!brain` `!pending` `!review n` "
-                           "`!approve n` `!reject n` `!run <ch> <lane> [mock]` "
-                           "`!daily [mock]` `!lanes <night> <day>` `!digest` `!feed [n]`")
+            await ctx.send("**StoryForge** — just say **make me a short**. Commands: "
+                           "`!status` `!pending` `!review n` `!approve n` `!reject n` "
+                           "`!cancel` `!run <channel> [mock]` `!brain` `!digest` `!feed [n]`")
 
     @bot.command()
     async def status(ctx):
         if not allowed(ctx):
             return
         from . import nl_agent
-        s = control.status()
-        line = f"{nl_agent._render_progress()}\n_{s['pending_count']} video(s) waiting for review._"
-        await ctx.send(line)
+        await ctx.send(nl_agent._render_progress())
 
     @bot.command()
     async def brain(ctx):
@@ -223,7 +220,7 @@ def build_bot(chan_id: int = 0):
             files.append(discord.File(str(video)))
         note = "" if video else \
             f"\n(preview failed — full file at `{control.media_path(item_id, 'video')}`)"
-        await ctx.send(f"**{m.get('title')}** ({m.get('channel')}/{m.get('lane')}, "
+        await ctx.send(f"**{m.get('title')}** ({m.get('channel','')}, "
                        f"{round(m.get('runtime_sec') or 0)}s)\n{script[:1500]}{note}\n"
                        f"`!approve {arg}` or `!reject {arg}`", files=files or None)
 
@@ -244,26 +241,21 @@ def build_bot(chan_id: int = 0):
         await ctx.send("🗑️ rejected & deleted" if r.get("ok") else f"❌ {r.get('error')}")
 
     @bot.command()
-    async def run(ctx, channel: str, lane: str = "night", mode: str = ""):
+    async def run(ctx, channel: str = "gossip_stories", mode: str = ""):
         if not allowed(ctx):
             return
-        r = control.run_now(channel, lane, mock=(mode == "mock"))
+        r = control.run_now(channel, mock=(mode == "mock"))
         await ctx.send(f"▶ started (pid {r['pid']})" if r.get("ok") else f"❌ {r.get('error')}")
 
     @bot.command()
-    async def daily(ctx, mode: str = ""):
+    async def cancel(ctx):
         if not allowed(ctx):
             return
-        r = control.run_scheduler_daily(mock=(mode == "mock"))
-        await ctx.send(f"▶ daily cycle started (pid {r['pid']})")
-
-    @bot.command()
-    async def lanes(ctx, night: str, day: str):
-        if not allowed(ctx):
-            return
-        r = control.set_lanes(night, day)
-        a = r["assignment"]
-        await ctx.send(f"🌗 set — night: **{a.get('night')}** · day: **{a.get('day')}**")
+        r = control.cancel_render()
+        if r.get("killed"):
+            await ctx.send("🛑 Stopped the render in progress.")
+        else:
+            await ctx.send("Nothing is rendering right now.")
 
     @bot.command()
     async def digest(ctx):
@@ -277,7 +269,7 @@ def build_bot(chan_id: int = 0):
         evs = control.events(int(n) if n.isdigit() else 10)
         icon = {"red": "🔴", "yellow": "🟡", "green": "🟢", "info": "•"}
         await ctx.send("\n".join(
-            f"{icon.get(e.get('severity'), '•')} [{e.get('lane')}/{e.get('channel')}] "
+            f"{icon.get(e.get('severity'), '•')} [{e.get('channel','')}] "
             f"{e.get('stage')}: {e.get('message', '')[:100]}" for e in evs[:15]) or "no events")
 
     return bot

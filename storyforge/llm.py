@@ -145,32 +145,6 @@ def select_model(mock: bool = False) -> dict:
 
 
 # --------------------------------------------------------------------------- #
-# CrewAI LLM factory (used by the creative crew)
-# --------------------------------------------------------------------------- #
-def make_crew_llm(model_info: dict):
-    """Return a crewai.LLM or None if CrewAI/backends unavailable."""
-    if model_info.get("backend") == "mock":
-        return None
-    try:
-        from crewai import LLM  # type: ignore
-    except Exception:
-        return None
-    try:
-        if model_info["backend"] == "odysseus":
-            # OpenAI-compatible gateway -> litellm openai/ provider + custom base_url
-            return LLM(model=f"openai/{model_info['model']}", base_url=model_info["base_url"],
-                       api_key=_odysseus_key(), temperature=0.7)
-        if model_info["backend"] == "ollama":
-            return LLM(model=f"ollama/{model_info['model']}",
-                       base_url=model_info["base_url"], temperature=0.7)
-        if model_info["backend"] == "gemini":
-            return LLM(model=f"gemini/{model_info['model']}", temperature=0.7)
-    except Exception as exc:  # noqa: BLE001
-        log("warn", f"could not build CrewAI LLM: {exc}")
-    return None
-
-
-# --------------------------------------------------------------------------- #
 # Direct completion (single-shot fallback path, no CrewAI needed)
 # --------------------------------------------------------------------------- #
 def complete(system: str, user: str, model_info: dict,

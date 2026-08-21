@@ -210,9 +210,11 @@ def node_voice(state: dict) -> dict:
     speed = round(voice_speed(cfg) * (style["speed"] / VOICE_STYLES["adam"]["speed"]), 3)
     pitch = style["pitch"]
 
-    for i, sc in enumerate(scenes):
+    def synth_one(i: int, text: str) -> tuple[str, float]:
+        """Render one scene's narration; returns (path, measured seconds)."""
+        nonlocal used_engine
         out = audio_dir / f"scene_{i+1:02d}.wav"
-        text = (sc.get("narration") or "").strip() or "..."
+        text = (text or "").strip() or "..."
         made = False
         for name, fn, vid in chain:
             if name in dead:
@@ -233,8 +235,39 @@ def node_voice(state: dict) -> dict:
         if not made:
             secs = estimate_speech_seconds(text, wpm=150)
             write_silence_wav(out, secs, rate=24000, tone_hz=tones[i % len(tones)], amplitude=0.05)
-        audio_paths.append(str(out))
-        durations.append(round(wav_duration(out) or estimate_speech_seconds(text), 3))
+        return str(out), round(wav_duration(out) or estimate_speech_seconds(text), 3)
+
+    for i, sc in enumerate(scenes):
+        path, dur = synth_one(i, sc.get("narration"))
+        audio_paths.append(path)
+        durations.append(dur)
+
+    # ---- close the loop: the video's REAL length is now known ---------------- #
+    # Everything before this was an estimate. Feed the measurement back so (a)
+    # future runs estimate better, and (b) this run gets fixed if it missed.
+    t = state.get("targets") or {}
+    if t and not mock:
+        from ..timing import plan_revisions, record_calibration
+        measured = sum(durations)
+        record_calibration(style_name, scenes, measured, t.get("wpm", 177))
+        rev = plan_revisions(scenes, durations, t["target_seconds"], t.get("max_seconds"))
+        if rev.get("action") in ("compress", "expand") and rev.get("severe"):
+            progress(state, "voice",
+                     f"runtime {measured:.0f}s vs target {t['target_seconds']:.0f}s — "
+                     f"{rev['action']}ing {len(rev['targets'])} scene(s) and re-voicing")
+            from ..crews.story_crew import revise_for_duration
+            before = [s.get("narration") for s in scenes]
+            state["script"] = revise_for_duration(state["script"], rev,
+                                                  state.get("model_info") or {}, t)
+            scenes = state["script"]["scenes"]
+            changed = [i for i, s in enumerate(scenes)
+                       if i < len(before) and s.get("narration") != before[i]]
+            for i in changed:                      # re-voice ONLY what changed
+                path, dur = synth_one(i, scenes[i].get("narration"))
+                audio_paths[i], durations[i] = path, dur
+            if changed:
+                log("info", f"re-voiced {len(changed)} scene(s); runtime "
+                            f"{measured:.0f}s -> {sum(durations):.0f}s")
 
     progress(state, "voice", f"voice done: {len(audio_paths)} clips, "
                              f"~{round(sum(durations),1)}s ({used_engine}, "

@@ -5,6 +5,7 @@ Pure functions over the on-disk state the pipeline/scheduler write.
 from __future__ import annotations
 
 import os
+import signal
 import subprocess
 import sys
 from pathlib import Path
@@ -14,18 +15,21 @@ from .llm import (_odysseus_models, odysseus_api_base, odysseus_base_url,
                   odysseus_reachable, odysseus_ui_reachable, select_model)
 from .notify import recent_events
 from .providers.cloud import cap_remaining
-from .scheduler import get_assignment, set_assignment
 from .state import approved_dir
 from .utils import (CREATE_NEW_PROCESS_GROUP, CREATE_NO_WINDOW, OUTPUT_DIR, ROOT,
                     STATE_DIR, ensure_dir, env, read_json, read_status, utcnow_iso,
-                    write_json)
+                    write_json, write_status)
+
+# The single, neutral slot every on-demand render writes its status into.
+# (There is no "night"/"day" any more — StoryForge is on-demand only.)
+RENDER_SLOT = "render"
+_PIDFILE = STATE_DIR / "render.pid"
 
 
 def config_info() -> dict:
     channels = list_channels() or ["history_mysteries", "gaming_lore"]
     return {
         "channels": [{"key": c, "name": load_channel(c).get("name", c)} for c in channels],
-        "lanes": ["night", "day"],
         "auto_publish": (env("AUTO_PUBLISH", "off") or "off").lower(),
         "odysseus_url": odysseus_base_url(),
     }
@@ -34,8 +38,7 @@ def config_info() -> dict:
 def status() -> dict:
     return {
         "now": utcnow_iso(),
-        "lanes": {"night": read_status("night"), "day": read_status("day")},
-        "assignment": get_assignment(),
+        "render": read_status(RENDER_SLOT),
         "cloud_cap_remaining": cap_remaining(),
         "pending_count": len(list_pending()),
     }
@@ -184,8 +187,9 @@ def _spawn(cmd: list[str], tag: str) -> dict:
     return {"ok": True, "pid": proc.pid, "log": str(logfile), "cmd": " ".join(cmd)}
 
 
-def run_now(channel: str, lane: str, mock: bool = False,
-            voice: str | None = None, topic: str = "") -> dict:
+def run_now(channel: str, lane: str = RENDER_SLOT, mock: bool = False,
+            voice: str | None = None, topic: str = "",
+            seconds: float | None = None) -> dict:
     if channel not in (list_channels() or []):
         return {"ok": False, "error": f"unknown channel {channel}"}
     cmd = [sys.executable, str(ROOT / "run.py"), "--channel", channel, "--lane", lane]
@@ -194,20 +198,61 @@ def run_now(channel: str, lane: str, mock: bool = False,
     if voice in ("adam", "squeaky"):
         cmd += ["--voice", voice]
     if topic:
-        cmd += ["--topic", topic[:300]]
-    return _spawn(cmd, f"{channel}_{lane}")
+        cmd += ["--topic", topic[:600]]
+    if seconds:
+        cmd += ["--seconds", str(float(seconds))]
+    res = _spawn(cmd, f"{channel}_{lane}")
+    if lane == RENDER_SLOT and res.get("ok"):
+        try:
+            _PIDFILE.write_text(str(res["pid"]))
+        except Exception:
+            pass
+    return res
 
 
-def run_scheduler_daily(mock: bool = False) -> dict:
-    cmd = [sys.executable, "-m", "storyforge.scheduler", "daily", "--no-wait"]
-    if mock:
-        cmd.append("--mock")
-    return _spawn(cmd, "daily")
+def render_in_progress() -> bool:
+    """True only while a render is actually between script and herald (not done)."""
+    st = read_status(RENDER_SLOT) or {}
+    stage = str(st.get("stage") or "").lower()
+    if stage in ("", "idle", "failed", "cancelled"):
+        return False
+    return not (st.get("pct") == 100.0 or "pending/" in str(st.get("message") or ""))
 
 
-def set_lanes(night: str, day: str) -> dict:
-    set_assignment(night, day)
-    return {"ok": True, "assignment": get_assignment()}
+def cancel_render() -> dict:
+    """Stop the in-progress on-demand render (and its ffmpeg children), if any."""
+    if not render_in_progress():
+        try:
+            _PIDFILE.unlink()
+        except Exception:
+            pass
+        return {"ok": True, "killed": False, "reason": "nothing was rendering"}
+    pid = None
+    try:
+        pid = int((_PIDFILE.read_text().strip() or "0")) or None
+    except Exception:
+        pid = None
+    killed = False
+    if pid:
+        try:
+            if os.name == "nt":
+                subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"],
+                               capture_output=True)
+            else:
+                os.killpg(os.getpgid(pid), signal.SIGTERM)
+            killed = True
+        except Exception:
+            killed = False
+    try:
+        write_status(RENDER_SLOT, {"stage": "cancelled", "message": "cancelled by user",
+                                   "pct": None})
+    except Exception:
+        pass
+    try:
+        _PIDFILE.unlink()
+    except Exception:
+        pass
+    return {"ok": True, "killed": killed, "pid": pid}
 
 
 def events(limit: int = 20) -> list[dict]:

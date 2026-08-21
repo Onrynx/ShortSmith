@@ -1,16 +1,20 @@
-"""The CrewAI creative crew — Scout -> Scribe -> Critic — plus its fallbacks.
+"""Script generation — turn a story PLAN into the scenes that become the video.
 
-This module is the single "creative" node inside the LangGraph assembly. It runs
-on whatever LLM backend was selected (Odysseus preferred, then Ollama, Gemini, or
-the canned mock). It exposes three script generators the `script` node tries in
-order:
+The old version of this module asked one model call to invent a topic, structure
+a story, write it, and hit a word count, all at once, then tried to rescue the
+result with a full rewrite and two "make it longer" passes. That is why stories
+came out formulaic and rushed: nothing had ever decided what THIS story should
+look like, so the prompt's example arc became the arc every time.
 
-    run_creative_crew(...)   # CrewAI collaborative crew (needs crewai + a backend)
-    single_shot_script(...)  # one LLM call (needs a backend, no crewai)
-    mock_script(...)         # canned, deterministic, always works (mock mode)
+Now the thinking happens first (story_planner.py) and this module writes to that
+plan. Each beat arrives with its own job, its own concrete events and its own
+time budget, so the writer's only task is prose — which is the task a small local
+model is actually good at.
 
-Format-aware: StoryForge defaults to YouTube SHORTS (vertical 9:16, <=60s, punchy),
-but the same generators produce long-form when a channel sets format: long.
+Three generators, tried in order by nodes/script.py:
+
+    write_script(...)   # plan-driven, the real path
+    mock_script(...)    # canned, deterministic, always works (mock/offline floor)
 """
 from __future__ import annotations
 
@@ -20,12 +24,13 @@ import random
 import re
 
 from ..config import format_spec
-from ..llm import complete, make_crew_llm
+from ..llm import complete
 from ..story_doctrine import DOCTRINE, violations
+from ..timing import (estimate_seconds, load_calibration, plan_revisions,
+                      scene_seconds, words_for_seconds, wpm_for)
 from .. import story_memory
 from ..utils import log
 
-# Disable CrewAI telemetry so an offline machine never blocks on it.
 os.environ.setdefault("CREWAI_DISABLE_TELEMETRY", "true")
 os.environ.setdefault("OTEL_SDK_DISABLED", "true")
 
@@ -65,346 +70,406 @@ def extract_json(text: str) -> dict:
     raise ValueError("unbalanced JSON braces")
 
 
-def _targets(cfg: dict, hero_budget: tuple[int, int]) -> dict:
+def word_count_of(script: dict) -> int:
+    return sum(len(str(s.get("narration", "")).split())
+               for s in script.get("scenes", []))
+
+
+def targets(cfg: dict, hero_budget: tuple[int, int],
+            requested_seconds: float | None = None,
+            voice_style: str = "adam") -> dict:
+    """Resolve what this run is aiming for — length, scenes, pace, calibration.
+
+    `requested_seconds` is an explicit user request ("make it 45 seconds") and
+    always wins over the channel's configured window.
+    """
     spec = format_spec(cfg)
     lo_s, hi_s = spec["scene_bounds"]
-    # Random length per run inside the channel's window, so uploads never feel
-    # templated (e.g. 114-144s = 1.9-2.4 min).
-    if spec["format"] == "shorts" and not spec.get("exact_seconds") and spec.get("min_seconds"):
+    calibration = load_calibration(voice_style)
+    wpm = wpm_for(spec.get("voice_speed", 1.18))
+
+    if requested_seconds and requested_seconds > 0:
+        target_seconds = float(requested_seconds)
+        # An explicit short request must be allowed to shrink the scene count,
+        # otherwise a 45s ask still gets a 16-scene skeleton and races.
+        lo_s = max(3, min(lo_s, int(round(target_seconds / 9.0))))
+        hi_s = max(lo_s + 1, min(hi_s, int(round(target_seconds / 5.0))))
+        max_seconds = max(target_seconds * 1.15, target_seconds + 6)
+    elif spec["format"] == "shorts" and not spec.get("exact_seconds") and spec.get("min_seconds"):
         target_seconds = random.randint(spec["min_seconds"],
                                         max(spec["min_seconds"], spec["target_seconds"]))
+        max_seconds = spec["max_seconds"]
     else:
         target_seconds = spec["target_seconds"]
-    # CRITICAL: budget words at the pace the narration is ACTUALLY delivered.
-    # Kokoro speaks ~150 wpm at 1.0x, so voice_speed 1.18 => ~177 wpm. Budgeting
-    # at 150 made every video finish ~15% short of target.
-    wpm = 150.0 * float(spec.get("voice_speed", 1.18) or 1.18)
-    words = int(target_seconds / 60 * wpm)
-    per_scene = 28 if spec["format"] == "shorts" else 55
-    scene_count = max(lo_s, min(hi_s, round(words / per_scene)))
+        max_seconds = spec["max_seconds"]
+
+    scene_count = max(lo_s, min(hi_s, round(target_seconds / 11.0)))
+    words = words_for_seconds(target_seconds, wpm, calibration, scene_count)
     return {
         "format": spec["format"], "vertical": spec["vertical"],
-        "target_seconds": target_seconds, "max_seconds": spec["max_seconds"],
-        "wpm": round(wpm),
-        # tight floor: a short script is the #1 cause of stubby videos
-        "approx_words": words, "min_words": int(words * 0.9),
+        "target_seconds": round(float(target_seconds), 1),
+        "max_seconds": float(max_seconds),
+        "wpm": round(wpm), "calibration": calibration,
+        "approx_words": words, "min_words": int(words * 0.85),
         "scene_count": scene_count, "fiction": bool(cfg.get("fiction")),
         "story_mode": cfg.get("story_mode", "real_life_drama"),
         "scene_lo": lo_s, "scene_hi": hi_s,
         "hero_lo": hero_budget[0], "hero_hi": hero_budget[1],
+        "requested": bool(requested_seconds),
     }
 
 
-# Story-craft rules injected into every script prompt. This is what separates
-# "generic AI slop" from a hook that holds retention for 1-2 minutes.
-CRAFT = """STORYTELLING RULES (non-negotiable):
-- Pick ONE specific story with a NAMED subject (a person, ship, city, battle,
-  artifact, glitch, guild...) — never a vague theme. Specifics sell: names,
-  dates, numbers, places in almost every scene.
-- HOOK (scene 1, <=20 words): drop the listener INTO the strangest fact of the
-  story mid-action, creating an information gap they must close. No throat-clearing.
-- BANNED phrases: "imagine", "what if I told you", "in this video", "let's dive
-  in", "join me", "have you ever wondered", "little did they know", "to this day"
-  as filler, and any generic listicle framing.
-- Arc: hook -> setup (who/where/when, concrete) -> escalation (each scene adds a
-  NEW surprising fact or reversal) -> twist that reframes everything -> ending
-  that answers the hook BUT opens one final question for the comments.
-- Short punchy sentences. Cliffhang scene endings. Vary rhythm. Read it aloud in
-  your head: if a sentence sounds like a textbook, rewrite it like you're telling
-  a friend a secret at 2am."""
+def _visual_style(cfg: dict, t: dict) -> str:
+    v = "vertical 9:16 composition, " if t["vertical"] else ""
+    return f"{v}{cfg.get('style', 'cinematic')}"
 
 
-def _schema_spec(t: dict) -> str:
-    vertical = ", VERTICAL 9:16 composition" if t["vertical"] else ""
-    return (
-        'Return ONLY strict JSON, no prose, matching exactly:\n'
-        '{ "title": "<70 chars", "hook": "string", '
-        '"scenes": [ {"narration":"1-2 short sentences","image_prompt":"detailed visual",'
-        '"hero": true|false} ], "description":"string", "tags":["8-12 tags"] }\n'
-        f"Rules: {t['scene_lo']}-{t['scene_hi']} scenes. scenes[0].narration MUST equal hook. "
-        f"image_prompt must contain NO text, NO logos, NO real people, NO copyrighted "
-        f"characters{vertical}. Mark {t['hero_lo']}-{t['hero_hi']} scenes hero=true."
-    )
+# --------------------------------------------------------------------------- #
+# Plan-driven writing
+# --------------------------------------------------------------------------- #
+_SYS_WRITE = (
+    "You are a narration writer for short-form video. You are given a story plan "
+    "that has already been developed — the premise, the people, the shape and the "
+    "job of each beat. You write the spoken words, in order, following that plan "
+    "exactly. You write the way people actually talk. You never summarise the "
+    "story, never narrate ABOUT it, and never add beats the plan did not ask for. "
+    "You return strict JSON only."
+)
 
 
-def _format_note(t: dict) -> str:
-    fiction = ("\nFICTION: the story is INVENTED — but it must feel like a real "
-               "thing that happened to a real person. Never real people or brands."
-               if t.get("fiction") else "")
-    # The doctrine governs every story channel; 'lore' channels keep the old craft.
-    rules = CRAFT if t.get("story_mode") == "lore" else DOCTRINE
-    if t["format"] == "shorts":
-        return (
-            f"This is a YOUTUBE SHORT: vertical 9:16, {t['target_seconds']}s of "
-            f"narration (HARD MINIMUM {t['min_words']} spoken words total, aim "
-            f"~{t['approx_words']}; under {t['max_seconds']}s). Each scene = 2-3 "
-            "full spoken sentences, 25-35 words per scene.\n\n" + rules + fiction
+def _beat_block(beats: list, start_index: int) -> str:
+    """Render the beats of this chunk as explicit, individually-budgeted jobs."""
+    out = []
+    for i, b in enumerate(beats):
+        out.append(
+            f"BEAT {start_index + i + 1} — purpose: {b.get('purpose','develop')} "
+            f"(~{b.get('seconds', 8)}s, about {b.get('words', 30)} spoken words)\n"
+            f"  what happens: {b.get('what_happens','')}\n"
+            f"  the viewer should now understand/feel: {b.get('why_it_matters','')}\n"
+            f"  on screen: {b.get('visual','')}"
         )
-    return (
-        f"This is a long-form video: ~{t['target_seconds']//60} minutes at ~150 wpm "
-        f"(~{t['approx_words']} words).\n\n" + rules + fiction
-    )
+    return "\n".join(out)
 
 
-# --------------------------------------------------------------------------- #
-# 1) CrewAI collaborative crew
-# --------------------------------------------------------------------------- #
-def run_creative_crew(cfg: dict, lane: str, topic: str,
-                      hero_budget: tuple[int, int], model_info: dict) -> dict:
-    """Scout -> Scribe -> Critic. Raises if crewai/backend unavailable or fails."""
-    from crewai import Agent, Crew, Process, Task  # type: ignore
-
-    llm = make_crew_llm(model_info)
-    if llm is None:
-        raise RuntimeError("no CrewAI LLM available")
-
-    t = _targets(cfg, hero_budget)
-    niche, style, banned = cfg.get("niche"), cfg.get("style"), cfg.get("banned")
-    topic_line = (f"The user requested this topic: '{topic}'. Honor it." if topic
-                  else "Choose the single most curiosity-driving topic yourself.")
-
-    scout = Agent(
-        role=f"Scout for a '{niche}' YouTube channel",
-        goal=("Pick ONE high-curiosity topic with a built-in open loop — a question "
-              "the viewer NEEDS answered. Respect the banned list."),
-        backstory=("A relentless researcher who knows which untold story makes someone "
-                   "stop scrolling. You never pick anything on the banned list."),
-        llm=llm, allow_delegation=False, verbose=False,
-    )
-    scribe = Agent(
-        role="Scribe — cinematic narration writer",
-        goal=("Write spoken-word narration as scenes. Never invent facts; when the "
-              "truth is uncertain, say so and make THAT the hook."),
-        backstory=("A documentary narrator's ghostwriter who writes image prompts a "
-                   "video model can render with no text or logos."),
-        llm=llm, allow_delegation=False, verbose=False,
-    )
-    critic = Agent(
-        role="Critic — ruthless retention editor",
-        goal=("Cut weak sentences, verify the hook opens a loop fast, flag "
-              "unverifiable claims for softening, and output STRICT JSON."),
-        backstory=("You have edited a thousand viral scripts. You are merciless. "
-                   "You reject anything that smells fantasy, AI-written, or slow."),
-        llm=llm, allow_delegation=False, verbose=False,
-    )
-
-    scout_task = Task(
-        description=(f"Niche: {niche}. Angle: {cfg.get('angle')}. {topic_line}\n"
-                     f"BANNED (never use): {banned}.\n{_format_note(t)}\n"
-                     "Deliver: the topic, why it grips, and the ONE open-loop question."),
-        expected_output="A topic brief: topic, hook-question, why it grips.",
-        agent=scout,
-    )
-    scribe_task = Task(
-        description=(f"{_format_note(t)}\n"
-                     f"Write ~{t['scene_count']} scenes ({t['scene_lo']}-{t['scene_hi']}). "
-                     f"Each scene: narration (1-2 short sentences) + image_prompt (cinematic, "
-                     f"style='{style}', "
-                     f"{'vertical 9:16, ' if t['vertical'] else ''}NO text/logos/real people/"
-                     f"copyrighted characters) + hero bool. "
-                     f"Mark {t['hero_lo']}-{t['hero_hi']} scenes hero=true. "
-                     "Scene 1 narration MUST be the hook. Be honest about uncertainty."),
-        expected_output="All scenes with narration, image_prompt and hero flags.",
-        agent=scribe, context=[scout_task],
-    )
-    critic_task = Task(
-        description=("Ruthlessly edit for retention. Ensure the hook opens a loop "
-                     "immediately. Soften unverifiable claims ('historians believe', "
-                     f"'the records suggest'). Cap hero scenes to {t['hero_lo']}-{t['hero_hi']}.\n"
-                     + _schema_spec(t)),
-        expected_output="ONLY the strict JSON object. No commentary.",
-        agent=critic, context=[scout_task, scribe_task],
-    )
-
-    crew = Crew(agents=[scout, scribe, critic],
-                tasks=[scout_task, scribe_task, critic_task],
-                process=Process.sequential, verbose=False)
-    result = crew.kickoff()
-    raw = getattr(result, "raw", None) or str(result)
-    return extract_json(raw)
+def _pacing_note(beats: list) -> str:
+    """Tell the writer, in words, what these particular beats are FOR."""
+    purposes = [str(b.get("purpose", "")).lower() for b in beats]
+    if any(p in ("establish", "context") for p in purposes):
+        return ("These beats are doing SETUP. Do not rush them and do not "
+                "escalate yet. Give the viewer the concrete, ordinary details "
+                "that make this person and place real — one specific object, "
+                "habit, name or line of dialogue is worth more than any amount "
+                "of general description. The story earns its later turns here.")
+    if any(p in ("turn", "reveal") for p in purposes):
+        return ("This is where the story turns. Make sure the information that "
+                "makes it land was already visible earlier — the viewer should "
+                "feel it click, not feel ambushed. Let the moment breathe for a "
+                "sentence instead of racing past it.")
+    if any(p in ("resolve", "aftermath") for p in purposes):
+        return ("This is the ending. Land it the way the plan says — do not "
+                "reach for a rhetorical question unless the plan calls for one. "
+                "An image, a consequence or a flat final statement is often "
+                "stronger.")
+    return ("Keep moving, but stay concrete. Every beat should add something the "
+            "viewer did not already know.")
 
 
-# --------------------------------------------------------------------------- #
-# 2) Single-shot LLM (no CrewAI)
-# --------------------------------------------------------------------------- #
-def single_shot_script(cfg: dict, lane: str, topic: str,
-                       hero_budget: tuple[int, int], model_info: dict) -> dict:
-    t = _targets(cfg, hero_budget)
-    # A user-supplied starter is authoritative. If it reads like an opening line
-    # (a first-person sentence) it BECOMES the hook; otherwise it's the subject.
-    topic = (topic or "").strip()
-    looks_like_line = bool(re.match(r"^(my|i|he|she|they|we|our)\b", topic, re.I)) and len(topic.split()) >= 4
-    if topic and looks_like_line:
-        topic_line = (f'STARTER LINE (use this EXACT sentence as scenes[0].narration and '
-                      f'as "hook", then build the whole story out of it): "{topic}"')
-    elif topic:
-        topic_line = (f"REQUIRED SUBJECT — the story must be about: {topic}. "
-                      "Write an original first-person story on exactly this.")
-    else:
-        topic_line = "Choose the single most curiosity-driving topic yourself."
-    lore = t.get("story_mode") == "lore"
-    system = (
-        "You are a three-in-one YouTube team: a Scout (topic), a Scribe (narration), "
-        "and a Critic (ruthless retention editor)."
-        if not lore else
-        "You are a three-in-one YouTube team: a Scout (topic), a Scribe (cinematic "
-        "narration), and a Critic (ruthless retention editor). You never invent facts; "
-        "when uncertain you say so and make that the hook."
-    )
-    # A fresh random premise + the do-not-repeat list keep every video original.
-    # A user-supplied topic REPLACES the random seed (never fight the user).
-    fresh = "" if (lore or topic) else f"{story_memory.seed_prompt()}\n{story_memory.avoid_list()}\n\n"
-    user = (
-        f"Channel niche: {cfg.get('niche')}\nAngle: {cfg.get('angle')}\n"
-        f"Visual style: {cfg.get('style')}\nBANNED (never use): {cfg.get('banned')}\n"
-        f"{topic_line}\n\n{fresh}{_format_note(t)}\n\n"
-        f"Write ~{t['scene_count']} scenes ({t['scene_lo']}-{t['scene_hi']}). "
-        f"Mark {t['hero_lo']}-{t['hero_hi']} scenes hero=true. scenes[0].narration must "
-        "equal the hook.\n\n" + _schema_spec(t)
-    )
+def write_script(plan: dict, cfg: dict, model_info: dict, t: dict, *,
+                 want_visuals: bool = True) -> dict:
+    """Write the full script from a plan. Chunked, plan-faithful, continuity-safe.
 
-    def _wc(d):
-        return sum(len(str(s.get("narration", "")).split()) for s in d.get("scenes", []))
+    Chunking exists because small local models degrade over long generations, not
+    because the story needs slicing: each call gets the whole plan for context but
+    is only asked to write a few beats, which is a task they do reliably.
+    """
+    from ..story_planner import plan_summary
 
-    def _expand(d: dict) -> dict:
-        """Fatten an existing draft instead of demanding length up front.
+    beats = plan.get("beats") or []
+    summary = plan_summary(plan)
+    style = _visual_style(cfg, t)
+    mode = t.get("story_mode", "real_life_drama")
+    rules = DOCTRINE
 
-        Small local models reliably write ~200 words no matter what you ask for,
-        but they're good at 'say this same beat in more detail'. So we hand the
-        draft back and ask for richer narration, same beats, same order."""
-        scenes = d.get("scenes") or []
-        skeleton = [{"narration": s.get("narration", ""), "hero": bool(s.get("hero"))}
-                    for s in scenes]
-        u = ("Below is a finished story, scene by scene. Keep the SAME scenes, the "
-             "SAME order and the SAME plot — change nothing about what happens.\n"
-             "Your ONLY job: rewrite each scene's narration so it is 25-35 spoken "
-             "words (2-3 short sentences) instead of one line. Add concrete detail "
-             "— what was said, what it looked like, what the narrator felt — but "
-             "invent NO new events. Keep first person. Keep the final question.\n\n"
-             f"Return the same JSON schema with all {len(scenes)} scenes.\n\n"
-             + json.dumps({"title": d.get("title", ""), "hook": d.get("hook", ""),
-                           "scenes": skeleton}, ensure_ascii=False))
-        out = extract_json(complete(system, u, model_info, json_mode=True,
-                                    temperature=0.7, timeout=900))
-        new = out.get("scenes") or []
-        if len(new) < len(scenes) * 0.7:
-            return d                                   # it mangled the structure
-        merged = []
-        for i, s in enumerate(scenes):
-            narr = str(new[i].get("narration", "")) if i < len(new) else ""
-            merged.append({
-                "narration": narr if len(narr.split()) > len(str(s.get("narration", "")).split()) else s.get("narration", ""),
-                "image_prompt": s.get("image_prompt", ""),   # keep original visuals
-                "hero": bool(s.get("hero")),
-            })
-        return {**d, "scenes": merged}
+    opening_line = ""
+    if plan.get("brief_kind") == "opening_line":
+        opening_line = str(plan.get("brief", "")).strip()
 
-    # ---- CHUNKED CONTINUATION -------------------------------------------- #
-    # A small local model reliably writes ~200 words no matter what you ask for.
-    # So don't ask for 400 at once: write the story in batches of a few scenes,
-    # feeding the story-so-far back each round, until the word target is met.
-    # Each call is a small, easy task, which is why this actually holds up.
-    CHUNK = 5
+    visual_field = (
+        ',"image_prompt":"what is on screen — concrete, no text/logos/real people"'
+        if want_visuals else "")
+    visual_rule = (
+        f"\nimage_prompt: describe the shot for beat, style: {style}. No text, no "
+        "logos, no real people, no copyrighted characters."
+        if want_visuals else "")
 
-    def _chunk(prior: list, need: int, closing: bool) -> dict:
-        if not prior:
-            u = (user + f"\n\nWrite ONLY the FIRST {need} scenes now, plus title, "
-                        "hook, description and tags. The story will continue after.")
-        else:
-            so_far = "\n".join(f"{i+1}. {s.get('narration','')}"
-                               for i, s in enumerate(prior))
-            u = (user + f"\n\nSTORY SO FAR (scenes 1-{len(prior)}):\n{so_far}\n\n"
-                 f"Continue this EXACT story with the NEXT {need} scenes only. "
-                 "Never repeat, restate or restart earlier scenes. "
-                 + ("THIS IS THE ENDING: land the twist, resolve it, and make the "
-                    "very last scene end on a question viewers will argue about."
-                    if closing else
-                    "Escalate — every scene adds a new reveal, reversal or consequence.")
-                 + '\nReturn JSON: {"scenes":[{"narration":"25-35 words",'
-                   '"image_prompt":"...","hero":true|false}]}')
-        return extract_json(complete(system, u, model_info, json_mode=True,
-                                     temperature=0.85, timeout=600))
+    base = f"""STORY PLAN (follow it — this is already decided):
+{summary}
 
-    data: dict = {}
+CHANNEL: {cfg.get('niche')}
+NEVER include: {cfg.get('banned')}
+
+{rules}
+
+HOW TO WRITE IT:
+Write the SPOKEN narration, in order, one entry per beat. Hit each beat's stated
+purpose and use roughly its word budget — that budget is how the video's pacing
+was designed, so a beat with more words is meant to breathe.
+Write in the narrator's voice described in the plan. Do not write stage
+directions, scene labels, or commentary about the story.{visual_rule}"""
+
+    if opening_line:
+        base += (f'\n\nTHE FIRST SPOKEN SENTENCE MUST BE EXACTLY, WORD FOR WORD:\n'
+                 f'"{opening_line}"')
+
+    CHUNK = 4
     scenes: list = []
-    for _ in range(5):                                   # safety bound on rounds
-        wc_now = sum(len(str(s.get("narration", "")).split()) for s in scenes)
-        if scenes and (wc_now >= t["min_words"] or len(scenes) >= t["scene_hi"]):
-            break
-        need = min(CHUNK, max(1, t["scene_hi"] - len(scenes)))
-        closing = (len(scenes) + need >= t["scene_hi"]
-                   or wc_now + need * 28 >= t["approx_words"])
+    meta: dict = {}
+
+    for start in range(0, len(beats), CHUNK):
+        group = beats[start:start + CHUNK]
+        if scenes:
+            so_far = "\n".join(f"{i+1}. {s.get('narration','')}"
+                               for i, s in enumerate(scenes))
+            continuity = (f"\n\nWHAT HAS ALREADY BEEN SAID (do not repeat, "
+                          f"contradict or restart any of it):\n{so_far}\n"
+                          "Continue seamlessly from the last line.")
+            ask_meta = ""
+        else:
+            continuity = ""
+            ask_meta = ('\nAlso return "title" (under 65 chars, no clickbait '
+                        'punctuation spam), "description" (2 sentences) and '
+                        '"tags" (8-12 lowercase tags).')
+
+        user = (base + continuity +
+                f"\n\nWRITE THESE BEATS NOW:\n{_beat_block(group, start)}\n\n"
+                f"{_pacing_note(group)}{ask_meta}\n\n"
+                'Return ONLY strict JSON: {"scenes":[{"narration":"the spoken words"'
+                + visual_field + "}]" + (', "title":"...","description":"...","tags":["..."]'
+                                         if not scenes else "") + "}")
         try:
-            part = _chunk(scenes, need, closing)
+            part = extract_json(complete(_SYS_WRITE, user, model_info,
+                                         json_mode=True, temperature=0.85,
+                                         timeout=600))
         except Exception as exc:  # noqa: BLE001
-            log("warn", f"chunk failed ({exc})")
-            break
-        if not data:
-            data = {k: part.get(k) for k in ("title", "hook", "description", "tags")}
-        got = [s for s in (part.get("scenes") or []) if str(s.get("narration", "")).strip()]
-        if not got:
-            break
-        scenes.extend(got)
-        log("info", f"chunk +{len(got)} scenes (total {len(scenes)}, "
-                    f"{sum(len(str(s.get('narration','')).split()) for s in scenes)} words)")
-    if not scenes:                                       # chunking failed entirely
-        data = extract_json(complete(system, user, model_info, json_mode=True,
-                                     temperature=0.85, timeout=900))
-    else:
-        data = {**data, "scenes": scenes}
-        if not data.get("hook"):
-            data["hook"] = scenes[0].get("narration", "")
-        data["scenes"][0]["narration"] = data["hook"]    # scene 1 must equal hook
-    # ENFORCE the doctrine + length + originality: 2 rewrites naming exact faults.
-    for attempt in range(1):
-        faults = [] if lore else violations(data)
-        dup = story_memory.duplicate_of(data)
-        if dup:
-            faults.append(f"repeats an earlier video ('{dup}') — invent a"
-                          " completely different premise, cast and setting")
-        words = _wc(data)
-        if words < t["min_words"]:
-            faults.append(f"only {words} spoken words — need AT LEAST "
-                          f"{t['min_words']} (more scenes, 2-3 full sentences each; "
-                          "real detail, not padding)")
-        if not faults:
-            break
-        log("warn", f"script rejected ({attempt+1}): {'; '.join(faults)[:150]}")
-        fix = (user + "\n\nYOUR LAST DRAFT WAS REJECTED. Faults:\n- "
-               + "\n- ".join(faults) +
-               "\n\nRewrite completely, obeying every rule: modern real-life drama, "
-               "first person, conflict in sentence one, no fantasy whatsoever.")
-        try:
-            cand = extract_json(complete(system, fix, model_info, json_mode=True,
-                                         temperature=0.9, timeout=480))
-            cand_faults = [] if lore else violations(cand)
-            if len(cand_faults) < len(faults) or _wc(cand) > words:
-                data = cand
-        except Exception as exc:  # noqa: BLE001
-            log("warn", f"rewrite failed ({exc}); keeping current draft")
+            log("warn", f"beat chunk {start//CHUNK + 1} failed ({exc})")
             break
 
-    # Length is won by EXPANDING the draft, not by asking for more up front.
-    for _ in range(2):
-        have = _wc(data)
-        if have >= t["min_words"]:
-            break
-        log("warn", f"expanding narration: {have} -> target {t['approx_words']} words")
-        try:
-            grown = _expand(data)
-            if _wc(grown) <= have:
-                break                                  # no progress, stop burning time
-            data = grown
-        except Exception as exc:  # noqa: BLE001
-            log("warn", f"expansion failed ({exc}); keeping draft")
-            break
-    log("info", f"script final length: {_wc(data)} words "
-                f"(~{round(_wc(data) / t['wpm'] * 60)}s at {t['wpm']} wpm)")
+        if not meta:
+            meta = {k: part.get(k) for k in ("title", "description", "tags")}
+        got = [s for s in (part.get("scenes") or [])
+               if isinstance(s, dict) and str(s.get("narration", "")).strip()]
+        if not got:
+            log("warn", f"beat chunk {start//CHUNK + 1} returned no scenes")
+            continue
+        # Carry the plan's purpose + visual onto the written scene so later
+        # stages (timing, revision, canvas) still know what each scene is FOR.
+        for j, sc in enumerate(got[:len(group)]):
+            b = group[j] if j < len(group) else {}
+            sc["purpose"] = b.get("purpose", "develop")
+            sc["planned_seconds"] = b.get("seconds")
+            if not sc.get("image_prompt"):
+                vis = b.get("visual") or plan.get("setting") or ""
+                sc["image_prompt"] = f"{vis}, {style}".strip(", ")
+        scenes.extend(got[:len(group)])
+        log("info", f"wrote beats {start+1}-{start+len(got)} "
+                    f"({sum(len(str(s.get('narration','')).split()) for s in scenes)} words so far)")
+
+    if not scenes:
+        raise ValueError("writer produced no scenes")
+
+    data = {**meta, "scenes": scenes}
+    if not data.get("title"):
+        data["title"] = str(plan.get("title_idea") or "Untitled Story")[:64]
+    data["hook"] = scenes[0].get("narration", "")
+    if opening_line:
+        # The user's exact line is authoritative — restore it if the model drifted.
+        data["scenes"][0]["narration"] = opening_line
+        data["hook"] = opening_line
     return data
 
 
 # --------------------------------------------------------------------------- #
-# 3) Mock canned scripts (deterministic; the never-fail floor)
+# Surgical revision — fix length without wrecking the story
+# --------------------------------------------------------------------------- #
+_SYS_REVISE = (
+    "You are a script editor. You tighten or develop specific scenes of a story "
+    "to hit a runtime, without changing what happens. You never delete plot, "
+    "never add new events, and never pad with filler. You return strict JSON only."
+)
+
+
+def revise_for_duration(script: dict, revisions: dict, model_info: dict,
+                        t: dict) -> dict:
+    """Compress or expand only the scenes `timing.plan_revisions` selected.
+
+    This is the alternative to the two blunt instruments this pipeline used
+    before: asking for a whole new draft (expensive, loses the good version) and
+    speeding the audio up (makes the narrator sound like a chipmunk).
+    """
+    action = revisions.get("action")
+    marks = revisions.get("targets") or []
+    if action not in ("compress", "expand") or not marks:
+        return script
+
+    scenes = script.get("scenes") or []
+    jobs = []
+    for m in marks:
+        i = int(m["index"])
+        if not (0 <= i < len(scenes)):
+            continue
+        cur_words = m.get("current_words") or len(str(scenes[i].get("narration", "")).split())
+        # convert the seconds we need to move into a word target for that scene
+        delta_words = int(m["seconds"] / 60.0 * t["wpm"] / max(t["calibration"], 0.1))
+        goal = (cur_words - delta_words) if action == "compress" else (cur_words + delta_words)
+        goal = max(8, goal)
+        jobs.append({"index": i, "narration": scenes[i].get("narration", ""),
+                     "purpose": scenes[i].get("purpose", ""), "target_words": goal})
+
+    if not jobs:
+        return script
+
+    if action == "compress":
+        how = ("Tighten each scene to about its target word count. Keep every "
+               "plot fact, every name, and the emotional turn. Cut redundancy, "
+               "throat-clearing and any sentence that restates the previous one. "
+               "Combine two sentences into one where they carry the same beat. "
+               "Do NOT delete events and do NOT summarise — it must still read as "
+               "spoken storytelling.")
+    else:
+        how = ("Develop each scene to about its target word count. Add real "
+               "substance that belongs there: a concrete detail, what the "
+               "narrator noticed or felt, one line of dialogue, a beat of "
+               "context that makes the next event land harder. Invent NO new "
+               "events and do not contradict anything. Never pad with filler or "
+               "restate what was already said.")
+
+    user = (f"{how}\n\nEach scene below has a target_words. Rewrite ONLY the "
+            f"narration of each, keeping its index.\n\n"
+            + json.dumps({"scenes": jobs}, ensure_ascii=False)
+            + '\n\nReturn ONLY: {"scenes":[{"index":0,"narration":"..."}]}')
+
+    try:
+        out = extract_json(complete(_SYS_REVISE, user, model_info, json_mode=True,
+                                    temperature=0.6, timeout=600))
+    except Exception as exc:  # noqa: BLE001
+        log("warn", f"duration revision failed ({exc}); keeping draft")
+        return script
+
+    updated = 0
+    for item in out.get("scenes") or []:
+        try:
+            i = int(item.get("index"))
+            new = str(item.get("narration", "")).strip()
+        except Exception:
+            continue
+        if not new or not (0 <= i < len(scenes)):
+            continue
+        old_n = len(str(scenes[i].get("narration", "")).split())
+        new_n = len(new.split())
+        # only accept a change that actually moves in the requested direction
+        if action == "compress" and new_n >= old_n:
+            continue
+        if action == "expand" and new_n <= old_n:
+            continue
+        scenes[i]["narration"] = new
+        updated += 1
+
+    if updated:
+        script["scenes"] = scenes
+        if scenes:
+            script["hook"] = scenes[0].get("narration", script.get("hook", ""))
+        log("info", f"duration revision: {action}ed {updated} scene(s)")
+    return script
+
+
+def enforce_doctrine(script: dict, plan: dict, cfg: dict, model_info: dict,
+                     t: dict) -> dict:
+    """One targeted fix pass for hard-rule breaches (not a whole-story rewrite).
+
+    Only the offending scenes are rewritten, so a good draft is never thrown away
+    over a single bad line — which is what the old full-rewrite loop did.
+    """
+    mode = t.get("story_mode", "real_life_drama")
+    grounded = plan.get("brief_kind") != "historical" and mode != "lore"
+    narrator = str(plan.get("narrator", "")).lower()
+    first_person = "first person" in narrator or "first-person" in narrator or not narrator
+
+    faults = violations(script, mode=mode, grounded=grounded,
+                        first_person=first_person)
+    dup = story_memory.duplicate_of(script)
+    if dup:
+        faults.append(f"this repeats an earlier video ('{dup}')")
+    if not faults:
+        return script
+
+    log("warn", f"doctrine faults: {'; '.join(faults)[:160]}")
+    scenes = script.get("scenes") or []
+    if not scenes:
+        return script
+
+    user = ("The following story breaks these rules:\n- " + "\n- ".join(faults) +
+            "\n\nRewrite ONLY the narration of the scenes that break them, keeping "
+            "the same events, order and length. Change nothing else.\n\n"
+            + json.dumps({"scenes": [{"index": i, "narration": s.get("narration", "")}
+                                     for i, s in enumerate(scenes)]},
+                         ensure_ascii=False)
+            + '\n\nReturn ONLY: {"scenes":[{"index":0,"narration":"..."}]}')
+    try:
+        out = extract_json(complete(_SYS_REVISE, user, model_info, json_mode=True,
+                                    temperature=0.75, timeout=600))
+    except Exception as exc:  # noqa: BLE001
+        log("warn", f"doctrine fix failed ({exc}); keeping draft")
+        return script
+
+    for item in out.get("scenes") or []:
+        try:
+            i = int(item.get("index"))
+            new = str(item.get("narration", "")).strip()
+        except Exception:
+            continue
+        if new and 0 <= i < len(scenes):
+            scenes[i]["narration"] = new
+    script["scenes"] = scenes
+    if scenes:
+        script["hook"] = scenes[0].get("narration", script.get("hook", ""))
+    return script
+
+
+def generate_script(cfg: dict, topic: str, hero_budget: tuple[int, int],
+                    model_info: dict, *, requested_seconds: float | None = None,
+                    voice_style: str = "adam", want_visuals: bool = True) -> tuple:
+    """Plan -> write -> fix -> length-fit. Returns (script, plan, targets)."""
+    from ..story_planner import build_plan
+
+    t = targets(cfg, hero_budget, requested_seconds, voice_style)
+    plan = build_plan(
+        topic, cfg, model_info,
+        target_seconds=t["target_seconds"],
+        scene_bounds=(t["scene_lo"], t["scene_hi"]),
+        wpm=t["wpm"], calibration=t["calibration"],
+        seed=story_memory.seed_prompt() if not topic else "",
+        avoid=story_memory.avoid_list() if not topic else "",
+    )
+    script = write_script(plan, cfg, model_info, t, want_visuals=want_visuals)
+    script = enforce_doctrine(script, plan, cfg, model_info, t)
+
+    # Length fit on the ESTIMATE now; the voice stage refits against real audio.
+    scenes = script.get("scenes") or []
+    est_each = [scene_seconds(s.get("narration", ""), t["wpm"], t["calibration"])
+                for s in scenes]
+    est = round(sum(est_each), 2)
+    rev = plan_revisions(scenes, est_each, t["target_seconds"], t["max_seconds"])
+    if rev.get("action") in ("compress", "expand") and rev.get("severe"):
+        script = revise_for_duration(script, rev, model_info, t)
+        est = estimate_seconds(script.get("scenes") or [], t["wpm"], t["calibration"])
+    log("info", f"script: {word_count_of(script)} words ≈ {est:.0f}s "
+                f"(target {t['target_seconds']:.0f}s, {t['wpm']} wpm, "
+                f"calib {t['calibration']:.2f})")
+    return script, plan, t
+
+
+# --------------------------------------------------------------------------- #
+# 2) Mock canned scripts (deterministic; the never-fail floor)
 # --------------------------------------------------------------------------- #
 def _scenes(rows):
     return [{"narration": n, "image_prompt": p, "hero": h} for (n, p, h) in rows]

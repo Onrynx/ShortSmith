@@ -5,10 +5,14 @@ Schema:
   "image_prompt":str, "hero":bool} ] (8-15), "description":str, "tags":[str](8-12) }
 
 Rules enforced:
-- 8..15 scenes; each scene has non-empty narration + image_prompt + bool hero.
+- scene count within the caller's bounds; each scene has non-empty narration.
 - scene[0].narration == hook (spoken hook opens the video).
-- hero count within the lane budget (night 8-15, day 3-6 by default).
+- hero count within the render budget.
 - title < 70 chars; 8..12 tags.
+
+Scenes also carry optional planning metadata (`purpose`, `planned_seconds`) set by
+the planner. Nothing here may drop it: the timing/revision stages need to know
+what a scene is FOR before deciding whether it can be shortened.
 
 `validate_script` is strict and returns clear errors. `normalize_script` is a
 lenient repair pass (clamp hero count, truncate title, coerce types, ensure the
@@ -146,14 +150,26 @@ def normalize_script(data: Any, hero_budget: tuple[int, int],
             if not isinstance(sc, dict):
                 continue
             narr = _norm_ws(str(sc.get("narration", "")))
+            if not narr:
+                continue                      # no words = nothing to say, drop it
+            # A scene with narration but no image_prompt used to be DELETED here,
+            # silently throwing away good writing (and shortening the video, which
+            # then triggered expensive "make it longer" passes). The visual is
+            # recoverable; the narration is not — so synthesise one instead.
             img = _norm_ws(str(sc.get("image_prompt", "")))
-            if not narr or not img:
-                continue
-            scenes.append({
+            if not img:
+                img = _norm_ws(str(sc.get("visual", ""))) or "cinematic vertical scene"
+            keep = {
                 "narration": narr,
                 "image_prompt": img,
                 "hero": bool(sc.get("hero", False)),
-            })
+            }
+            # Carry planning metadata through — later stages use it to know what
+            # each scene is FOR when fitting duration or choosing what to trim.
+            for k in ("purpose", "planned_seconds"):
+                if sc.get(k) is not None:
+                    keep[k] = sc[k]
+            scenes.append(keep)
 
     # hook: prefer explicit hook, else first scene narration
     hook = _norm_ws(str(data.get("hook", "")))
