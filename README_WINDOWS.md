@@ -292,7 +292,7 @@ A quoted sentence becomes the literal opening line of the story.
 | Command | What it does |
 |---|---|
 | `!help` | list commands |
-| `!status` | what each lane is doing right now |
+| `!status` | what stage the current render is at (or what's ready) |
 | `!brain` | which AI model is being used |
 | `!pending` | videos waiting for your review |
 | `!review 1` | watch #1 + read its full script |

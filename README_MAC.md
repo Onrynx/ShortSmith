@@ -73,23 +73,74 @@ Two things that surprise first-timers:
 
 ## 4. Install Homebrew
 
-Homebrew installs everything else. Paste this **one line**:
+Homebrew installs everything else. Paste this **one line** and press Enter:
 
 ```bash
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 ```
 
-It asks for your Mac password, then press **Enter** to confirm. Takes ~5 minutes.
+### How long it takes
+- **2–5 minutes** on a Mac that already has Apple's developer tools.
+- **10–25 minutes** on a brand-new Mac, because it first downloads Apple's
+  "Command Line Tools" (~1–2 GB). This is normal — it is the slowest step of the
+  whole setup, and it only ever happens once.
+
+### What you'll see, in order
+
+**1) It asks for your Mac login password:**
+```
+==> Checking for `sudo` access (which may request your password).
+Password:
+```
+> ⚠️ **Type your password and press Enter — the screen will NOT move.** No dots,
+> no stars, no cursor movement. That is macOS hiding your password, not a frozen
+> Terminal. Just type it blind and press Enter.
+
+**2) It lists what it will install, then waits for you:**
+```
+==> This script will install:
+/opt/homebrew/bin/brew
+/opt/homebrew/share/doc/homebrew
+...
+Press RETURN/ENTER to continue or any other key to abort:
+```
+Press **Enter**.
+
+**3) It works.** You'll see lots of scrolling lines like `==> Downloading`,
+`remote: Enumerating objects`, and possibly `==> Installing Command Line Tools
+for Xcode` (that's the long one). Scrolling text = working. Leave it alone.
+
+**4) You're done when you see this:**
+```
+==> Installation successful!
+==> Next steps:
+- Run these commands in your terminal to add Homebrew to your PATH:
+```
+
+`Installation successful!` is the finish line. Now do the step below — the
+installer is literally telling you to.
+
+> **If it says `command not found: brew` later**, you skipped the step below.
 
 ### ⚠️ Apple Silicon (M1/M2/M3/M4) — REQUIRED extra step
-Homebrew isn't on your PATH by default. Nothing will work without this:
+Homebrew isn't on your PATH by default. Nothing will work without this. Run both
+lines (they're instant, and print nothing — that's correct):
 
 ```bash
 echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.zprofile
 eval "$(/opt/homebrew/bin/brew shellenv)"
 ```
 
-Verify: `brew --version` must print a version number.
+Now check it worked:
+```bash
+brew --version
+```
+Expected — a version number, roughly:
+```
+Homebrew 4.x.x
+```
+If you get `command not found: brew`, close Terminal, open it again, and re-run
+the two lines above.
 
 ---
 
@@ -99,6 +150,13 @@ Verify: `brew --version` must print a version number.
 brew install python git ffmpeg
 ```
 
+**Takes 5–15 minutes.** ffmpeg is a big install with many dependencies, so
+expect a long wall of `==> Fetching`, `==> Pouring` and `🍺` beer-mug lines.
+That's normal. You're done when your prompt (`yourname@Mac ~ %`) comes back.
+
+> Seeing `Warning: python@3.x is already installed and up-to-date` is fine —
+> it means you already had it. Not an error.
+
 Verify all three:
 ```bash
 python3 --version
@@ -106,7 +164,14 @@ git --version
 ffmpeg -version
 ```
 
-Each must print a version.
+Expected — a version line from each, roughly:
+```
+Python 3.13.x
+git version 2.4x.x
+ffmpeg version 7.x.x Copyright (c) 2000-2025 the FFmpeg developers
+```
+(`ffmpeg -version` prints ~15 extra lines of build details — that's expected,
+not an error. Only the first line matters.)
 
 > On macOS always type **`python3`** and **`pip3`** — plain `python` is an old
 > Apple version that won't work.
@@ -327,7 +392,7 @@ A quoted sentence becomes the literal opening line of the story.
 | Command | What it does |
 |---|---|
 | `!help` | list commands |
-| `!status` | what each lane is doing right now |
+| `!status` | what stage the current render is at (or what's ready) |
 | `!brain` | which AI model is being used |
 | `!pending` | videos waiting for your review |
 | `!review 1` | watch #1 + read its full script |

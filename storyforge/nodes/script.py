@@ -66,10 +66,27 @@ def node_script(state: dict) -> dict:
             # the visual comes from the user's clips, so asking the model for
             # detailed image prompts burns output tokens nobody reads.
             want_visuals = _visuals_needed(cfg, mock)
+
+            def _published_plan(p: dict) -> None:
+                """Surface the concept the moment it exists, so the bot can say
+                what this video is actually about while it's still writing."""
+                progress(state, "script",
+                         f"writing: {str(p.get('logline',''))[:110]}",
+                         extra={"logline": p.get("logline"),
+                                "structure": p.get("structure"),
+                                "beats": len(p.get("beats") or [])})
+
+            def _published_progress(info: dict) -> None:
+                progress(state, "script",
+                         f"writing scene {info['scenes_written']}/{info['scenes_total']} "
+                         f"({info['words_written']} words)",
+                         extra=info)
+
             script_raw, plan, t = generate_script(
                 cfg, topic, hero_budget, model_info,
                 requested_seconds=state.get("requested_seconds"),
                 voice_style=style_name, want_visuals=want_visuals,
+                on_plan=_published_plan, on_progress=_published_progress,
             )
             script = _finalize(script_raw, hero_budget, (t["scene_lo"], t["scene_hi"]))
             source = "plan"

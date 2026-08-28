@@ -18,8 +18,47 @@ from __future__ import annotations
 import argparse
 import sys
 
-from storyforge.config import list_channels
+from storyforge.config import list_channels, load_channel, lane_budget
 from storyforge.graph import run_one
+
+
+def _dry_run(channel: str, args) -> int:
+    """Plan + write the story and print it, without touching audio or video.
+
+    Renders take 8-15 minutes, which makes judging story quality painfully slow.
+    This runs only the parts that decide whether a video is any good.
+    """
+    from storyforge.crews.story_crew import generate_script
+    from storyforge.llm import select_model
+    from storyforge.timing import estimate_seconds
+
+    cfg = load_channel(channel)
+    model_info = select_model(args.mock)
+    print(f"brain: {model_info['backend']}/{model_info['model']}\n")
+    script, plan, t = generate_script(
+        cfg, args.topic, lane_budget(cfg, "render"), model_info,
+        requested_seconds=args.seconds,
+        voice_style=args.voice or "adam",
+    )
+    est = estimate_seconds(script["scenes"], t["wpm"], t["calibration"])
+    words = sum(len(s["narration"].split()) for s in script["scenes"])
+    off = 100 * (est - t["target_seconds"]) / max(t["target_seconds"], 1)
+
+    print(f"\nSTRUCTURE : {plan.get('structure')} — {plan.get('why_structure','')}")
+    print(f"LOGLINE   : {plan.get('logline')}")
+    print(f"SETTING   : {plan.get('setting')}")
+    if plan.get("theme"):
+        print(f"THEME     : {plan.get('theme')}")
+    print(f"TITLE     : {script.get('title')}")
+    print(f"LENGTH    : {words} words ≈ {est:.0f}s vs target "
+          f"{t['target_seconds']:.0f}s ({off:+.0f}%)\n")
+    print("-" * 60)
+    for i, s in enumerate(script["scenes"], 1):
+        purpose = s.get("purpose", "?")
+        print(f"[{i:2}] ({purpose})\n     {s['narration']}")
+    print("-" * 60)
+    print("\n(dry run — nothing was rendered)")
+    return 0
 
 
 def main(argv=None) -> int:
@@ -36,6 +75,10 @@ def main(argv=None) -> int:
                         "revises the story to actually fit it")
     p.add_argument("--run-id", default=None, help="resume an existing run id")
     p.add_argument("--list", action="store_true", help="list channels and exit")
+    p.add_argument("--dry-run", action="store_true",
+                   help="plan + write the story and print it, WITHOUT rendering "
+                        "audio or video (seconds, not minutes — use this to test "
+                        "story quality and pacing)")
     args = p.parse_args(argv)
 
     channels = list_channels()
@@ -53,6 +96,9 @@ def main(argv=None) -> int:
     print("=" * 60)
     print(f"StoryForge · channel={channel} · mock={args.mock}")
     print("=" * 60)
+
+    if args.dry_run:
+        return _dry_run(channel, args)
 
     state = run_one(channel, args.lane, mock=args.mock, publish=args.publish,
                     topic=args.topic, run_id=args.run_id, voice=args.voice,

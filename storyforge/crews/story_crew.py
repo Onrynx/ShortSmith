@@ -138,12 +138,20 @@ _SYS_WRITE = (
 
 
 def _beat_block(beats: list, start_index: int) -> str:
-    """Render the beats of this chunk as explicit, individually-budgeted jobs."""
+    """Render the beats of this chunk as explicit, individually-budgeted jobs.
+
+    The word count is stated as a hard floor with a sentence count, because a
+    small model handed "about 20 words" reliably writes 11 — it treats the number
+    as a ceiling. Saying "at least N words, that is X sentences" fixes it.
+    """
     out = []
     for i, b in enumerate(beats):
+        words = int(b.get("words", 30) or 30)
+        sentences = max(2, round(words / 12))
         out.append(
-            f"BEAT {start_index + i + 1} — purpose: {b.get('purpose','develop')} "
-            f"(~{b.get('seconds', 8)}s, about {b.get('words', 30)} spoken words)\n"
+            f"BEAT {start_index + i + 1} — purpose: {b.get('purpose','develop')}\n"
+            f"  LENGTH: write AT LEAST {words} spoken words for this beat "
+            f"(roughly {sentences} full sentences). Shorter than that is a failure.\n"
             f"  what happens: {b.get('what_happens','')}\n"
             f"  the viewer should now understand/feel: {b.get('why_it_matters','')}\n"
             f"  on screen: {b.get('visual','')}"
@@ -175,7 +183,7 @@ def _pacing_note(beats: list) -> str:
 
 
 def write_script(plan: dict, cfg: dict, model_info: dict, t: dict, *,
-                 want_visuals: bool = True) -> dict:
+                 want_visuals: bool = True, on_progress=None) -> dict:
     """Write the full script from a plan. Chunked, plan-faithful, continuity-safe.
 
     Chunking exists because small local models degrade over long generations, not
@@ -215,7 +223,13 @@ Write the SPOKEN narration, in order, one entry per beat. Hit each beat's stated
 purpose and use roughly its word budget — that budget is how the video's pacing
 was designed, so a beat with more words is meant to breathe.
 Write in the narrator's voice described in the plan. Do not write stage
-directions, scene labels, or commentary about the story.{visual_rule}"""
+directions, scene labels, or commentary about the story.
+
+Reach for the specific, not the stock phrase. "She taught me the ropes", "my
+heart sank", "sick to my stomach", "little did I know", "everything changed" are
+what writing sounds like when nobody chose the words. Say the actual thing
+instead: what was on the screen, what she said, what he did with his hands. One
+precise detail beats three sentences of feeling-words.{visual_rule}"""
 
     if opening_line:
         base += (f'\n\nTHE FIRST SPOKEN SENTENCE MUST BE EXACTLY, WORD FOR WORD:\n'
@@ -240,9 +254,12 @@ directions, scene labels, or commentary about the story.{visual_rule}"""
                         'punctuation spam), "description" (2 sentences) and '
                         '"tags" (8-12 lowercase tags).')
 
+        need_words = sum(int(b.get("words", 30) or 30) for b in group)
         user = (base + continuity +
                 f"\n\nWRITE THESE BEATS NOW:\n{_beat_block(group, start)}\n\n"
-                f"{_pacing_note(group)}{ask_meta}\n\n"
+                f"{_pacing_note(group)}\n"
+                f"These {len(group)} beats together must total AT LEAST "
+                f"{need_words} spoken words. Count as you write.{ask_meta}\n\n"
                 'Return ONLY strict JSON: {"scenes":[{"narration":"the spoken words"'
                 + visual_field + "}]" + (', "title":"...","description":"...","tags":["..."]'
                                          if not scenes else "") + "}")
@@ -271,8 +288,16 @@ directions, scene labels, or commentary about the story.{visual_rule}"""
                 vis = b.get("visual") or plan.get("setting") or ""
                 sc["image_prompt"] = f"{vis}, {style}".strip(", ")
         scenes.extend(got[:len(group)])
-        log("info", f"wrote beats {start+1}-{start+len(got)} "
-                    f"({sum(len(str(s.get('narration','')).split()) for s in scenes)} words so far)")
+        written = sum(len(str(s.get("narration", "")).split()) for s in scenes)
+        log("info", f"wrote beats {start+1}-{start+len(got)} ({written} words so far)")
+        if on_progress:
+            try:
+                on_progress({"scenes_written": len(scenes),
+                             "scenes_total": len(beats),
+                             "words_written": written,
+                             "opening": scenes[0].get("narration", "")[:300]})
+            except Exception:  # noqa: BLE001
+                pass
 
     if not scenes:
         raise ValueError("writer produced no scenes")
@@ -294,7 +319,10 @@ directions, scene labels, or commentary about the story.{visual_rule}"""
 _SYS_REVISE = (
     "You are a script editor. You tighten or develop specific scenes of a story "
     "to hit a runtime, without changing what happens. You never delete plot, "
-    "never add new events, and never pad with filler. You return strict JSON only."
+    "never add new events, and never pad with filler. While you are rewriting a "
+    "line you also replace stock phrases — 'my heart sank', 'hit me like a wave', "
+    "'sick to my stomach', 'little did I know', 'everything changed' — with the "
+    "specific thing that actually happened. You return strict JSON only."
 )
 
 
@@ -343,42 +371,48 @@ def revise_for_duration(script: dict, revisions: dict, model_info: dict,
                "events and do not contradict anything. Never pad with filler or "
                "restate what was already said.")
 
-    user = (f"{how}\n\nEach scene below has a target_words. Rewrite ONLY the "
-            f"narration of each, keeping its index.\n\n"
-            + json.dumps({"scenes": jobs}, ensure_ascii=False)
-            + '\n\nReturn ONLY: {"scenes":[{"index":0,"narration":"..."}]}')
-
-    try:
-        out = extract_json(complete(_SYS_REVISE, user, model_info, json_mode=True,
-                                    temperature=0.6, timeout=600))
-    except Exception as exc:  # noqa: BLE001
-        log("warn", f"duration revision failed ({exc}); keeping draft")
-        return script
-
+    # Revise in SMALL BATCHES. Handing a small local model a dozen scenes at once
+    # reliably gets one or two back — a live run asked for ~10 expansions and got
+    # exactly 1, leaving the video 30% short. Four at a time it does properly.
+    BATCH = 4
     updated = 0
-    for item in out.get("scenes") or []:
+    for b in range(0, len(jobs), BATCH):
+        group = jobs[b:b + BATCH]
+        user = (f"{how}\n\nEach scene below has a target_words. Rewrite ONLY the "
+                f"narration of each, keeping its index. Return ALL "
+                f"{len(group)} scenes.\n\n"
+                + json.dumps({"scenes": group}, ensure_ascii=False)
+                + '\n\nReturn ONLY: {"scenes":[{"index":0,"narration":"..."}]}')
         try:
-            i = int(item.get("index"))
-            new = str(item.get("narration", "")).strip()
-        except Exception:
+            out = extract_json(complete(_SYS_REVISE, user, model_info,
+                                        json_mode=True, temperature=0.6,
+                                        timeout=600))
+        except Exception as exc:  # noqa: BLE001
+            log("warn", f"duration revision batch failed ({exc}); skipping batch")
             continue
-        if not new or not (0 <= i < len(scenes)):
-            continue
-        old_n = len(str(scenes[i].get("narration", "")).split())
-        new_n = len(new.split())
-        # only accept a change that actually moves in the requested direction
-        if action == "compress" and new_n >= old_n:
-            continue
-        if action == "expand" and new_n <= old_n:
-            continue
-        scenes[i]["narration"] = new
-        updated += 1
+        for item in out.get("scenes") or []:
+            try:
+                i = int(item.get("index"))
+                new = str(item.get("narration", "")).strip()
+            except Exception:
+                continue
+            if not new or not (0 <= i < len(scenes)):
+                continue
+            old_n = len(str(scenes[i].get("narration", "")).split())
+            new_n = len(new.split())
+            # only accept a change that actually moves in the requested direction
+            if action == "compress" and new_n >= old_n:
+                continue
+            if action == "expand" and new_n <= old_n:
+                continue
+            scenes[i]["narration"] = new
+            updated += 1
 
     if updated:
         script["scenes"] = scenes
         if scenes:
             script["hook"] = scenes[0].get("narration", script.get("hook", ""))
-        log("info", f"duration revision: {action}ed {updated} scene(s)")
+        log("info", f"duration revision: {action}ed {updated}/{len(jobs)} scene(s)")
     return script
 
 
@@ -437,11 +471,20 @@ def enforce_doctrine(script: dict, plan: dict, cfg: dict, model_info: dict,
 
 def generate_script(cfg: dict, topic: str, hero_budget: tuple[int, int],
                     model_info: dict, *, requested_seconds: float | None = None,
-                    voice_style: str = "adam", want_visuals: bool = True) -> tuple:
-    """Plan -> write -> fix -> length-fit. Returns (script, plan, targets)."""
+                    voice_style: str = "adam", want_visuals: bool = True,
+                    on_plan=None, on_progress=None) -> tuple:
+    """Plan -> write -> fix -> length-fit. Returns (script, plan, targets).
+
+    `on_plan`/`on_progress` let the caller publish live detail (the logline, the
+    lines written so far) while this runs, so the bot can answer "what stage is
+    it in, show me a sample" with something real instead of a stage name.
+    """
     from ..story_planner import build_plan
 
     t = targets(cfg, hero_budget, requested_seconds, voice_style)
+    # Kokoro voice ids encode gender: am_* / bm_* are male, af_* / bf_* female.
+    voice_id = str(cfg.get("voice", "am_adam"))
+    narrator_gender = "female" if voice_id[:2] in ("af", "bf") else "male"
     plan = build_plan(
         topic, cfg, model_info,
         target_seconds=t["target_seconds"],
@@ -449,19 +492,38 @@ def generate_script(cfg: dict, topic: str, hero_budget: tuple[int, int],
         wpm=t["wpm"], calibration=t["calibration"],
         seed=story_memory.seed_prompt() if not topic else "",
         avoid=story_memory.avoid_list() if not topic else "",
+        narrator_gender=narrator_gender,
     )
-    script = write_script(plan, cfg, model_info, t, want_visuals=want_visuals)
+    if on_plan:
+        try:
+            on_plan(plan)
+        except Exception:  # noqa: BLE001 — telemetry must never break a render
+            pass
+    script = write_script(plan, cfg, model_info, t, want_visuals=want_visuals,
+                          on_progress=on_progress)
     script = enforce_doctrine(script, plan, cfg, model_info, t)
 
     # Length fit on the ESTIMATE now; the voice stage refits against real audio.
-    scenes = script.get("scenes") or []
-    est_each = [scene_seconds(s.get("narration", ""), t["wpm"], t["calibration"])
-                for s in scenes]
-    est = round(sum(est_each), 2)
-    rev = plan_revisions(scenes, est_each, t["target_seconds"], t["max_seconds"])
-    if rev.get("action") in ("compress", "expand") and rev.get("severe"):
+    # Iterate: one pass rarely closes a big gap, and estimates are free compared
+    # with re-rendering audio later.
+    est = 0.0
+    for attempt in range(3):
+        scenes = script.get("scenes") or []
+        est_each = [scene_seconds(s.get("narration", ""), t["wpm"], t["calibration"])
+                    for s in scenes]
+        est = round(sum(est_each), 2)
+        rev = plan_revisions(scenes, est_each, t["target_seconds"], t["max_seconds"])
+        if rev.get("action") == "ok" or not rev.get("targets"):
+            break
+        before = est
         script = revise_for_duration(script, rev, model_info, t)
-        est = estimate_seconds(script.get("scenes") or [], t["wpm"], t["calibration"])
+        after = estimate_seconds(script.get("scenes") or [], t["wpm"], t["calibration"])
+        log("info", f"length fit {attempt+1}: {before:.0f}s -> {after:.0f}s "
+                    f"(target {t['target_seconds']:.0f}s)")
+        if abs(after - before) < 1.0:      # not moving; stop burning model calls
+            est = after
+            break
+        est = after
     log("info", f"script: {word_count_of(script)} words ≈ {est:.0f}s "
                 f"(target {t['target_seconds']:.0f}s, {t['wpm']} wpm, "
                 f"calib {t['calibration']:.2f})")

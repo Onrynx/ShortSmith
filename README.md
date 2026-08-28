@@ -15,12 +15,16 @@ approval. Nothing is uploaded anywhere until *you* do it.
 
 ## What one video actually contains
 
-- 📱 **Vertical 9:16, ~2.5–2.9 min** (a random length each run; capped under
-  YouTube's 3-minute Shorts limit).
-- ✍️ **An original story**, written by a local AI, in the viral Reddit-confession
-  style — first person, male narrator, conflict in the first sentence, a twist,
-  and a comment-bait ending. An enforced "story doctrine" rejects fantasy / AI
-  slop and rewrites it; a memory of past videos prevents repeats.
+- 📱 **Vertical 9:16** — by default a random 2.5–2.9 min (under YouTube's
+  3-minute Shorts limit), or **any length you ask for**: say *"make it 45
+  seconds"* and the AI plans, measures the real narration audio, and revises the
+  story until it genuinely fits.
+- ✍️ **An original story**, developed by a local AI from whatever you give it —
+  a vague gist (*"a guy who finds something strange in his house"*), a theme
+  (*"revolve it around loneliness"*), a real historical subject, or an exact
+  opening line. It invents the premise, cast and setting, and **chooses the
+  structure to suit that story** rather than forcing every idea through one
+  formula. A memory of past videos prevents repeats.
 - 🎙️ **AI narration** — the deep "Adam" voice or a high-pitched "squeaky" one
   (you pick in chat). Fast pacing (~177 wpm), the viral range.
 - 🎮 **Gameplay background** — your own Minecraft-parkour clips, a *random clip
@@ -34,15 +38,19 @@ approval. Nothing is uploaded anywhere until *you* do it.
 ## How it works
 
 ```
-You in Discord:  "make me a short"
+You in Discord:  "make me a short about my uncle's will, 45 seconds"
         │                       Valentine (your bot) asks: Adam or squeaky?
         ▼
    Your laptop runs the 5-stage pipeline:
    script ─► voice ─► canvas ─► cutter ─► herald
      │        │         │         │         │
-  local AI  Kokoro   parkour    FFmpeg:   thumbnail +
-  (Ollama)  TTS      background  captions  saved to
-  writes    narrates + crop 9:16 + music   output/…/pending/
+   plan +   Kokoro   parkour    FFmpeg:   thumbnail +
+   write    TTS      background  captions  saved to
+  (Ollama)  narrates + crop 9:16 + music   output/…/pending/
+     │        │
+     │        └─ measures the REAL audio length, and if the video would
+     │           miss your target it revises those scenes and re-voices them
+     └─ develops your idea → picks a structure → budgets seconds per beat
         │
         ▼
    The finished video posts itself back into your Discord channel
@@ -61,7 +69,8 @@ ever leaked the worst anyone could do is post messages.
 
 | Job | What actually runs by default | Free? |
 |---|---|---|
-| **Story writing** | one local model, **qwen2.5:14b via Ollama**, using a chunked-continuation loop + the enforced story doctrine + anti-repeat memory | ✅ local |
+| **Story planning** | **qwen2.5:14b via Ollama** develops your idea into a premise, cast, setting and beat sheet — and picks the story's structure itself | ✅ local |
+| **Story writing** | the same local model writes the narration to those beats, with per-beat time budgets + anti-repeat memory | ✅ local |
 | **Orchestration** | a lightweight built-in pipeline runner (`run_lite`) | ✅ |
 | **Voice** | **Kokoro** (`am_adam`), local, commercial-safe | ✅ local |
 | **Caption sync** | **faster-whisper** (`tiny`) | ✅ local |
@@ -124,9 +133,15 @@ Once installed and the bot is online, in your Discord channel:
 ```
 !here                                  ← one time: talk without @mentioning
 make me a short                        ← it asks Adam or squeaky, then renders
-make a short about my uncle's will      ← give it your own subject
+make a short about my uncle's will      ← a subject; it invents the rest
+revolve the story around loneliness     ← a theme, made structural
+make a 45 second short about a bad job interview   ← any length you want
 make a video "My wife hid a second phone for a year"   ← a quote becomes the opening line
 ```
+
+You don't have to spell out a plot. A gist is enough — the planner decides the
+premise, the people, the shape and the ending. While it works you can ask
+**what stage is it in** or **show me a sample** and it answers from the real run.
 
 The finished video posts itself back in ~8–15 minutes. Then:
 

@@ -173,8 +173,13 @@ _PROGRESS_RE = re.compile(
     r"\b(how\s+(much\s+)?(time|long)|time\s+left|eta|is\s+it\s+(done|ready|finished|rendering|going)|"
     r"still\s+(going|rendering|working|cooking)|how\s+far|are\s+(we|you)\s+(done|there)|"
     r"almost\s+(done|there)|any\s+update|what'?s\s+(happening|going\s+on|the\s+status)|"
+    r"what\s+stage|which\s+stage|where\s+(is\s+it|are\s+we)\s+(at|now)?|what'?s\s+it\s+doing|"
     r"continue(\s+the)?(\s+video|\s+render(ing)?|\s+process)?|keep\s+going|hurry|"
     r"(done|ready|finished)\s+yet)\b", re.I)
+# "show me a sample / preview / what's it written so far"
+_SAMPLE_RE = re.compile(
+    r"\b(sample|preview|sneak\s*peek|what.{0,12}(written|got)\s+so\s+far|"
+    r"show\s+me\s+(what|some|a\s+bit)|snippet|excerpt|first\s+few\s+lines)\b", re.I)
 
 # channel_id -> pending video request awaiting a voice choice
 _awaiting: dict[int, dict] = {}
@@ -347,9 +352,37 @@ def _render_progress() -> str:
     step = _STAGE_ORDER.index(stage) + 1 if stage in _STAGE_ORDER else "?"
     mins = _elapsed_min(st)
     when = f" — running **{mins:.0f} min** so far" if mins is not None else ""
-    return (f"{icon} Still rendering — **step {step}/5**: {human}{when}.\n"
-            "The whole thing usually takes **8–15 min** and posts here automatically "
-            "when it's done, so there's no need to wait in chat.")
+    lines = [f"{icon} Still rendering — **step {step}/5**: {human}{when}."]
+    # Real detail from the run itself, when the script stage has produced any.
+    if st.get("logline"):
+        lines.append(f"📖 It's writing: _{str(st['logline'])[:180]}_")
+    if st.get("structure"):
+        lines.append(f"🧩 Shape: **{st['structure']}** · {st.get('beats','?')} beats")
+    if st.get("scenes_written"):
+        lines.append(f"✍️ {st['scenes_written']}/{st.get('scenes_total','?')} scenes "
+                     f"written ({st.get('words_written','?')} words)")
+    lines.append("It posts here automatically when it's done (usually **8–15 min**), "
+                 "so there's no need to wait in chat.")
+    return "\n".join(lines)
+
+
+def _sample_reply() -> str:
+    """Answer 'show me a sample' with the real opening lines, if they exist yet."""
+    st = _render_state()
+    opening = str(st.get("opening") or "").strip()
+    logline = str(st.get("logline") or "").strip()
+    if opening:
+        return (f"📝 Here's the opening it has written so far:\n\n> {opening[:600]}\n\n"
+                f"_({st.get('scenes_written','?')}/{st.get('scenes_total','?')} scenes "
+                "done — the full script comes with the video.)_")
+    if logline:
+        return (f"It's still writing, but here's the story it planned:\n\n> {logline[:400]}\n\n"
+                "_The opening lines will be available in a minute or two._")
+    if _render_progress().startswith("✅"):
+        return ("The video's finished — use `!review 1` to read its full script and "
+                "watch it.")
+    return ("Nothing written yet — it's still planning the story. Ask again in a "
+            "minute and I'll show you the opening lines.")
 
 
 def _pick_channel(text: str) -> str:
@@ -470,8 +503,10 @@ def fast_route(text: str, channel_id: int, is_admin: bool) -> str | None:
         _awaiting[channel_id] = {"channel": channel, "topic": topic, "seconds": secs}
         return _VOICE_Q
 
-    # 3) "how long left / is it done / continue / how's it going" -> REAL state.
-    #    This must beat the LLM, which invents fake night/day lanes and stages.
+    # 3) "how long left / what stage / show me a sample" -> REAL state.
+    #    This must beat the LLM, which invents stages and has no way to see a run.
+    if _SAMPLE_RE.search(t):
+        return _sample_reply()
     if _PROGRESS_RE.search(t) or _STATUS_RE.match(t):
         return _render_progress()
 
@@ -527,13 +562,27 @@ def handle(text: str, channel_id: int, is_admin: bool = True) -> str:
                 f"render right now={_live_render_phrase(s)}.")
     except Exception:
         live = "LIVE STATE: unavailable"
+    # While a render is running, the local GPU is busy writing the story, so a
+    # chat call queues behind it. Give it much longer before giving up, rather
+    # than timing out and looking broken exactly when the user is most curious.
+    try:
+        busy = control.render_in_progress()
+    except Exception:
+        busy = False
     try:
         raw = complete(_SYS, f"{live}\n\nRecent chat:\n{convo}\n\nuser: {text}", mi,
-                       json_mode=True, temperature=0.4, timeout=150)
+                       json_mode=True, temperature=0.4, timeout=420 if busy else 150)
         data = json.loads(raw[raw.index("{"):raw.rindex("}") + 1])
     except Exception as exc:  # noqa: BLE001
-        log("warn", f"nl_agent parse: {exc}")
-        return "Sorry, my brain glitched — try again or use `!help` commands."
+        log("warn", f"nl_agent chat failed: {exc}")
+        # Never answer with a shrug when we have real facts on disk.
+        if busy:
+            return (_render_progress() +
+                    "\n\n_(My chat brain is tied up writing the story right now, so "
+                    "I'm answering from the render itself.)_")
+        return ("I couldn't get a reply out of the local model just now. The "
+                "commands all still work — `!status`, `!pending`, `!review 1` — "
+                "and **make me a short** starts a video.")
     say = str(data.get("say") or "")
     act = data.get("action")
     out = say

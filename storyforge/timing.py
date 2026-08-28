@@ -25,7 +25,11 @@ from pathlib import Path
 from .utils import STATE_DIR, log, read_json, write_json
 
 # --- one place for every timing constant (previously scattered as literals) --- #
-BASE_WPM = 150.0          # Kokoro's nominal pace at speed 1.0
+# MEASURED, not assumed: a real render produced 399 words of Kokoro narration in
+# 96s at engine speed 1.30 — that is 249 wpm delivered, i.e. ~191 wpm at 1.0x.
+# The old value of 150 under-estimated every video by ~27%, which is why scripts
+# kept coming out short and the cutter had to paper over it.
+BASE_WPM = 190.0          # Kokoro's real pace at speed 1.0
 PAUSE_SENTENCE = 0.22     # breath after a sentence-ending . ! ?
 PAUSE_CLAUSE = 0.07       # shorter beat after , ; : — (dash)
 PAUSE_SCENE = 0.28        # gap between scenes (transition beat)
@@ -48,8 +52,15 @@ def word_count(text: str) -> int:
 # Calibration — learn the engine's real pace from audio we actually rendered
 # --------------------------------------------------------------------------- #
 def load_calibration(voice_style: str = "adam") -> float:
-    """Measured seconds-per-word ratio vs. our model, per voice style."""
+    """Measured seconds-per-word ratio vs. our model, per voice style.
+
+    Calibration is only meaningful relative to the BASE_WPM it was learned
+    against, so a change to that constant discards the old factors rather than
+    correcting twice.
+    """
     data = read_json(_CALIB_FILE, {}) or {}
+    if float(data.get("base_wpm", 0) or 0) != BASE_WPM:
+        return _CALIB_DEFAULT
     entry = data.get(voice_style) or {}
     try:
         val = float(entry.get("factor", _CALIB_DEFAULT))
@@ -73,6 +84,9 @@ def record_calibration(voice_style: str, scenes: list, measured_total: float,
         return load_calibration(voice_style)
     observed = measured_total / predicted
     data = read_json(_CALIB_FILE, {}) or {}
+    if float(data.get("base_wpm", 0) or 0) != BASE_WPM:
+        data = {"base_wpm": BASE_WPM}       # constant changed: relearn from scratch
+    data["base_wpm"] = BASE_WPM
     entry = data.get(voice_style) or {}
     prev = float(entry.get("factor", _CALIB_DEFAULT) or _CALIB_DEFAULT)
     runs = int(entry.get("runs", 0) or 0)

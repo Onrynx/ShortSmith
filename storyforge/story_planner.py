@@ -206,6 +206,11 @@ def _normalize_plan(plan: dict, target_seconds: float, scene_bounds: tuple,
     # Floor every beat, then re-normalise so the floors don't inflate the total.
     for b in beats:
         b["seconds"] = max(3.0, b["seconds"])
+    # Hard cap the opening: a live run produced a 12-second beat of someone
+    # describing their daily routine, which is description, not a hook. Time
+    # taken off the opening goes back to the beats that actually need it.
+    if beats and beats[0]["seconds"] > 8.0:
+        beats[0]["seconds"] = 8.0
     total = sum(b["seconds"] for b in beats)
     scale = target_seconds / total if total > 0 else 1.0
     for b in beats:
@@ -220,7 +225,7 @@ def _normalize_plan(plan: dict, target_seconds: float, scene_bounds: tuple,
 
 def build_plan(brief: str, cfg: dict, model_info: dict, *, target_seconds: float,
                scene_bounds: tuple, wpm: float, calibration: float = 1.0,
-               avoid: str = "", seed: str = "") -> dict:
+               avoid: str = "", seed: str = "", narrator_gender: str = "male") -> dict:
     """Develop a brief into a full story plan. One model call. Never raises."""
     lo, hi = scene_bounds
     mode = cfg.get("story_mode", "real_life_drama")
@@ -244,9 +249,20 @@ def build_plan(brief: str, cfg: dict, model_info: dict, *, target_seconds: float
 
     freshness = f"\n{seed}\n{avoid}\n" if (seed or avoid) and kind in ("open",) else ""
 
+    # The TTS voice is a fixed gender, so the person telling the story has to
+    # match it or the finished video sounds wrong. This is a hardware constraint,
+    # not a creative one — other characters can be anyone.
+    voice_rule = (
+        f"THE NARRATOR IS {narrator_gender.upper()}. The video is read aloud by a "
+        f"{narrator_gender} voice, so whoever tells this story must be {narrator_gender}. "
+        "Other characters can be any gender. Do not make the narrator "
+        f"{'female' if narrator_gender == 'male' else 'male'}."
+    )
+
     user = f"""{guide}
 
 {register}
+{voice_rule}
 Channel niche: {cfg.get('niche')}
 Visual style available: {cfg.get('style')}
 NEVER include: {cfg.get('banned')}
@@ -267,6 +283,15 @@ But do NOT pad. Establish with specific, concrete detail (a name, an object, a
 habit, one line of dialogue), not with general description. When a beat's job is
 done, move.
 
+THE OPENING IS A SPECIAL CASE. Establishing does not mean starting boring. The
+first beat has to do BOTH jobs at once: ground the viewer AND give them a reason
+to stay. A plain description of someone's daily routine is not a reason to stay.
+Something must be slightly off, unresolved, or unusually specific — a detail
+that raises a question the viewer wants answered. You do not have to state the
+conflict in the first line (that is a cliché of its own), but nothing may be
+inert. Keep the opening beat SHORT — roughly 4 to 8 seconds. If it is longer
+than that, it is description, not a hook.
+
 Decide for yourself:
 - how long the opening should be before anything goes wrong
 - whether this story even HAS a twist (many good stories do not)
@@ -281,7 +306,7 @@ For EACH beat give:
   visual       what is literally ON SCREEN for this beat
 
 Return ONLY strict JSON:
-{{"premise":"...","logline":"one sentence","setting":"...","narrator":"who is telling it and how",
+{{"premise":"...","logline":"one sentence","setting":"...","narrator":"who is telling it ({narrator_gender}, first person)",
  "cast":[{{"name":"...","role":"..."}}],"theme":"what it's really about",
  "structure":"chosen shape","why_structure":"why this shape suits this idea",
  "tone":"...","ending_kind":"...","title_idea":"...",
