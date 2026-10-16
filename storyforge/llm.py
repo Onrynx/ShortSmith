@@ -152,6 +152,9 @@ def complete(system: str, user: str, model_info: dict,
              timeout: float = 180.0) -> str:
     """Chat-complete against the selected backend. Raises on failure."""
     backend = model_info.get("backend")
+    # Context/output limits are per-model, not global — see model_profiles.
+    from .model_profiles import profile_for
+    _prof = profile_for(model_info.get("model", ""))
     if backend == "odysseus":
         headers = _ody_headers()
         payload = {
@@ -180,10 +183,13 @@ def complete(system: str, user: str, model_info: dict,
             "stream": False,
             # Ollama defaults to a 4096 context — far too small once the story
             # doctrine + the draft being continued are in the prompt, which
-            # silently truncates and produces stubby scripts.
+            # silently truncates and produces stubby scripts. The right size
+            # depends on the model: a 14B can hold 16k comfortably, a 1.5B
+            # cannot, so these come from the model's profile. An explicit env
+            # var still wins, for anyone who wants to override by hand.
             "options": {"temperature": temperature,
-                        "num_ctx": int(env("OLLAMA_NUM_CTX", "16384") or 16384),
-                        "num_predict": int(env("OLLAMA_NUM_PREDICT", "2048") or 2048)},
+                        "num_ctx": int(env("OLLAMA_NUM_CTX", "") or _prof["num_ctx"]),
+                        "num_predict": int(env("OLLAMA_NUM_PREDICT", "") or _prof["num_predict"])},
         }
         if json_mode:
             payload["format"] = "json"

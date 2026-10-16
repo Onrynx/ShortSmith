@@ -25,6 +25,7 @@ import re
 
 from ..config import format_spec
 from ..llm import complete
+from ..model_profiles import profile_for
 from ..story_doctrine import DOCTRINE, violations
 from ..timing import (estimate_seconds, load_calibration, plan_revisions,
                       scene_seconds, words_for_seconds, wpm_for)
@@ -77,16 +78,26 @@ def word_count_of(script: dict) -> int:
 
 def targets(cfg: dict, hero_budget: tuple[int, int],
             requested_seconds: float | None = None,
-            voice_style: str = "adam") -> dict:
+            voice_style: str = "adam", model: str = "") -> dict:
     """Resolve what this run is aiming for — length, scenes, pace, calibration.
 
     `requested_seconds` is an explicit user request ("make it 45 seconds") and
-    always wins over the channel's configured window.
+    always wins over the channel's configured window. `model` pulls in that
+    model's profile, so a smaller writer gets fewer scenes and more attempts at
+    hitting the length rather than being asked for work it can't do.
     """
     spec = format_spec(cfg)
     lo_s, hi_s = spec["scene_bounds"]
     calibration = load_calibration(voice_style)
     wpm = wpm_for(spec.get("voice_speed", 1.18))
+    prof = profile_for(model)
+    scale = float(prof.get("scene_scale", 1.0))
+    if scale < 1.0:
+        # Fewer, slightly longer scenes: a small model writes one good scene
+        # more reliably than two thin ones. Scale the floor FIRST — using the
+        # unscaled floor in the ceiling's guard stops the range shrinking at all.
+        lo_s = max(3, int(round(lo_s * scale)))
+        hi_s = max(lo_s + 1, int(round(hi_s * scale)))
 
     if requested_seconds and requested_seconds > 0:
         target_seconds = float(requested_seconds)
@@ -116,6 +127,9 @@ def targets(cfg: dict, hero_budget: tuple[int, int],
         "scene_lo": lo_s, "scene_hi": hi_s,
         "hero_lo": hero_budget[0], "hero_hi": hero_budget[1],
         "requested": bool(requested_seconds),
+        # model-dependent knobs, resolved once so every stage agrees
+        "tier": prof["tier"], "fit_rounds": prof["fit_rounds"],
+        "plan_detail": prof["plan_detail"], "llm_timeout": prof["timeout"],
     }
 
 
@@ -235,7 +249,9 @@ precise detail beats three sentences of feeling-words.{visual_rule}"""
         base += (f'\n\nTHE FIRST SPOKEN SENTENCE MUST BE EXACTLY, WORD FOR WORD:\n'
                  f'"{opening_line}"')
 
-    CHUNK = 4
+    # How many beats to write per request. A 14B model handles four at a time;
+    # a 3B model handed four produces mush, so the profile shrinks the ask.
+    CHUNK = profile_for(model_info.get("model", ""))["beats_per_call"]
     scenes: list = []
     meta: dict = {}
 
@@ -373,8 +389,9 @@ def revise_for_duration(script: dict, revisions: dict, model_info: dict,
 
     # Revise in SMALL BATCHES. Handing a small local model a dozen scenes at once
     # reliably gets one or two back — a live run asked for ~10 expansions and got
-    # exactly 1, leaving the video 30% short. Four at a time it does properly.
-    BATCH = 4
+    # exactly 1, leaving the video 30% short. Four at a time it does properly,
+    # and smaller models need an even shorter list (see model_profiles).
+    BATCH = profile_for(model_info.get("model", ""))["revision_batch"]
     updated = 0
     for b in range(0, len(jobs), BATCH):
         group = jobs[b:b + BATCH]
@@ -481,7 +498,8 @@ def generate_script(cfg: dict, topic: str, hero_budget: tuple[int, int],
     """
     from ..story_planner import build_plan
 
-    t = targets(cfg, hero_budget, requested_seconds, voice_style)
+    t = targets(cfg, hero_budget, requested_seconds, voice_style,
+                model=model_info.get("model", ""))
     # Kokoro voice ids encode gender: am_* / bm_* are male, af_* / bf_* female.
     voice_id = str(cfg.get("voice", "am_adam"))
     narrator_gender = "female" if voice_id[:2] in ("af", "bf") else "male"
@@ -506,8 +524,10 @@ def generate_script(cfg: dict, topic: str, hero_budget: tuple[int, int],
     # Length fit on the ESTIMATE now; the voice stage refits against real audio.
     # Iterate: one pass rarely closes a big gap, and estimates are free compared
     # with re-rendering audio later.
+    # Smaller models move less per pass, so they're allowed more attempts to
+    # land on the requested duration.
     est = 0.0
-    for attempt in range(3):
+    for attempt in range(t["fit_rounds"]):
         scenes = script.get("scenes") or []
         est_each = [scene_seconds(s.get("narration", ""), t["wpm"], t["calibration"])
                     for s in scenes]
