@@ -30,3 +30,9 @@ Thumbs.db
 .vscode/
 *.log
 mockup/
+
+# Generated launchers hold absolute paths to one machine — each user
+# creates their own with: python scripts/make_shortcut.py
+StoryForge.lnk
+StoryForge.app/
+StoryForge.desktop

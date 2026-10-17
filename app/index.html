@@ -1,0 +1,388 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>StoryForge</title>
+<style>
+:root{
+  --bg:#0e1013; --panel:#15181d; --panel2:#1b1f26; --line:#272c35;
+  --txt:#e8eaed; --dim:#9aa3af; --faint:#6b7280;
+  --accent:#ff7a3d; --accent2:#ffb224; --ok:#34d399; --bad:#f87171; --info:#60a5fa;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--txt);overflow:hidden;
+  font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,system-ui,sans-serif}
+.app{display:flex;height:100vh}
+
+/* sidebar */
+.side{width:206px;background:#0c0e12;border-right:1px solid var(--line);
+  padding:16px 10px;display:flex;flex-direction:column;gap:3px;flex-shrink:0}
+.brand{font-weight:700;font-size:15px;padding:4px 11px 14px;letter-spacing:.2px}
+.brand span{color:var(--accent)}
+.navb{display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:9px;
+  color:var(--dim);cursor:pointer;border:1px solid transparent;font-size:13.5px;user-select:none}
+.navb:hover{background:var(--panel);color:var(--txt)}
+.navb.sel{background:var(--panel2);color:var(--txt);border-color:var(--line)}
+.navb .ic{width:17px;text-align:center}
+.navb .cnt{margin-left:auto;background:#1d2530;color:#8fa6c2;border-radius:5px;
+  font-size:10.5px;padding:1px 7px}
+.side .sp{flex:1}
+.mini{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+  padding:10px;font-size:11.5px;color:var(--faint)}
+.mini b{color:var(--txt)}
+
+/* main */
+.main{flex:1;display:flex;flex-direction:column;min-width:0}
+.strip{display:none;align-items:center;gap:12px;padding:10px 18px;
+  background:linear-gradient(90deg,rgba(255,122,61,.15),rgba(255,178,36,.05));
+  border-bottom:1px solid #33261c;font-size:12.5px;flex-shrink:0}
+.strip.on{display:flex}
+.spin{width:13px;height:13px;border-radius:50%;flex-shrink:0;
+  border:2px solid rgba(255,122,61,.3);border-top-color:var(--accent);
+  animation:sp .8s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+.strip b{color:var(--accent2)}
+.strip .muted2{color:#b99a86}
+.scroll{flex:1;overflow:auto;padding:24px 28px}
+.scr{display:none}.scr.on{display:block}
+
+h1{margin:0 0 4px;font-size:21px;font-weight:650;letter-spacing:-.2px}
+h1 .sub{display:block;font-size:13px;color:var(--dim);font-weight:400;margin-top:4px}
+h2{font-size:13px;text-transform:uppercase;letter-spacing:.9px;color:var(--faint);
+  margin:26px 0 10px;font-weight:650}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px}
+.card+.card{margin-top:12px}
+label{display:block;font-size:12px;color:var(--dim);margin-bottom:6px}
+textarea,select,input{width:100%;background:var(--panel2);border:1px solid var(--line);
+  color:var(--txt);border-radius:9px;padding:11px 12px;font:inherit;outline:none}
+textarea{min-height:76px;resize:vertical}
+textarea:focus,select:focus{border-color:var(--accent)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+
+.chip{background:var(--panel2);border:1px solid var(--line);border-radius:9px;
+  padding:10px 12px;cursor:pointer;text-align:center;font-size:13px;user-select:none}
+.chip:hover{border-color:#39414e}
+.chip.sel{border-color:var(--accent);background:rgba(255,122,61,.09);color:#ffd7c2}
+.chip .s{display:block;font-size:11px;color:var(--faint);margin-top:2px}
+.chip.sel .s{color:#ffae85}
+
+.mode{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.mode .m{background:var(--panel2);border:1px solid var(--line);border-radius:10px;
+  padding:13px;cursor:pointer;user-select:none}
+.mode .m:hover{border-color:#39414e}
+.mode .m.sel{border-color:var(--accent);background:rgba(255,122,61,.08)}
+.mode .m .t{font-weight:650;font-size:13.5px}
+.mode .m .d{font-size:11.5px;color:var(--faint);margin-top:5px;line-height:1.5}
+.mode .m.sel .d{color:#d9b7a4}
+.flow{font-size:10.5px;color:var(--faint);margin-top:8px;
+  font-family:ui-monospace,Menlo,Consolas,monospace}
+.mode .m.sel .flow{color:#ffae85}
+
+.btn{background:var(--accent);color:#1a0d05;border:0;border-radius:10px;padding:12px 20px;
+  font:inherit;font-weight:700;cursor:pointer;font-size:14px}
+.btn:hover{filter:brightness(1.08)}
+.btn:disabled{opacity:.45;cursor:not-allowed;filter:none}
+.btn.g{background:var(--panel2);color:var(--txt);border:1px solid var(--line);font-weight:600}
+.btn.g:hover{border-color:#3d4654}
+.btn.ok{background:var(--ok);color:#06251a}
+.btn.no{background:transparent;color:var(--bad);border:1px solid #4a2626}
+.btn.no:hover{background:rgba(248,113,113,.08)}
+.btn.sm{padding:8px 14px;font-size:12.5px}
+.row{display:flex;gap:9px;align-items:center;flex-wrap:wrap}
+.right{margin-left:auto}
+.muted{color:var(--faint);font-size:12.5px}
+.ok{color:var(--ok)}.warn{color:var(--accent2)}.bad{color:var(--bad)}
+
+.steps{display:flex;gap:6px;margin:14px 0 6px}
+.step{flex:1;height:5px;background:var(--panel2);border-radius:3px;overflow:hidden}
+.step i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--accent2));
+  transition:width .4s}
+.step.done i{width:100%}
+.step.now i{width:60%;animation:pulse 1.6s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+.slab{display:flex;justify-content:space-between;font-size:11.5px;color:var(--faint);margin-bottom:16px}
+.live{background:#0f1216;border:1px solid var(--line);border-left:3px solid var(--accent);
+  border-radius:9px;padding:13px 15px;margin-top:12px}
+.live .lbl{font-size:11px;color:var(--faint);text-transform:uppercase;
+  letter-spacing:.7px;margin-bottom:5px}
+.quote{color:#cfd5de;font-style:italic;line-height:1.65}
+.badge{font-size:10.5px;padding:2px 8px;border-radius:5px;background:#1d2530;color:#8fa6c2}
+.badge.best{background:rgba(255,122,61,.16);color:var(--accent2)}
+.badge.ok{background:#13291f;color:var(--ok)}
+.badge.no{background:#2a1c1c;color:#d08b8b}
+
+video{width:100%;max-width:230px;border-radius:10px;background:#000;display:block}
+.vrow{display:flex;gap:18px;align-items:flex-start}
+.kv{display:flex;gap:8px;font-size:12.5px;margin:5px 0}
+.kv .k{color:var(--faint);width:74px;flex-shrink:0}
+.scene{display:flex;gap:12px;padding:9px 0;border-bottom:1px solid #1e232b}
+.scene:last-child{border:0}
+.sn{width:26px;flex-shrink:0;color:var(--faint);font-size:11.5px}
+.tag{display:inline-block;font-size:10px;padding:2px 7px;border-radius:5px;
+  background:#1d2530;color:#86a4c9;margin-bottom:4px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;color:var(--faint);font-size:11px;text-transform:uppercase;
+  letter-spacing:.7px;padding:0 10px 9px;font-weight:650}
+td{padding:11px 10px;border-top:1px solid #1e232b;vertical-align:top}
+tr.pick{background:rgba(255,122,61,.07)}
+tr.dis{opacity:.42}
+.hw{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+.hw .b{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px}
+.hw .b .k{font-size:10.5px;color:var(--faint);text-transform:uppercase;letter-spacing:.6px}
+.hw .b .v{font-size:15px;font-weight:650;margin-top:4px}
+.hw .b .v small{font-size:11px;color:var(--dim);font-weight:400;display:block}
+.empty{color:var(--faint);text-align:center;padding:38px 10px;font-size:13px}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="side">
+    <div class="brand">Story<span>Forge</span></div>
+    <div class="navb sel" data-s="make"><span class="ic">+</span> Make</div>
+    <div class="navb" data-s="progress"><span class="ic">&#9681;</span> In progress</div>
+    <div class="navb" data-s="review"><span class="ic">&#9654;</span> Review <span class="cnt" id="cnt">0</span></div>
+    <div class="navb" data-s="machine"><span class="ic">&#9881;</span> Settings</div>
+    <div class="sp"></div>
+    <div class="mini" id="mini">Local only &middot; nothing leaves this computer</div>
+  </div>
+
+  <div class="main">
+    <div class="strip" id="strip">
+      <div class="spin"></div>
+      <div id="stripText"><b>Working…</b></div>
+      <div class="right row">
+        <button class="btn g sm" onclick="go('progress')">View</button>
+        <button class="btn no sm" onclick="cancelRender()">Stop</button>
+      </div>
+    </div>
+
+    <div class="scroll">
+      <!-- MAKE -->
+      <div class="scr on" id="make">
+        <h1>Make a Short<span class="sub">Give it an idea, or leave it blank and it decides.</span></h1>
+        <div class="card" style="margin-top:18px">
+          <label>What should this story be about?</label>
+          <textarea id="brief" placeholder="a guy who finds something strange in his house
+…or a theme: &quot;revolve it around loneliness&quot;
+…or an exact opening line
+…or leave blank"></textarea>
+        </div>
+
+        <h2>How involved do you want to be?</h2>
+        <div class="mode" id="modes">
+          <div class="m sel" data-mode="guided"><div class="t">Guided</div>
+            <div class="d">Read the story before it renders, then review the video.</div>
+            <div class="flow">write &rarr; <b>you read</b> &rarr; render &rarr; <b>you review</b></div></div>
+          <div class="m" data-mode="express"><div class="t">Express</div>
+            <div class="d">Skip the story check. Render straight through.</div>
+            <div class="flow">write &rarr; render &rarr; <b>you review</b></div></div>
+          <div class="m" data-mode="auto"><div class="t">Full auto</div>
+            <div class="d">No stops. It checks its own work and files what passed.</div>
+            <div class="flow">write &rarr; render &rarr; <b>self-check</b> &rarr; library</div></div>
+        </div>
+        <p class="muted" style="margin-top:9px">Nothing is ever uploaded anywhere, in any mode.</p>
+
+        <div class="grid2" style="margin-top:16px">
+          <div class="card">
+            <label>Length</label>
+            <div class="grid3" id="lens">
+              <div class="chip" data-sec="45">45s<span class="s">punchy</span></div>
+              <div class="chip" data-sec="90">90s<span class="s">standard</span></div>
+              <div class="chip sel" data-sec="">2&ndash;3 min<span class="s">full story</span></div>
+            </div>
+          </div>
+          <div class="card">
+            <label>Narrator</label>
+            <div class="grid2" style="gap:10px" id="voices">
+              <div class="chip sel" data-voice="adam">Adam<span class="s">deep</span></div>
+              <div class="chip" data-voice="squeaky">Squeaky<span class="s">high, fast</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="row" style="margin-top:20px">
+          <button class="btn" id="makeBtn" onclick="makeVideo()">Make Video</button>
+          <span class="muted" id="makeHint">Takes about 12&ndash;15 minutes.</span>
+        </div>
+      </div>
+
+      <!-- PROGRESS -->
+      <div class="scr" id="progress">
+        <h1 id="pTitle">Nothing is rendering<span class="sub" id="pSub">Start one from Make.</span></h1>
+        <div id="pBody" style="display:none">
+          <div class="steps" id="steps"></div>
+          <div class="slab"><span>Story</span><span>Voice</span><span>Visuals</span><span>Edit</span><span>Finish</span></div>
+          <div id="pLive"></div>
+          <div class="row" style="margin-top:20px">
+            <button class="btn no" onclick="cancelRender()">Stop this video</button>
+            <span class="muted right">Safe to close the window &mdash; it keeps working.</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- REVIEW -->
+      <div class="scr" id="review">
+        <h1>Ready for review<span class="sub" id="rSub">&nbsp;</span></h1>
+        <div id="rList"></div>
+      </div>
+
+      <!-- SETTINGS -->
+      <div class="scr" id="machine">
+        <h1>Settings<span class="sub" id="mSum">&nbsp;</span></h1>
+        <h2>Your computer</h2>
+        <div class="hw" id="hw"></div>
+        <p class="muted" style="margin-top:10px">
+          Checked once and remembered &mdash; never re-scanned on startup.
+          Read locally, sent nowhere.
+          <button class="btn g sm" style="margin-left:8px" onclick="rescan()">Re-scan</button>
+        </p>
+        <h2>Writer model</h2>
+        <div class="card"><table id="models"></table></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+let MODE = "guided", SECS = "", VOICE = "adam", BUSY = false;
+
+function go(id){
+  document.querySelectorAll('.scr').forEach(s=>s.classList.toggle('on', s.id===id));
+  document.querySelectorAll('.navb').forEach(n=>n.classList.toggle('sel', n.dataset.s===id));
+  $('.scroll').scrollTop = 0;
+  if(id==='machine') loadMachine();
+}
+document.querySelectorAll('.navb').forEach(n=> n.onclick=()=>go(n.dataset.s));
+function pickIn(container, el, set){
+  container.querySelectorAll('.chip,.m').forEach(c=>c.classList.remove('sel'));
+  el.classList.add('sel'); set();
+}
+$('#modes').onclick = e => { const m=e.target.closest('.m'); if(m) pickIn($('#modes'),m,()=>MODE=m.dataset.mode); };
+$('#lens').onclick  = e => { const c=e.target.closest('.chip'); if(c) pickIn($('#lens'),c,()=>SECS=c.dataset.sec); };
+$('#voices').onclick= e => { const c=e.target.closest('.chip'); if(c) pickIn($('#voices'),c,()=>VOICE=c.dataset.voice); };
+
+async function api(path, body){
+  const opt = body ? {method:'POST',headers:{'Content-Type':'application/json'},
+                      body:JSON.stringify(body)} : {};
+  const r = await fetch(path, opt);
+  return r.json();
+}
+
+async function makeVideo(){
+  const r = await api('/api/make', {brief:$('#brief').value, seconds:SECS||null,
+                                    voice:VOICE, mode:MODE});
+  if(r.error){ $('#makeHint').innerHTML = '<span class="bad">'+r.error+'</span>'; return; }
+  go('progress'); refresh();
+}
+async function cancelRender(){ await api('/api/cancel', {}); refresh(); }
+async function approve(id){ await api('/api/approve', {id}); refresh(); }
+async function reject(id){ if(confirm('Delete this video permanently?')){ await api('/api/reject',{id}); refresh(); } }
+async function reveal(id){ await api('/api/reveal', {id}); }
+async function rescan(){ await api('/api/rescan', {}); loadMachine(); }
+
+function stepBar(step){
+  let h='';
+  for(let i=1;i<=5;i++){
+    const cls = step && i<step ? 'done' : (step && i===step ? 'now' : '');
+    h += '<div class="step '+cls+'"><i></i></div>';
+  }
+  return h;
+}
+
+function renderProgress(r){
+  const on = r.phase==='running';
+  $('#pBody').style.display = (r.phase==='idle') ? 'none' : 'block';
+  if(r.phase==='idle'){
+    $('#pTitle').childNodes[0].nodeValue='Nothing is rendering';
+    $('#pSub').textContent='Start one from Make.'; return;
+  }
+  if(r.phase==='failed'){
+    $('#pTitle').childNodes[0].nodeValue='That render failed';
+    $('#pSub').textContent=r.message||''; $('#steps').innerHTML=''; $('#pLive').innerHTML=''; return;
+  }
+  if(r.phase==='done'){
+    $('#pTitle').childNodes[0].nodeValue='Finished';
+    $('#pSub').textContent=(r.title||'Your video')+' is waiting in Review.';
+    $('#steps').innerHTML=stepBar(5); $('#pLive').innerHTML=''; return;
+  }
+  $('#pTitle').childNodes[0].nodeValue='Making your Short';
+  $('#pSub').textContent = 'Step '+(r.step||'?')+' of 5 — '+r.label;
+  $('#steps').innerHTML = stepBar(r.step);
+  let h='';
+  if(r.logline) h += '<div class="live"><div class="lbl">It planned this</div><div class="quote">'
+      + esc(r.logline) + '</div>'
+      + (r.structure? '<div class="row" style="margin-top:10px"><span class="badge">shape: '+esc(r.structure)+'</span></div>':'')
+      + '</div>';
+  if(r.scenes_written) h += '<div class="live" style="border-left-color:var(--info)">'
+      + '<div class="lbl">Writing — scene '+r.scenes_written+' of '+(r.scenes_total||'?')+'</div>'
+      + '<div class="quote">'+esc(r.opening||'')+'</div></div>';
+  else if(r.message) h += '<div class="live" style="border-left-color:var(--info)">'
+      + '<div class="lbl">Now</div><div class="quote">'+esc(r.message)+'</div></div>';
+  $('#pLive').innerHTML = h;
+}
+
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+function renderReview(items){
+  $('#cnt').textContent = items.length;
+  $('#rSub').textContent = items.length ? items.length+' waiting' : '';
+  if(!items.length){ $('#rList').innerHTML='<div class="empty">No videos waiting. Make one from the Make tab.</div>'; return; }
+  $('#rList').innerHTML = items.map(it => `
+    <div class="card"><div class="vrow">
+      <video controls preload="metadata" poster="/api/thumb/${encodeURIComponent(it.id)}"
+             src="/api/video/${encodeURIComponent(it.id)}"></video>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:16px;font-weight:650">${esc(it.title)}</div>
+        <div class="kv"><div class="k">Length</div><div>${it.seconds}s · ${it.scenes} scenes</div></div>
+        ${it.structure?`<div class="kv"><div class="k">Shape</div><div>${esc(it.structure)}</div></div>`:''}
+        <div class="row" style="margin-top:12px">
+          <button class="btn ok sm" onclick="approve('${it.id}')">Approve</button>
+          <button class="btn no sm" onclick="reject('${it.id}')">Reject</button>
+          <button class="btn g sm" onclick="reveal('${it.id}')">Open folder</button>
+        </div>
+      </div></div></div>`).join('');
+}
+
+async function loadMachine(){
+  const m = await api('/api/machine');
+  $('#mSum').textContent = m.summary || '';
+  const h = m.hardware||{};
+  $('#hw').innerHTML = [
+    ['System', (h.os||'?')+' '+(h.arch||''), ''],
+    ['Memory', (h.ram_total_gb||'?')+' GB', (h.ram_free_gb||'?')+' free'],
+    ['Graphics', h.vram_gb? h.vram_gb+' GB':'—', h.unified_memory?'unified':(h.gpu_name?'VRAM':'')],
+    ['Processor', (h.cpu_cores||'?')+' cores', ''],
+    ['Free disk', (h.disk_free_gb||'?')+' GB', ''],
+  ].map(([k,v,s])=>`<div class="b"><div class="k">${k}</div><div class="v">${esc(v)}<small>${esc(s)}</small></div></div>`).join('');
+  $('#models').innerHTML = '<tr><th>Model</th><th>Download</th><th>Total</th><th>What you get</th></tr>' +
+    (m.options||[]).map(o=>`<tr class="${o.tag===m.recommended?'pick':(o.runnable?'':'dis')}">
+      <td><b>${esc(o.label)}</b>${o.tag===m.recommended?' <span class="badge best">in use</span>':''}</td>
+      <td>${o.download_gb} GB</td><td>${o.total_install_gb} GB</td>
+      <td>${o.runnable?esc(o.blurb):'<span class="badge no">'+esc(o.reason)+'</span>'}</td></tr>`).join('');
+}
+
+async function refresh(){
+  let s;
+  try { s = await api('/api/state'); } catch(e){ return; }
+  BUSY = s.busy;
+  const r = s.render || {};
+  $('#strip').classList.toggle('on', r.phase==='running');
+  if(r.phase==='running'){
+    $('#stripText').innerHTML = '<b>'+esc(r.title||'Making your Short')+'</b> <span class="muted2">· step '
+      + (r.step||'?') + ' of 5 · ' + esc(r.label) + '</span>';
+  }
+  $('#makeBtn').disabled = BUSY;
+  $('#makeHint').textContent = BUSY ? 'A render is already running.' : 'Takes about 12–15 minutes.';
+  renderProgress(r);
+  renderReview(s.pending || []);
+  $('#mini').innerHTML = 'Local only · nothing leaves this computer<br><b>'
+    + (s.pending_count||0) + '</b> waiting for review';
+}
+refresh(); setInterval(refresh, 3000);
+</script>
+</body>
+</html>
