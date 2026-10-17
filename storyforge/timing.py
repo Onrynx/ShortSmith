@@ -194,7 +194,7 @@ def _redundancy_score(text: str) -> float:
 
 def plan_revisions(scenes: list, durations: list, target: float,
                    max_seconds: float | None = None,
-                   protect: set | None = None) -> dict:
+                   protect: set | None = None, aggression: int = 0) -> dict:
     """Pick WHICH scenes to tighten or develop, and by how much.
 
     Quality rule (the user's #6): never trim the load-bearing scenes. We protect
@@ -210,13 +210,20 @@ def plan_revisions(scenes: list, durations: list, target: float,
     if status["action"] == "ok":
         return {**status, "targets": []}
 
-    protect = protect or set()
-    # Always protect the hook and the final beat — they carry the whole video.
-    protect = set(protect) | {0, n - 1}
-    # Protect beats the planner marked as the turn/reveal.
-    for i, sc in enumerate(scenes):
-        if str(sc.get("purpose", "")).lower() in ("turn", "reveal", "resolve", "twist"):
-            protect.add(i)
+    # Protection escalates. Round 0 guards everything load-bearing, which is
+    # right when the draft is close. But a live run overshot by 21% with a
+    # 22-second "turn" and an 18-second "resolve" both protected, leaving only
+    # 2 of the 17 seconds it needed reachable. When a scene is that bloated it
+    # IS the problem, so later rounds are allowed to touch it.
+    protect = set(protect or ())
+    protect.add(0)                       # the hook is never trimmed
+    if aggression < 2:
+        protect.add(n - 1)               # nor the final beat, unless desperate
+    if aggression < 1:
+        for i, sc in enumerate(scenes):
+            if str(sc.get("purpose", "")).lower() in ("turn", "reveal",
+                                                      "resolve", "twist"):
+                protect.add(i)
 
     need = abs(status["delta"])
     candidates = []
@@ -247,7 +254,9 @@ def plan_revisions(scenes: list, durations: list, target: float,
         if budget <= 0.4:
             break
         # never cut a scene below the on-screen floor, or by more than ~45%
-        room = max(0.0, dur - MIN_SCENE_SECONDS) * 0.45 if status["action"] == "compress" else 6.0
+        frac = (0.45, 0.62, 0.78)[min(max(aggression, 0), 2)]
+        room = (max(0.0, dur - MIN_SCENE_SECONDS) * frac
+                if status["action"] == "compress" else 6.0)
         take = min(budget, room)
         if take < 0.5:
             continue

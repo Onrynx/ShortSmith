@@ -191,6 +191,19 @@ def _normalize_plan(plan: dict, target_seconds: float, scene_bounds: tuple,
         except Exception:
             b["seconds"] = 0.0
 
+    # Terminal beats must actually be terminal. A real plan came back with a
+    # 'develop' beat AFTER 'aftermath', so the finished story carried on past
+    # its own ending. Reordering (rather than relabelling) is the right repair:
+    # the content of a resolve/aftermath beat genuinely belongs at the end, it
+    # was just placed wrongly. A stable partition keeps everything else in the
+    # order the planner intended.
+    TERMINAL = ("resolve", "aftermath")
+    if any(b["purpose"] in TERMINAL for b in beats):
+        head = [b for b in beats if b["purpose"] not in TERMINAL]
+        tail = [b for b in beats if b["purpose"] in TERMINAL]
+        if head:                      # never let the reorder empty the body
+            beats = head + tail
+
     # Rescale the model's allocation so the beats sum to the real target. This
     # keeps the SHAPE it chose (which beat gets more room) while making the
     # arithmetic correct.
@@ -297,6 +310,15 @@ Decide for yourself:
 - whether this story even HAS a twist (many good stories do not)
 - whether it ends on a question, an image, a consequence, or silence
 Different stories should come out different shapes. Do not default to one.
+
+EVERY BEAT MUST EARN ITS PLACE. No two beats may cover the same event. If two
+beats could be described with the same sentence, they are one beat — merge them
+and use the freed seconds elsewhere. Each beat has to leave the viewer knowing
+or feeling something they did not a moment ago.
+
+NAME YOUR CAST UP FRONT. Everyone who appears anywhere in the story must be in
+the cast list below. A person who turns up in a later beat without having been
+established reads as a mistake, because to the viewer it is one.
 
 For EACH beat give:
   purpose      one of: {', '.join(PURPOSES)}

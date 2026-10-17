@@ -326,12 +326,64 @@ def no_window_kwargs() -> dict:
     return {"creationflags": CREATE_NO_WINDOW, "startupinfo": si}
 
 
+_FFMPEG_CACHE: list = []
+
+
+def _is_real_ffmpeg(path: str) -> bool:
+    """Does this binary behave like ffmpeg, or is it a stub wearing the name?"""
+    try:
+        # Probe with the exact flags every render uses. A stub answered plain
+        # "-version" convincingly but choked on -hide_banner, so testing the
+        # softer command would have validated the broken binary.
+        out = subprocess.run([path, "-hide_banner", "-version"],
+                             capture_output=True, text=True, timeout=12,
+                             **no_window_kwargs())
+        blob = ((out.stdout or "") + (out.stderr or "")).lower()
+        return out.returncode == 0 and "ffmpeg version" in blob
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def ffmpeg_path() -> str:
-    return shutil.which("ffmpeg") or "ffmpeg"
+    """Find an ffmpeg that actually works.
+
+    `shutil.which` returns the FIRST match on PATH, which is not necessarily a
+    real ffmpeg. On a live machine Python's Scripts directory sat ahead of the
+    real install and provided an `ffmpeg.EXE` stub that rejects -hide_banner,
+    so every single render failed its visuals with "Unrecognized option" while
+    a working ffmpeg 8.1.1 sat further down the same PATH. So: take the first
+    candidate that answers `-version` like ffmpeg, and remember it.
+    """
+    if _FFMPEG_CACHE:
+        return _FFMPEG_CACHE[0]
+    override = (env("FFMPEG_BIN", "") or "").strip()
+    candidates = ([override] if override else []) + _which_all("ffmpeg")
+    for cand in candidates:
+        if cand and _is_real_ffmpeg(cand):
+            if candidates.index(cand) > 0:
+                log("info", f"using ffmpeg at {cand} (earlier PATH entries were not ffmpeg)")
+            _FFMPEG_CACHE.append(cand)
+            return cand
+    fallback = shutil.which("ffmpeg") or "ffmpeg"
+    _FFMPEG_CACHE.append(fallback)
+    return fallback
+
+
+def _which_all(name: str) -> list:
+    """Every match for `name` on PATH, in order."""
+    found, seen = [], set()
+    for d in (os.environ.get("PATH") or "").split(os.pathsep):
+        if not d:
+            continue
+        hit = shutil.which(name, path=d)
+        if hit and hit.lower() not in seen:
+            seen.add(hit.lower())
+            found.append(hit)
+    return found
 
 
 def has_ffmpeg() -> bool:
-    return shutil.which("ffmpeg") is not None
+    return _is_real_ffmpeg(ffmpeg_path())
 
 
 def run_ffmpeg(args: list[str], cwd: Optional[Path | str] = None,

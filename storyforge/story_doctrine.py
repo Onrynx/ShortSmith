@@ -100,6 +100,23 @@ _FEMALE_CODED = ("my husband", "as a woman", "as a girl", "i'm a woman",
                  "my wife and i are both women")
 
 
+def _mentions(text: str, term: str) -> bool:
+    """True if `term` starts a word in `text`.
+
+    Plain substring matching was finding "elf" inside "myself"/"himself" and
+    "orc" inside "force"/"divorce" — so almost every first-person story was
+    rejected for fantasy content that was not there, burning a rewrite call
+    each time. Matching at a word START (but allowing suffixes) keeps prefix
+    entries like "sorcer" -> "sorcery" working.
+    """
+    i = text.find(term)
+    while i != -1:
+        if i == 0 or not text[i - 1].isalpha():
+            return True
+        i = text.find(term, i + 1)
+    return False
+
+
 def violations(script: dict, mode: str = "real_life_drama",
                grounded: bool = True, first_person: bool = True) -> list[str]:
     """Hard-rule breaches only. Empty list = acceptable.
@@ -118,7 +135,8 @@ def violations(script: dict, mode: str = "real_life_drama",
     out = []
 
     if grounded and mode != "lore":
-        hits = sorted({w for w in _FANTASY if w in text or w in title})
+        hits = sorted({w for w in _FANTASY
+                       if _mentions(text, w) or _mentions(title, w)})
         if hits:
             out.append(f"fantasy elements in a grounded story (banned here): "
                        f"{', '.join(hits[:6])}")

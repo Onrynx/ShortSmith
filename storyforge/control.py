@@ -27,7 +27,7 @@ _PIDFILE = STATE_DIR / "render.pid"
 
 
 def config_info() -> dict:
-    channels = list_channels() or ["history_mysteries", "gaming_lore"]
+    channels = list_channels() or ["gossip_stories"]
     return {
         "channels": [{"key": c, "name": load_channel(c).get("name", c)} for c in channels],
         "auto_publish": (env("AUTO_PUBLISH", "off") or "off").lower(),

@@ -130,6 +130,10 @@ def targets(cfg: dict, hero_budget: tuple[int, int],
         # model-dependent knobs, resolved once so every stage agrees
         "tier": prof["tier"], "fit_rounds": prof["fit_rounds"],
         "plan_detail": prof["plan_detail"], "llm_timeout": prof["timeout"],
+        # set by the hardware scan, not by a fixed assumption about speed
+        "machine_speed": prof.get("machine_speed"),
+        "quality_passes": prof.get("quality_passes"),
+        "always_continuity": prof.get("always_continuity", False),
     }
 
 
@@ -243,7 +247,15 @@ Reach for the specific, not the stock phrase. "She taught me the ropes", "my
 heart sank", "sick to my stomach", "little did I know", "everything changed" are
 what writing sounds like when nobody chose the words. Say the actual thing
 instead: what was on the screen, what she said, what he did with his hands. One
-precise detail beats three sentences of feeling-words.{visual_rule}"""
+precise detail beats three sentences of feeling-words.
+
+Each beat moves to somewhere new. Do not re-tell the beat before it in different
+words — if the previous line already said a letter arrived, this one is about
+what the letter did, not that it arrived. Restating is the most common way these
+stories waste their runtime.
+
+The people in the plan are the only people in this story. Do not introduce a new
+named character the plan never mentioned.{visual_rule}"""
 
     if opening_line:
         base += (f'\n\nTHE FIRST SPOKEN SENTENCE MUST BE EXACTLY, WORD FOR WORD:\n'
@@ -520,6 +532,11 @@ def generate_script(cfg: dict, topic: str, hero_budget: tuple[int, int],
     script = write_script(plan, cfg, model_info, t, want_visuals=want_visuals,
                           on_progress=on_progress)
     script = enforce_doctrine(script, plan, cfg, model_info, t)
+    # Only stage that re-reads the whole draft: catches contradictions
+    # between distant scenes and characters the plan never had.
+    from ..continuity import continuity_pass
+    script = continuity_pass(script, plan, model_info, t["llm_timeout"],
+                             always=t.get("always_continuity", False))
 
     # Length fit on the ESTIMATE now; the voice stage refits against real audio.
     # Iterate: one pass rarely closes a big gap, and estimates are free compared
@@ -532,7 +549,8 @@ def generate_script(cfg: dict, topic: str, hero_budget: tuple[int, int],
         est_each = [scene_seconds(s.get("narration", ""), t["wpm"], t["calibration"])
                     for s in scenes]
         est = round(sum(est_each), 2)
-        rev = plan_revisions(scenes, est_each, t["target_seconds"], t["max_seconds"])
+        rev = plan_revisions(scenes, est_each, t["target_seconds"],
+                             t["max_seconds"], aggression=attempt)
         if rev.get("action") == "ok" or not rev.get("targets"):
             break
         before = est
@@ -540,9 +558,19 @@ def generate_script(cfg: dict, topic: str, hero_budget: tuple[int, int],
         after = estimate_seconds(script.get("scenes") or [], t["wpm"], t["calibration"])
         log("info", f"length fit {attempt+1}: {before:.0f}s -> {after:.0f}s "
                     f"(target {t['target_seconds']:.0f}s)")
-        if abs(after - before) < 1.0:      # not moving; stop burning model calls
-            est = after
-            break
+        est = after
+        # Only give up on a stalled pass once we are actually near the target.
+        # Bailing while still far out was leaving videos 20% over length; the
+        # next round is allowed to compress harder, so it is worth continuing.
+        if abs(after - before) < 1.0:
+            still_bad = plan_revisions(
+                script.get("scenes") or [],
+                [scene_seconds(x.get("narration", ""), t["wpm"], t["calibration"])
+                 for x in script.get("scenes") or []],
+                t["target_seconds"], t["max_seconds"],
+                aggression=attempt + 1).get("severe")
+            if not still_bad:
+                break
         est = after
     log("info", f"script: {word_count_of(script)} words ≈ {est:.0f}s "
                 f"(target {t['target_seconds']:.0f}s, {t['wpm']} wpm, "

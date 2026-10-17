@@ -4,11 +4,11 @@ Per scene we render a 1080p segment that lasts exactly the scene's narration:
   * stills (gradient cards) get a slow zoom/pan so it's never a static slideshow;
   * motion clips (stock / generated) are scaled+cropped to fill, looped/trimmed.
 Each segment carries its own narration audio, so concatenation is inherently in
-sync. A final pass mixes a low CC0 ambient bed under the voice and burns captions
+sync. A final pass burns the captions in. The only audio is the narration
 (word-level via faster-whisper if present, else scene-text cues).
 
 Robustness: every segment has a solid-color fallback; the final pass retries
-without captions, then without music, so an mp4 is always produced.
+without captions, so an mp4 is always produced.
 """
 from __future__ import annotations
 
@@ -17,103 +17,15 @@ import wave
 from pathlib import Path
 
 from ..config import format_spec
-from ..utils import (ASSETS_DIR, ensure_dir, env, has_ffmpeg, log, run_ffmpeg)
+from ..utils import ensure_dir, env, has_ffmpeg, log, run_ffmpeg
 from .common import add_error, add_fallback, progress
 
 FPS = 30
-MUSIC_PATH = ASSETS_DIR / "ambient_bed.wav"
 
-
-# --------------------------------------------------------------------------- #
-# Ambient music bed (synthesized CC0 fallback if the shipped asset is missing)
-# --------------------------------------------------------------------------- #
-MUSIC_DIR = ASSETS_DIR / "music"
-_AUDIO_EXTS = (".mp3", ".wav", ".m4a", ".ogg", ".flac", ".aac")
-
-# mood -> (keywords scored against title/hook/tags, synth chord for the default bed)
-_MOODS = {
-    "mystery":   (["mystery", "vanish", "lost", "unsolved", "secret", "disappear", "clue"],
-                  [110.0, 130.81, 164.81, 196.0]),
-    "epic":      (["king", "war", "battle", "legend", "empire", "throne", "rise", "fall"],
-                  [73.42, 110.0, 146.83, 220.0]),
-    "dark":      (["curse", "death", "haunt", "ghost", "shadow", "forbidden", "doom"],
-                  [55.0, 65.41, 82.41, 98.0]),
-    "adventure": (["journey", "quest", "explore", "treasure", "discover", "expedition"],
-                  [98.0, 123.47, 146.83, 196.0]),
-    "chill":     (["calm", "peace", "gentle", "quiet"],
-                  [130.81, 164.81, 196.0, 246.94]),
-}
-_CHANNEL_DEFAULT_MOOD = {"history_mysteries": "mystery", "gaming_lore": "epic",
-                         "gossip_stories": "chill"}
-
-
-def pick_music(state: dict) -> tuple[Path | None, str]:
-    """Choose a background track matched to the story's mood.
-
-    Looks in assets/music/<mood>/ first (drop your no-copyright tracks there),
-    then anywhere under assets/music/, else synthesizes a CC0 mood bed."""
-    import random
-    script = state.get("script", {}) or {}
-    text = " ".join([script.get("title", ""), script.get("hook", ""),
-                     " ".join(script.get("tags", []))]).lower()
-    scores = {m: sum(k in text for k in keys) for m, (keys, _) in _MOODS.items()}
-    best = max(scores.values() or [0])
-    mood = (max(scores, key=scores.get) if best > 0
-            else _CHANNEL_DEFAULT_MOOD.get(state.get("channel", ""), "mystery"))
-
-    mood_dir = MUSIC_DIR / mood
-    tracks = [p for p in mood_dir.glob("*") if p.suffix.lower() in _AUDIO_EXTS] \
-        if mood_dir.exists() else []
-    if not tracks:  # any user track at all?
-        tracks = [p for p in MUSIC_DIR.rglob("*") if p.suffix.lower() in _AUDIO_EXTS]
-        tracks = [p for p in tracks if not p.name.startswith("default_")] or tracks
-    if tracks:
-        return random.choice(tracks), mood
-    # synthesize a mood-specific CC0 bed once, cache it in the mood folder
-    bed = mood_dir / f"default_{mood}.wav"
-    try:
-        if not bed.exists():
-            synth_ambient_bed(bed, chord=_MOODS[mood][1])
-        return bed, mood
-    except Exception as exc:  # noqa: BLE001
-        log("warn", f"mood bed synth failed: {exc}")
-        return (_ensure_music(), mood)
-
-
-def synth_ambient_bed(path: Path, seconds: int = 70, rate: int = 44100,
-                      chord: list | None = None) -> Path:
-    import numpy as np
-    path.parent.mkdir(parents=True, exist_ok=True)
-    t = np.arange(int(seconds * rate)) / rate
-    chord = chord or [110.0, 164.81, 220.0, 277.18]  # A minor-ish pad
-    sig = np.zeros_like(t)
-    for k, f in enumerate(chord):
-        lfo = 0.5 + 0.5 * np.sin(2 * np.pi * (0.03 + 0.01 * k) * t)  # slow swell
-        sig += (0.16 / (k + 1)) * np.sin(2 * np.pi * f * t) * lfo
-    sig += 0.01 * np.random.default_rng(7).standard_normal(t.shape)  # air
-    sig /= (np.max(np.abs(sig)) + 1e-6)
-    sig *= 0.5
-    stereo = np.stack([sig, np.roll(sig, 400)], axis=1)  # subtle width
-    samples = (stereo * 32767).astype("<i2")
-    with wave.open(str(path), "wb") as wf:
-        wf.setnchannels(2)
-        wf.setsampwidth(2)
-        wf.setframerate(rate)
-        wf.writeframes(samples.tobytes())
-    return path
-
-
-def _ensure_music() -> Path | None:
-    try:
-        if not MUSIC_PATH.exists():
-            log("info", "synthesizing CC0 ambient music bed ...")
-            synth_ambient_bed(MUSIC_PATH)
-        return MUSIC_PATH
-    except Exception as exc:  # noqa: BLE001
-        log("warn", f"could not prepare music bed: {exc}")
-        return None
-
-
+# There is no music and no ambient bed. The only audio in a finished video is
+# the narrator's voice: background clips are muxed with -an, and nothing is
+# mixed under the speech. Removing the bed also removed the mood tables, the
+# CC0 synthesiser and the assets/music tree that fed them.
 # --------------------------------------------------------------------------- #
 # Captions
 # --------------------------------------------------------------------------- #
@@ -321,7 +233,7 @@ def _build_segment(idx, visual, kind, audio, dur, seg_dir, workdir, w, h, atempo
     seg = seg_dir / f"seg_{idx:02d}.mp4"
     frames = int(round(dur * FPS)) + 2
     # apad: silence-fill audio to the slot length (keeps A/V sync in concat and
-    # lets an extended last scene breathe over background + music)
+    # lets an extended last scene breathe over the background)
     afilter = f"[1:a]atempo={max(0.5, min(2.0, atempo)):.4f},apad[a]"
     tail = ["-r", str(FPS), "-c:v", "libx264", "-preset", "veryfast",
             "-crf", "20", "-pix_fmt", "yuv420p", "-c:a", "aac", "-ar", "24000",
@@ -408,7 +320,7 @@ def node_cutter(state: dict) -> dict:
     spoken = [round(d / factor, 3) for d in durations]   # speech per scene
     edur = list(spoken)                                  # slot per scene
     # ...and if we're under an EXACT runtime, extend the last scene: background
-    # keeps playing, narration apads to silence, music carries the outro.
+    # keeps playing and the narration apads to silence.
     if exact and edur and sum(edur) < exact:
         edur[-1] = round(edur[-1] + (exact - sum(edur)), 3)
 
@@ -451,32 +363,20 @@ def node_cutter(state: dict) -> dict:
         captions_kind = "word-estimated"
     (workdir / "captions.ass").write_text(_words_to_ass(words, w, h), encoding="utf-8")
 
-    # 4) final assembly — mood-matched music + captions, graceful degradation
-    music, mood = pick_music(state)
-    if music:
-        progress(state, "cutter", f"music: {music.name} (mood={mood})")
-        state["music_track"] = f"{music.name} ({mood})"
+    # 4) final assembly — captions over narration, nothing else in the mix
     total = round(sum(edur), 3) if edur else None
     final = workdir / f"{state['run_id']}.mp4"
 
     sub_filter = "ass=captions.ass"
 
-    def _final_args(use_subs: bool, use_music: bool) -> list[str]:
+    def _final_args(use_subs: bool) -> list[str]:
         inputs = ["-f", "concat", "-safe", "0", "-i", "segments/list.txt"]
-        if use_music and music:
-            inputs += ["-stream_loop", "-1", "-i", _abs_fwd(music)]
         parts = []
         vlabel = "0:v"
         if use_subs:
             parts.append(f"[0:v]{sub_filter}[v]")
             vlabel = "[v]"
-        if use_music and music:
-            parts.append("[1:a]volume=0.09,aformat=sample_rates=48000:channel_layouts=stereo[bed]")
-            parts.append("[0:a]aformat=sample_rates=48000:channel_layouts=stereo[vo]")
-            parts.append("[vo][bed]amix=inputs=2:duration=first:normalize=0[a]")
-            alabel = "[a]"
-        else:
-            alabel = "0:a"
+        alabel = "0:a"          # narration only
         args = [*inputs]
         if parts:
             args += ["-filter_complex", ";".join(parts)]
@@ -489,17 +389,12 @@ def node_cutter(state: dict) -> dict:
                  _abs_fwd(final)]
         return args
 
-    attempts = [
-        ("captions+music", True, True),
-        ("music only (captions failed)", False, True),
-        ("captions only (music failed)", True, False),
-        ("bare concat", False, False),
-    ]
+    attempts = [("captions", True), ("bare concat (captions failed)", False)]
     assembled = False
-    for label, subs, mus in attempts:
-        ok, err = run_ffmpeg(_final_args(subs, mus), cwd=workdir, timeout=1200)
+    for label, subs in attempts:
+        ok, err = run_ffmpeg(_final_args(subs), cwd=workdir, timeout=1200)
         if ok and final.exists():
-            if label != "captions+music":
+            if label != "captions":
                 add_fallback(state, "cutter", f"final assembly degraded: {label} ({err[-120:]})")
             captions_kind = captions_kind if subs else "none"
             assembled = True

@@ -32,7 +32,7 @@ SYSTEM MAP (all TRUE — explain any of it freely; do NOT add facts not listed h
 - On-demand only. A short is made ONLY when the user asks. There is NO schedule,
   NO daily quota, and NO "night/day" lanes to manage — ignore any such idea.
 - Output: one vertical Short per request (1080x1920, ~2.5-3 min, hard-capped under
-  YouTube's 3-minute Shorts limit), word-by-word burned captions, mood music,
+  YouTube's 3-minute Shorts limit), word-by-word burned captions,
   thumbnail. Saved to output/<channel>/pending/ for the user to approve, then
   approved/. Nothing is uploaded anywhere until the user does it.
 - Channels: gossip_stories (fictional viral storytime drama — the MAIN one) and
@@ -56,7 +56,7 @@ SYSTEM MAP (all TRUE — explain any of it freely; do NOT add facts not listed h
   * canvas: the user's own gameplay clips in assets/backgrounds/ play behind the
     narration — a RANDOM clip and RANDOM section each time, auto-cropped to 9:16.
     If that folder is empty it falls back to an abstract animated background.
-  * cutter: FFmpeg assembles narration + captions + mood-matched music into the
+  * cutter: FFmpeg assembles narration + captions into the
     final vertical video.
   * herald: title/description/tags + the AI-disclosure line + thumbnail. The human
     approval gate is always on.
@@ -271,7 +271,7 @@ _STAGE_HUMAN = {
     "script": ("✍️", "writing the story (the slowest part — your local AI drafts then expands it)"),
     "voice":  ("🎙️", "recording the narration"),
     "canvas": ("🎮", "building the video over your gameplay background"),
-    "cutter": ("✂️", "cutting it together — captions + music"),
+    "cutter": ("✂️", "cutting it together — burning in the captions"),
     "herald": ("🖼️", "finishing up — title, thumbnail, disclosure"),
 }
 

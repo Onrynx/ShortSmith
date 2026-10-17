@@ -3,7 +3,7 @@
 A **free, fully-local** YouTube Shorts factory you run on your own laptop and
 control by chatting with your own Discord bot. Ask for a video; a few minutes
 later a finished vertical Short — original story, AI narration, gameplay
-background, synced captions, music, thumbnail — posts itself back to you for
+background, synced captions, thumbnail — posts itself back to you for
 approval. Nothing is uploaded anywhere until *you* do it.
 
 > ## 📖 Setting it up? Follow the guide for your computer — every step, zero coding assumed:
@@ -30,7 +30,6 @@ approval. Nothing is uploaded anywhere until *you* do it.
 - 🎮 **Gameplay background** — your own Minecraft-parkour clips, a *random clip
   and random section every time*, auto-cropped to 9:16.
 - 🔤 **Word-by-word pop captions**, synced to the voice.
-- 🎵 **Mood-matched background music**, picked to fit the story.
 - 🖼️ **A thumbnail**, plus a report with the full script and a compliance checklist.
 
 ---

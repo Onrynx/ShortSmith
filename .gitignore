@@ -17,15 +17,11 @@ models/*.bin
 
 # --- Generated media (recreated by the pipeline at runtime) ---
 output/
-# synthesized on first render
-assets/ambient_bed.wav
 
 # --- Local media each user supplies themselves (GitHub caps files at 100MB) ---
-# Gameplay backgrounds + music are personal downloads, never committed.
+# Gameplay backgrounds are personal downloads, never committed.
 assets/backgrounds/*
 !assets/backgrounds/README.txt
-assets/music/**
-!assets/music/README.txt
 
 # --- OS / editor ---
 .DS_Store

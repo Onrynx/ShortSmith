@@ -16,7 +16,7 @@ Every command is copy-paste. Nothing here costs money.
 8. [Install Python packages](#8-install-python-packages)
 9. [Create YOUR Discord bot](#9-create-your-discord-bot)
 10. [Configure the .env file](#10-configure-the-env-file)
-11. [Add gameplay clips + music](#11-add-gameplay-clips--music)
+11. [Add gameplay clips](#11-add-gameplay-clips)
 12. [Turn it on](#12-turn-it-on)
 13. [Daily use](#13-daily-use)
 14. [Uploading to YouTube](#14-uploading-to-youtube)
@@ -34,7 +34,7 @@ Minecraft-parkour gameplay with animated captions, and posts the finished
 vertical video back to you for approval.
 
 **One video =** original AI story (2.5–2.9 min) → AI narration → gameplay
-background → word-by-word captions → mood-matched music → thumbnail → your
+background → word-by-word captions → thumbnail → your
 review in Discord.
 
 **Nothing is uploaded anywhere.** Videos stay on your Mac until *you* upload them.
@@ -308,7 +308,7 @@ Save with **⌘ + S**, close. Everything else is optional — see
 
 ---
 
-## 11. Add gameplay clips + music
+## 11. Add gameplay clips
 
 These are **not** included (too large, and licensing is personal to you).
 

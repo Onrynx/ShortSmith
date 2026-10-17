@@ -20,6 +20,5 @@ max_seconds: 178           # hard ceiling: YouTube Shorts must stay under 3 min
 exact_seconds: 0
 scene_bounds: [16, 24]
 
-lane_budgets:
-  night: [4, 8]
-  day: [2, 4]
+# how many scenes may use the optional AI-video provider, when one is set up
+render_budget: [4, 8]

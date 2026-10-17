@@ -22,6 +22,5 @@ exact_seconds: 0    # 0 = natural length (1-2 min); set e.g. 60 to force exact
 scene_bounds: [16, 24]
 target_minutes: 7           # used only if format: long
 
-lane_budgets:
-  night: [4, 8]
-  day: [2, 4]
+# how many scenes may use the optional AI-video provider, when one is set up
+render_budget: [4, 8]

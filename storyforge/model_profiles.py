@@ -146,10 +146,47 @@ def params_of(tag: str) -> float:
     return 7.0        # unknown model: assume mid-range rather than extremes
 
 
-def profile_for(tag: str) -> dict:
-    """The tuning knobs for a model, by tag."""
+def machine_speed(hw: dict | None = None) -> float:
+    """Rough throughput score for this computer, 0.2 (slow) to 2.0 (fast).
+
+    Not a benchmark — it is the ratio between what the machine has and what the
+    model needs. A 14B model on 6 GB of VRAM spills to the CPU and every call
+    costs 30-120 seconds; the same model on 24 GB does not. Quality passes that
+    are worth it on one machine are not on the other, so the pipeline asks this
+    instead of carrying a fixed trade-off.
+    """
+    hw = hw or scan()
+    vram = float(hw.get("vram_gb") or 0)
+    ram = float(hw.get("ram_total_gb") or 8)
+    cores = int(hw.get("cpu_cores") or 4)
+    if hw.get("unified_memory"):          # Apple Silicon: one fast shared pool
+        score = ram / 16.0
+    elif vram:
+        score = vram / 8.0 + cores / 32.0
+    else:                                 # CPU-only: slow whatever the RAM
+        score = min(0.6, cores / 24.0)
+    return round(max(0.2, min(2.0, score)), 2)
+
+
+def profile_for(tag: str, hw: dict | None = None) -> dict:
+    """The tuning knobs for a model on THIS machine.
+
+    Model size sets the baseline; the machine decides how much optional quality
+    work is affordable on top. `quality_passes` is what the pipeline consults
+    before spending a call on anything that is not strictly required.
+    """
     tier = tier_for_params(params_of(tag))
-    return {"tier": tier, "model": tag, **TIERS[tier]}
+    prof = {"tier": tier, "model": tag, **TIERS[tier]}
+    speed = machine_speed(hw)
+    prof["machine_speed"] = speed
+    # A slow machine still gets every correctness pass; it only skips the
+    # optional ones unless something was actually detected.
+    prof["quality_passes"] = "full" if speed >= 0.95 else (
+        "balanced" if speed >= 0.55 else "lean")
+    prof["always_continuity"] = speed >= 0.95
+    if speed < 0.55:                       # give a slow box more wall-clock room
+        prof["timeout"] = int(prof["timeout"] * 1.5)
+    return prof
 
 
 def catalog_for(hw: dict | None = None) -> list[dict]:

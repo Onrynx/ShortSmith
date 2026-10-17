@@ -18,7 +18,8 @@ from __future__ import annotations
 import argparse
 import sys
 
-from storyforge.config import list_channels, load_channel, lane_budget
+from storyforge.config import (default_channel, list_channels,
+                               load_channel, render_budget)
 from storyforge.graph import run_one
 
 
@@ -36,7 +37,7 @@ def _dry_run(channel: str, args) -> int:
     model_info = select_model(args.mock)
     print(f"brain: {model_info['backend']}/{model_info['model']}\n")
     script, plan, t = generate_script(
-        cfg, args.topic, lane_budget(cfg, "render"), model_info,
+        cfg, args.topic, render_budget(cfg), model_info,
         requested_seconds=args.seconds,
         voice_style=args.voice or "adam",
     )
@@ -47,6 +48,9 @@ def _dry_run(channel: str, args) -> int:
     print(f"\nSTRUCTURE : {plan.get('structure')} — {plan.get('why_structure','')}")
     print(f"LOGLINE   : {plan.get('logline')}")
     print(f"SETTING   : {plan.get('setting')}")
+    cast = ", ".join(f"{c.get('name')} ({c.get('role')})"
+                     for c in (plan.get("cast") or []) if isinstance(c, dict))
+    print(f"CAST      : {cast or '(none listed)'}")
     if plan.get("theme"):
         print(f"THEME     : {plan.get('theme')}")
     print(f"TITLE     : {script.get('title')}")
@@ -63,7 +67,7 @@ def _dry_run(channel: str, args) -> int:
 
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description="StoryForge — render one short for one channel")
-    p.add_argument("--channel", help="channel key (config/<key>.yaml)")
+    p.add_argument("--channel", help="channel key (config/<key>.yaml); defaults to gossip_stories")
     p.add_argument("--lane", default="render", help=argparse.SUPPRESS)  # internal status slot
     p.add_argument("--mock", action="store_true", help="mock mode: no keys/network/GPU")
     p.add_argument("--topic", default="", help="optional forced topic")
@@ -88,7 +92,7 @@ def main(argv=None) -> int:
             print(f"  - {c}")
         return 0
 
-    channel = args.channel or (channels[0] if channels else "history_mysteries")
+    channel = args.channel or default_channel()
     if channels and channel not in channels:
         print(f"[!] unknown channel '{channel}'. Available: {', '.join(channels)}", file=sys.stderr)
         return 2

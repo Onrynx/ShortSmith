@@ -32,7 +32,7 @@ Minecraft-parkour gameplay with animated captions, and posts the finished
 vertical video back to you for approval.
 
 **One video =** original AI story (2.5–2.9 min) → AI narration → gameplay
-background → word-by-word captions → mood-matched music → thumbnail → your
+background → word-by-word captions → thumbnail → your
 review in Discord.
 
 **Nothing is uploaded anywhere.** Videos sit on your PC until *you* upload them.
@@ -211,7 +211,7 @@ Save (Ctrl+S) and close. Everything else is optional — see
 
 ---
 
-## 9. Add gameplay clips + music
+## 9. Add gameplay clips
 
 These are **not** included (too large, and licensing is personal to you).
 

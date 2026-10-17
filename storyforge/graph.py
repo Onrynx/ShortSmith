@@ -12,6 +12,7 @@ dependency is present.
 """
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 from .config import load_channel
@@ -180,7 +181,40 @@ def run_pipeline(state: PipelineState) -> PipelineState:
     if not state.get("final_video_path"):
         notify("red", lane, channel, "pipeline",
                "render produced ZERO output (no final video)")
+    else:
+        cleanup_workdir(state)
     return state
+
+
+def cleanup_workdir(state: PipelineState, keep: bool = False) -> int:
+    """Delete a finished run's scratch directory. Returns bytes reclaimed.
+
+    Every render writes its intermediates — one cut of the background per
+    scene, one segment per scene, a wav per scene — into output/<channel>/
+    _work/<run_id>/. Nothing ever removed them, so an audit found 7.76 GB of
+    scratch against 0.52 GB of actual videos: 85% of the output folder was
+    rubbish, growing by ~300 MB per video.
+
+    Only successful runs are cleaned. A failed run's scratch is the only
+    evidence of what went wrong, so it is kept deliberately.
+    """
+    wd = state.get("workdir")
+    if not wd or keep or env("STORYFORGE_KEEP_WORK", "").strip():
+        return 0
+    path = Path(wd)
+    if path.name != state.get("run_id") or "_work" not in path.parts:
+        return 0              # refuse to delete anything that isn't scratch
+    try:
+        size = sum(f.stat().st_size for f in path.rglob("*") if f.is_file())
+    except Exception:  # noqa: BLE001
+        size = 0
+    try:
+        shutil.rmtree(path, ignore_errors=True)
+        log("info", f"cleaned {size / 1024 ** 2:.0f} MB of working files")
+    except Exception as exc:  # noqa: BLE001
+        log("warn", f"could not clean working files: {exc}")
+        return 0
+    return size
 
 
 def run_one(channel: str, lane: str, *, mock: bool = False, publish: bool = False,

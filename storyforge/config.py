@@ -92,9 +92,22 @@ _DEFAULTS = {
     "target_minutes": 6,
     "style": "cinematic, moody, atmospheric",
     "banned": "gore, real people, copyrighted characters",
-    # "render" is the only slot used now (on-demand). night/day kept for back-compat.
-    "lane_budgets": {"render": [8, 15], "night": [8, 15], "day": [3, 6]},
+    # One render slot. There are no night/day lanes any more.
+    "render_budget": [8, 15],
 }
+
+
+# Gossip-style real-life drama is the default register. Fantasy / game-lore
+# channels exist but are never chosen for you — the user has to ask for them.
+DEFAULT_CHANNEL = "gossip_stories"
+
+
+def default_channel() -> str:
+    """The channel used when none was named. Never alphabetical chance."""
+    chans = list_channels()
+    if DEFAULT_CHANNEL in chans:
+        return DEFAULT_CHANNEL
+    return chans[0] if chans else DEFAULT_CHANNEL
 
 
 def list_channels() -> list[str]:
@@ -113,15 +126,12 @@ def load_channel(name: str) -> dict:
         cfg = {**_DEFAULTS, **_load_yaml(path)}
     cfg["key"] = name
     cfg.setdefault("name", name.replace("_", " ").title())
-    # normalize lane_budgets into tuples
-    lb = cfg.get("lane_budgets") or {}
-    if not isinstance(lb, dict):
-        lb = {}
-    cfg["lane_budgets"] = {
-        "render": tuple(lb.get("render", lb.get("night", _DEFAULTS["lane_budgets"]["render"]))),
-        "night": tuple(lb.get("night", _DEFAULTS["lane_budgets"]["night"])),
-        "day": tuple(lb.get("day", _DEFAULTS["lane_budgets"]["day"])),
-    }
+    # normalize the render budget into a tuple
+    rb = cfg.get("render_budget") or cfg.get("lane_budgets", {}).get("render")         or _DEFAULTS["render_budget"]
+    try:
+        cfg["render_budget"] = (int(rb[0]), int(rb[1]))
+    except Exception:
+        cfg["render_budget"] = tuple(_DEFAULTS["render_budget"])
     return cfg
 
 
@@ -154,19 +164,28 @@ def format_spec(cfg: dict) -> dict:
         "voice_speed": float(cfg.get("voice_speed", 1.18) or 1.18),
         "target_seconds": int(cfg.get("target_seconds", default_target)),
         # exact_seconds > 0 => final video is EXACTLY this long (speed-fit if
-        # over, extend the last scene over the background + music if under)
+        # over, extend the last scene over the background if under)
         "exact_seconds": int(cfg.get("exact_seconds", 0) or 0),
         "scene_bounds": bounds,
     }
 
 
-def lane_budget(cfg: dict, lane: str) -> tuple[int, int]:
-    lb = cfg.get("lane_budgets", {})
-    val = lb.get(lane) or (_DEFAULTS["lane_budgets"].get(lane, [3, 15]))
+def render_budget(cfg: dict) -> tuple[int, int]:
+    """How many scenes may use the optional AI-video provider, if one is set up.
+
+    This used to be keyed by "lane" (night vs day). There is one render slot
+    now, so it is just a property of the channel.
+    """
+    val = cfg.get("render_budget") or _DEFAULTS["render_budget"]
     try:
         return (int(val[0]), int(val[1]))
     except Exception:
         return (3, 15)
+
+
+def lane_budget(cfg: dict, lane: str = "render") -> tuple[int, int]:
+    """Deprecated alias kept so older call sites keep working."""
+    return render_budget(cfg)
 
 
 # --------------------------------------------------------------------------- #
