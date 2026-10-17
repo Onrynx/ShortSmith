@@ -60,6 +60,15 @@ textarea,select,input{width:100%;background:var(--panel2);border:1px solid var(-
 textarea{min-height:76px;resize:vertical}
 textarea:focus,select:focus{border-color:var(--accent)}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+/* Length and Narrator sit side by side, so their chips must be the same
+   height — a 3-up grid and a 2-up grid otherwise render visibly different
+   sized buttons and the pair looks broken. */
+.grid2>.card{height:100%}   /* side-by-side cards end level */
+#lens,#voices{display:grid;gap:10px}
+#lens{grid-template-columns:repeat(3,1fr)}
+#voices{grid-template-columns:repeat(2,1fr)}
+#lens .chip,#voices .chip{min-height:58px;display:flex;flex-direction:column;
+  align-items:center;justify-content:center}
 .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
 
 .chip{background:var(--panel2);border:1px solid var(--line);border-radius:9px;
@@ -209,9 +218,15 @@ tr.dis{opacity:.42}
           </div>
           <div class="card">
             <label>Narrator</label>
-            <div class="grid2" style="gap:10px" id="voices">
+            <div class="grid2" id="voices">
               <div class="chip sel" data-voice="adam">Adam<span class="s">deep</span></div>
               <div class="chip" data-voice="squeaky">Squeaky<span class="s">high, fast</span></div>
+            </div>
+            <div class="row" style="margin-top:10px">
+              <button class="btn g sm" id="previewBtn" onclick="previewVoice()">
+                Hear this voice</button>
+              <span class="muted" id="previewMsg"></span>
+              <audio id="previewAudio" style="display:none"></audio>
             </div>
           </div>
         </div>
@@ -510,6 +525,24 @@ async function loadMachine(){
       <td>${o.runnable?esc(o.blurb):'<span class="badge no">'+esc(o.reason)+'</span>'}</td>
       <td>${btn}</td></tr>`;}).join('');
   paintPull(m.pull);
+}
+
+let PREVIEW_PLAYING = false;
+async function previewVoice(){
+  const btn = $('#previewBtn'), msg = $('#previewMsg'), au = $('#previewAudio');
+  if(PREVIEW_PLAYING){ au.pause(); au.currentTime = 0; }
+  btn.disabled = true; msg.textContent = 'preparing…';
+  try{
+    au.src = '/api/voice/' + encodeURIComponent(VOICE) + '?t=' + Date.now();
+    au.onended = () => { btn.disabled = false; msg.textContent=''; PREVIEW_PLAYING=false; };
+    au.onerror  = () => { btn.disabled = false; msg.textContent='voice not ready yet'; PREVIEW_PLAYING=false; };
+    await au.play();
+    PREVIEW_PLAYING = true;
+    msg.textContent = 'playing…';
+  }catch(e){
+    btn.disabled = false;
+    msg.textContent = 'could not play';
+  }
 }
 
 async function pullModel(tag){

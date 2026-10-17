@@ -204,7 +204,6 @@ def node_voice(state: dict) -> dict:
 
     dead: set[str] = set()
     audio_paths, durations = [], []
-    tones = [174.0, 196.0, 220.0, 233.08, 261.63]
     used_engine = "placeholder"
     style_name, style = resolve_style(state, cfg)
     speed = round(voice_speed(cfg) * (style["speed"] / VOICE_STYLES["adam"]["speed"]), 3)
@@ -233,8 +232,15 @@ def node_voice(state: dict) -> dict:
                     dead.add(name)
                     add_fallback(state, "voice", f"{name} failed ({str(exc)[:80]}); next engine")
         if not made:
+            # When TTS fails for a scene, hold the scene for the right length
+            # in SILENCE. This used to write a tremolo'd sine tone as an
+            # "audible placeholder", which in a finished video is a droning
+            # synth under the picture — far worse than a quiet gap.
             secs = estimate_speech_seconds(text, wpm=150)
-            write_silence_wav(out, secs, rate=24000, tone_hz=tones[i % len(tones)], amplitude=0.05)
+            write_silence_wav(out, secs, rate=24000)
+            add_fallback(state, "voice",
+                         f"scene {i+1}: no narration could be synthesised; "
+                         "the scene is silent")
         return str(out), round(wav_duration(out) or estimate_speech_seconds(text), 3)
 
     for i, sc in enumerate(scenes):

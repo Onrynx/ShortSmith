@@ -35,7 +35,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 from . import control
 from .config import default_channel, list_channels, load_channel
-from .utils import ROOT, log, read_status
+from .utils import ROOT, STATE_DIR, ensure_dir, log, read_status
 
 APP_DIR = ROOT / "app"
 HOST = "127.0.0.1"          # never 0.0.0.0 — see rule 1
@@ -222,6 +222,33 @@ def start_pull(model: str) -> dict:
 
 
 # --------------------------------------------------------------------------- #
+# Voice preview — hear a narrator before committing 12 minutes to one
+# --------------------------------------------------------------------------- #
+_PREVIEW_LINE = ("He said he'd pay me back on Friday. That was eleven months ago.")
+
+
+def voice_preview(style: str) -> Path | None:
+    """Synthesise one short line in the chosen style, cached per style."""
+    from .config import load_channel
+    from .nodes.voice import (VOICE_STYLES, _pitch_up, synth_kokoro,
+                              voice_speed)
+    style = style if style in VOICE_STYLES else "adam"
+    out = ensure_dir(STATE_DIR / "previews") / f"{style}.wav"
+    if out.exists() and out.stat().st_size > 1000:
+        return out
+    cfg = load_channel(default_channel())
+    spec = VOICE_STYLES[style]
+    speed = round(voice_speed(cfg) * (spec["speed"] / VOICE_STYLES["adam"]["speed"]), 3)
+    try:
+        synth_kokoro(_PREVIEW_LINE, cfg.get("voice", "am_adam"), out, speed)
+        _pitch_up(out, spec["pitch"])
+        return out
+    except Exception as exc:  # noqa: BLE001
+        log("warn", f"voice preview failed: {exc}")
+        return None
+
+
+# --------------------------------------------------------------------------- #
 # HTTP
 # --------------------------------------------------------------------------- #
 class _Handler(BaseHTTPRequestHandler):
@@ -331,6 +358,12 @@ class _Handler(BaseHTTPRequestHandler):
             return self._file(APP_DIR / "index.html")
         if p == "/api/state":
             return self._json(app_state())
+        if p.startswith("/api/voice/"):
+            style = unquote(p.rsplit("/", 1)[-1])
+            wav = voice_preview(style)
+            if not wav:
+                return self._json({"error": "voice preview unavailable"}, 503)
+            return self._file(wav)
         if p == "/api/pull":
             return self._json(pull_state())
         if p == "/api/machine":
