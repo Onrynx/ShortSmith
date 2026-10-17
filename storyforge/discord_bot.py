@@ -4,7 +4,7 @@ Outbound events go via DISCORD_WEBHOOK_URL (notify/push.py, no bot required).
 This bot adds two-way control from any Discord client (phone included):
 
   !status                     what's rendering right now / what's ready
-  !brain                      Odysseus / LLM backend status
+  !brain                      which AI model is writing
   !pending                    list videos awaiting review
   !review <n|id>              thumbnail + script + report for one item
   !approve <n|id>             move to approved/
@@ -183,11 +183,8 @@ def build_bot(chan_id: int = 0):
     async def brain(ctx):
         if not allowed(ctx):
             return
-        o = control.odysseus_status()
-        b = o["storyforge_brain"]
-        await ctx.send(f"Odysseus UI {'🟢' if o['ui_up'] else '🔴'} · /v1 "
-                       f"{'🟢' if o['llm_v1_up'] else '🔴'} ({o['url']})\n"
-                       f"brain: **{b['backend']}/{b['model']}** — {b['reason']}")
+        b = control.brain_status()
+        await ctx.send(f"brain: **{b['backend']}/{b['model']}** — {b['reason']}")
 
     @bot.command()
     async def pending(ctx):

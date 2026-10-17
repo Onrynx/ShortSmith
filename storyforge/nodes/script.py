@@ -130,11 +130,9 @@ def _visuals_needed(cfg: dict, mock: bool) -> bool:
     prompts is pure waste.
     """
     try:
-        from ..providers import BackgroundProvider, StockProvider
+        from ..providers import BackgroundProvider
         if mock:
             return False
-        if StockProvider(cfg).available():
-            return True
         return not BackgroundProvider(cfg).available()
     except Exception:  # noqa: BLE001
         return True

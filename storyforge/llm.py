@@ -35,83 +35,10 @@ def _installed_ollama_models(base: str) -> list[str]:
 
 
 # --------------------------------------------------------------------------- #
-# Odysseus — PewDiePie's self-hosted AI workspace (github.com/pewdiepie-archdaemon
-# /odysseus). Runs at localhost:7000 and fronts model backends (Ollama, vLLM,
-# llama.cpp, OpenRouter) behind an OpenAI-compatible /v1 API. We treat it as the
-# preferred local "brain": own your AI instead of renting it.
-# --------------------------------------------------------------------------- #
-def odysseus_base_url() -> str:
-    return (env("ODYSSEUS_URL", "http://localhost:7000") or "http://localhost:7000").rstrip("/")
-
-
-_ODY_PATHS = ("/api/v1", "/v1", "/api", "/api/openai/v1")  # tried in order
-_ody_found: str | None = None  # cached working API base for this process
-
-
-def _odysseus_key() -> str:
-    return env("ODYSSEUS_API_KEY", "odysseus") or "odysseus"
-
-
-def _ody_headers() -> dict:
-    # builds differ on auth scheme — send both, servers ignore the extra one
-    k = _odysseus_key()
-    return {"Authorization": f"Bearer {k}", "X-API-Key": k}
-
-
-def _models_at(api_base: str) -> list[str]:
-    try:
-        data = http_get_json(f"{api_base}/models", headers=_ody_headers(), timeout=4)
-        items = data.get("data", data) if isinstance(data, dict) else data
-        return [m.get("id", "") for m in items] if isinstance(items, list) else []
-    except Exception:
-        return []
-
-
-def odysseus_api_base() -> str:
-    """The working OpenAI-compatible base. Configured path first, then discovery."""
-    global _ody_found
-    if _ody_found:
-        return _ody_found
-    base = odysseus_base_url()
-    cfg = env("ODYSSEUS_API_PATH")
-    for path in ([cfg] if cfg else []) + list(_ODY_PATHS):
-        if path and _models_at(base + path):
-            _ody_found = base + path
-            return _ody_found
-    return base + (cfg or "/v1")
-
-
-def _odysseus_models(api_base: str) -> list[str]:
-    return _models_at(api_base)
-
-
-def odysseus_ui_reachable() -> bool:
-    """True if the Odysseus web app answers at :7000 (even a login redirect)."""
-    return host_reachable(odysseus_base_url(), timeout=3)
-
-
-def odysseus_reachable() -> bool:
-    """True only if Odysseus actually serves an OpenAI-compatible /v1 that we can
-    generate against. Odysseus's own API is auth'd under /api and it usually just
-    *consumes* model backends, so we require a real /v1/models list before routing
-    the crew here — otherwise StoryForge uses the shared Ollama that Odysseus also
-    uses (same brain), and never picks a backend that would 404."""
-    if env("ODYSSEUS_DISABLE"):
-        return False
-    return len(_odysseus_models(odysseus_api_base())) > 0
-
-
 def select_model(mock: bool = False) -> dict:
     """Return {backend, model, base_url, reason}. Never raises."""
     if mock:
         return {"backend": "mock", "model": "mock", "base_url": "", "reason": "--mock: canned generator, zero network"}
-
-    # 1) Odysseus (preferred — self-hosted, OpenAI-compatible gateway)
-    if odysseus_reachable():
-        api_base = odysseus_api_base()
-        model = env("ODYSSEUS_MODEL") or (_odysseus_models(api_base)[:1] or [""])[0] or "default"
-        return {"backend": "odysseus", "model": model, "base_url": api_base,
-                "reason": f"Odysseus up at {odysseus_base_url()}; using '{model}'"}
 
     free = detect_free_ram_gb()
     total = detect_total_ram_gb()
@@ -155,24 +82,6 @@ def complete(system: str, user: str, model_info: dict,
     # Context/output limits are per-model, not global — see model_profiles.
     from .model_profiles import profile_for
     _prof = profile_for(model_info.get("model", ""))
-    if backend == "odysseus":
-        headers = _ody_headers()
-        payload = {
-            "model": model_info["model"],
-            "messages": [{"role": "system", "content": system},
-                         {"role": "user", "content": user}],
-            "temperature": temperature,
-        }
-        if json_mode:
-            payload["response_format"] = {"type": "json_object"}
-        data = http_post_json(f"{model_info['base_url']}/chat/completions", payload,
-                              headers=headers, timeout=timeout)
-        if isinstance(data, dict):
-            try:
-                return data["choices"][0]["message"]["content"] or ""
-            except Exception:
-                return str(data)
-        return str(data)
     if backend == "ollama":
         payload = {
             "model": model_info["model"],

@@ -11,10 +11,8 @@ import sys
 from pathlib import Path
 
 from .config import list_channels, load_channel
-from .llm import (_odysseus_models, odysseus_api_base, odysseus_base_url,
-                  odysseus_reachable, odysseus_ui_reachable, select_model)
+from .llm import select_model
 from .notify import recent_events
-from .providers.cloud import cap_remaining
 from .state import approved_dir
 from .utils import (CREATE_NEW_PROCESS_GROUP, CREATE_NO_WINDOW, OUTPUT_DIR, ROOT,
                     STATE_DIR, ensure_dir, env, read_json, read_status, utcnow_iso,
@@ -31,7 +29,6 @@ def config_info() -> dict:
     return {
         "channels": [{"key": c, "name": load_channel(c).get("name", c)} for c in channels],
         "auto_publish": (env("AUTO_PUBLISH", "off") or "off").lower(),
-        "odysseus_url": odysseus_base_url(),
     }
 
 
@@ -39,7 +36,6 @@ def status() -> dict:
     return {
         "now": utcnow_iso(),
         "render": read_status(RENDER_SLOT),
-        "cloud_cap_remaining": cap_remaining(),
         "pending_count": len(list_pending()),
     }
 
@@ -179,17 +175,10 @@ def media_path(item_id: str, kind: str) -> Path | None:
 
 
 # ---- actions ---------------------------------------------------------------- #
-def odysseus_status() -> dict:
-    llm_up = odysseus_reachable()
-    sel = select_model(False)
-    return {
-        "url": odysseus_base_url(),
-        "ui_up": odysseus_ui_reachable(),
-        "llm_v1_up": llm_up,
-        "models": _odysseus_models(odysseus_api_base()) if llm_up else [],
-        "storyforge_brain": {"backend": sel.get("backend"), "model": sel.get("model"),
-                             "reason": sel.get("reason")},
-    }
+def brain_status() -> dict:
+    """Which model is writing, and why that one."""
+    b = select_model(False)
+    return {"backend": b["backend"], "model": b["model"], "reason": b["reason"]}
 
 
 def _spawn(cmd: list[str], tag: str) -> dict:

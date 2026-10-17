@@ -1,7 +1,7 @@
 """Natural-language layer for the Discord bot — one LLM call per message.
 
 Routes plain English through the SAME free local brain StoryForge already uses
-(Odysseus /v1 -> Ollama -> Gemini). The model returns strict JSON:
+(local Ollama, or Gemini if it is down). The model returns strict JSON:
   {"say": "<reply>", "action": null | {"name": "...", "args": {...}}}
 We execute the action via control.py and append the result. Zero paid services.
 """
@@ -94,8 +94,7 @@ def _exec(name: str, args: dict) -> str:
         if name == "status":
             return _render_progress()
         if name == "brain":
-            o = control.odysseus_status()
-            b = o["storyforge_brain"]
+            b = control.brain_status()
             return f"brain: {b['backend']}/{b['model']} — {b['reason']}"
         if name == "pending":
             items = control.list_pending()
@@ -546,7 +545,7 @@ def handle(text: str, channel_id: int, is_admin: bool = True) -> str:
         return routed
     mi = select_model(False)
     if mi["backend"] == "mock":
-        return ("My brain is offline (no Odysseus/Ollama reachable). "
+        return ("My brain is offline (Ollama is not reachable). "
                 "Commands still work: try `!help`.")
     # Chat stays on a FAST model; the big model is reserved for script writing.
     if mi["backend"] == "ollama":

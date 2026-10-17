@@ -19,7 +19,6 @@ from .config import load_channel
 from .llm import select_model
 from .nodes import node_canvas, node_cutter, node_herald, node_script, node_voice
 from .notify import notify
-from .providers.wan2gp import DeferredRender
 from .state import PipelineState, new_run_state
 from .utils import STATE_DIR, env, log, read_json, write_json, write_status
 
@@ -155,21 +154,12 @@ def run_pipeline(state: PipelineState) -> PipelineState:
         if use_lg:
             try:
                 state = run_with_langgraph(state)
-            except DeferredRender:
-                raise
             except Exception as exc:  # noqa: BLE001
                 notify("yellow", lane, channel, "pipeline",
                        f"LangGraph engine error ({exc}); falling back to lite runner")
                 state = run_lite(state)
         else:
             state = run_lite(state)
-    except DeferredRender as exc:
-        state["deferred"] = True  # type: ignore[typeddict-unknown-key]
-        write_status(lane, {"stage": "canvas", "message": str(exc), "deferred": True,
-                            "run_id": state.get("run_id"), "channel": channel, "lane": lane})
-        notify("yellow", lane, channel, "canvas",
-               f"render queued to Wan2GP; re-run to assemble ({exc})")
-        return state
     except Exception as exc:  # noqa: BLE001
         notify("red", lane, channel, "pipeline",
                f"RENDER FAILED: {exc}", details={"run_id": state.get("run_id")})

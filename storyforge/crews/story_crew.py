@@ -585,44 +585,6 @@ def _scenes(rows):
     return [{"narration": n, "image_prompt": p, "hero": h} for (n, p, h) in rows]
 
 
-def _history_short() -> dict:
-    s = "vertical 9:16 composition, cinematic, moody, historical, volumetric light, film grain"
-    rows = [
-        ("Five thousand elite Roman soldiers marched north into the fog — and history "
-         "never records them again.",
-         f"A column of Roman legionaries vanishing into thick grey highland fog, eagle "
-         f"standard raised, cold light, {s}", True),
-        ("The Ninth Legion was legendary, hardened across the empire. Then the records "
-         "that tracked every legion simply stop.",
-         f"A weathered stone frontier fort at dawn, banners snapping in cold wind, {s}", True),
-        ("Historians still argue about what happened. The honest answer is we don't "
-         "actually know — and that's what makes it chilling.",
-         f"Candlelit study piled with ancient maps and scrolls, a single quill, warm amber "
-         f"glow, {s}", False),
-        ("One theory: they were annihilated by the fierce tribes of the northern "
-         "highlands, swallowed by a land Rome never tamed.",
-         f"Shadowy tribal warriors watching from a fog-covered ridge above a narrow glen, {s}",
-         True),
-        ("Another: they were quietly transferred east, their paperwork lost to fire and "
-         "time fifteen centuries ago.",
-         f"A sunbaked eastern desert fortress under a vast sky, heat shimmer, distant "
-         f"figures on the walls, {s}", True),
-        ("An entire legion, erased from the best-documented empire in history. So what "
-         "else have we simply lost?",
-         f"Ghostly silhouettes of marching legionaries fading into white fog, dreamlike, {s}",
-         True),
-    ]
-    return {
-        "title": "The Roman Legion That Vanished Without a Trace",
-        "hook": rows[0][0], "scenes": _scenes(rows),
-        "description": ("5,000 elite Roman soldiers marched north — and the records just "
-                        "stop. The still-unsolved mystery of the Ninth Legion. #shorts"),
-        "tags": ["history", "shorts", "ancient rome", "roman empire", "ninth legion",
-                 "unsolved mystery", "history shorts", "ancient history", "roman britain",
-                 "mystery"],
-    }
-
-
 def _gaming_short() -> dict:
     s = "vertical 9:16 composition, epic concept art, dramatic fantasy environments, painterly, volumetric light"
     rows = [
@@ -657,67 +619,6 @@ def _gaming_short() -> dict:
                         "of the Sundering. Original lore; no trademarked characters. #shorts"),
         "tags": ["game lore", "shorts", "gaming", "lore explained", "hidden story",
                  "rpg lore", "dark fantasy", "worldbuilding", "gaming shorts", "lore"],
-    }
-
-
-def _history_long() -> dict:
-    style = "cinematic, moody, historical, volumetric light, film grain"
-    rows = [
-        ("In the year 108 AD, five thousand elite Roman soldiers marched north into the "
-         "mist of Britain — and then, according to the records we have, they simply stopped "
-         "existing. What happened to the Ninth Legion?",
-         f"A long column of Roman legionaries marching into thick grey highland fog, eagle "
-         f"standard raised, cold morning light, {style}", True),
-        ("The Ninth Hispana was one of the most storied legions of the empire, hardened "
-         "across a dozen frontiers. Then the imperial paperwork that tracked every legion "
-         "goes quiet.",
-         f"Weathered stone fort on a windswept northern frontier at dawn, banners snapping, "
-         f"{style}", True),
-        ("Historians have argued about this for more than a century, and the honest answer "
-         "is that we still do not know. That uncertainty is exactly what makes it haunting.",
-         f"Candlelit study filled with ancient maps and scrolls, a single quill resting, warm "
-         f"amber glow, {style}", False),
-        ("One theory is dramatic: that the legion marched into what is now Scotland and was "
-         "annihilated by the fierce Caledonian tribes, swallowed by a land Rome never tamed.",
-         f"Shadowy tribal warriors watching from a fog-covered ridge above a narrow glen, "
-         f"tense and still, {style}", True),
-        ("But the evidence is thin. A few roof tiles stamped with the legion's mark, a "
-         "fragment of an inscription — clues that raise more questions than they answer.",
-         f"Close-up of a broken clay tile with a faint stamped Roman numeral, half-buried in "
-         f"dark soil, {style}", True),
-        ("A quieter theory says there was no massacre at all. The legion may simply have "
-         "been transferred east, its records lost the way so many ancient documents were "
-         "lost — to fire, to time, to neglect.",
-         f"Sunbaked eastern desert fortress under a vast sky, distant figures on the walls, "
-         f"heat shimmer, {style}", True),
-        ("Both stories cannot be true, and we may never have the document that settles it. "
-         "The archive we would need to check might have burned fifteen centuries ago.",
-         f"A great ancient library consumed by silent flames, embers rising into darkness, "
-         f"{style}", True),
-        ("What we can say is this: somewhere between the frontier of Britain and the edge of "
-         "the known world, an entire legion slips out of history's grip.",
-         f"A worn Roman road vanishing into cold mist between dark hills, empty and silent, "
-         f"{style}", False),
-        ("Maybe the truth is buried under a farmer's field, waiting for one more spade to "
-         "turn it over. Archaeology has rewritten this story before, and it could again.",
-         f"A single archaeologist's trowel resting beside a half-exposed bronze artifact in "
-         f"rich earth, soft daylight, {style}", False),
-        ("Until then, the Ninth Legion stays where it has been for nineteen centuries — not "
-         "quite found, not quite lost, marching just beyond the edge of what we can prove.",
-         f"Ghostly silhouettes of marching legionaries fading into white fog, dreamlike, "
-         f"{style}", True),
-        ("If a mystery this large can hide inside the best-documented empire of the ancient "
-         "world, it makes you wonder how much of history is simply the part that survived.",
-         f"A vast night sky over ancient ruins, stars wheeling above broken columns, "
-         f"contemplative, {style}", False),
-    ]
-    return {
-        "title": "The Roman Legion That Vanished Without a Trace",
-        "hook": rows[0][0], "scenes": _scenes(rows),
-        "description": ("Five thousand elite Roman soldiers marched north — and the records "
-                        "simply stop. The honest, still-unsolved story of the Ninth Legion."),
-        "tags": ["history", "ancient rome", "roman empire", "ninth legion", "unsolved mystery",
-                 "documentary", "ancient history", "lost legion", "roman britain", "mystery"],
     }
 
 

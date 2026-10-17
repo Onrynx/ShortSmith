@@ -13,7 +13,7 @@ from .utils import OUTPUT_DIR, ensure_dir, now_id, slugify
 
 class PipelineState(TypedDict, total=False):
     # --- inputs / identity ---
-    channel: str                 # channel key, e.g. "history_mysteries"
+    channel: str                 # channel key, e.g. "gossip_stories"
     channel_cfg: dict            # loaded config
     lane: str                    # "night" | "day"
     mock: bool

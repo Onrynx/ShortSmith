@@ -7,7 +7,7 @@ you in Discord.
 
 Design principle baked into every module: **degrade, never die.** The core depends
 only on the Python stdlib + Pillow + numpy + FFmpeg + Ollama. Every heavier piece
-(Kokoro/whisper for quality, and the optional CrewAI, LangGraph, Odysseus, Wan2GP,
+(Kokoro/whisper for quality, and the optional LangGraph,
 cloud APIs) is optional and guarded — real when present, graceful fallback when
 absent. That is what lets MOCK mode run end-to-end with zero keys, zero network,
 and zero GPU and still emit a real .mp4.
