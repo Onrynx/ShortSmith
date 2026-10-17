@@ -65,7 +65,35 @@ def _supports_icon() -> bool:
         return False
 
 
+def _safe_stdio() -> None:
+    """pythonw gives a process no console, so sys.stdout/stderr are None.
+
+    The desktop shortcut launches with pythonw precisely so no black window
+    appears — but that means any bare print() raises AttributeError and kills
+    the app before the window ever opens, with nothing on screen to explain it.
+    Point both streams at a log file instead, which also gives us somewhere to
+    look when a double-click silently does nothing.
+    """
+    if sys.stdout is not None and sys.stderr is not None:
+        return
+    try:
+        logfile = ROOT / ".storyforge_state" / "app.log"
+        logfile.parent.mkdir(parents=True, exist_ok=True)
+        fh = open(logfile, "a", encoding="utf-8", buffering=1)
+        if sys.stdout is None:
+            sys.stdout = fh
+        if sys.stderr is None:
+            sys.stderr = fh
+    except Exception:  # noqa: BLE001
+        import io
+        if sys.stdout is None:
+            sys.stdout = io.StringIO()
+        if sys.stderr is None:
+            sys.stderr = io.StringIO()
+
+
 def main(argv: list[str] | None = None) -> int:
+    _safe_stdio()
     argv = argv if argv is not None else sys.argv[1:]
     browser_only = "--browser" in argv
 

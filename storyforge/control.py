@@ -111,6 +111,25 @@ def reject(item_id: str) -> dict:
     return {"ok": True, "deleted": deleted}
 
 
+def delete_item(item_id: str, where: str = "pending") -> dict:
+    """Delete one item's files from pending/ or approved/.
+
+    reject() only looks in pending/, so an approved video could never be
+    removed from inside the app — the Library needs this.
+    """
+    m = find_item(item_id, where)
+    if not m:
+        return {"ok": False, "error": "not found"}
+    deleted = []
+    for p in Path(m["_dir"]).glob(f"{item_id}.*"):
+        try:
+            p.unlink()
+            deleted.append(p.name)
+        except Exception:  # noqa: BLE001
+            pass
+    return {"ok": True, "deleted": deleted}
+
+
 def history(limit: int = 20) -> list[dict]:
     items = []
     for ch_dir in OUTPUT_DIR.glob("*/approved"):

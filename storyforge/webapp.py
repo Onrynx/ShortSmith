@@ -100,6 +100,20 @@ def pending_items() -> list[dict]:
     return out
 
 
+def approved_items() -> list[dict]:
+    out = []
+    for m in control.history(limit=200):
+        out.append({
+            "id": m.get("id"),
+            "title": m.get("title") or "Untitled",
+            "channel": m.get("channel") or "",
+            "seconds": round(m.get("runtime_sec") or 0),
+            "scenes": len(m.get("scenes") or []),
+            "when": (m.get("approved_at") or m.get("created") or "")[:10],
+        })
+    return out
+
+
 def app_state() -> dict:
     """One call the UI can poll for everything on screen."""
     try:
@@ -114,7 +128,20 @@ def app_state() -> dict:
         "channels": list_channels(),
         "default_channel": default_channel(),
         "busy": control.render_in_progress(),
+        "approved": approved_items(),
     }
+
+
+def installed_models() -> list[str]:
+    """Models Ollama already has, so the menu can say Download vs Ready."""
+    import json as _json
+    import urllib.request
+    try:
+        with urllib.request.urlopen("http://localhost:11434/api/tags", timeout=4) as r:
+            data = _json.loads(r.read().decode("utf-8", "replace"))
+        return [m.get("name", "") for m in data.get("models", [])]
+    except Exception:  # noqa: BLE001
+        return []
 
 
 def machine_info() -> dict:
@@ -130,7 +157,68 @@ def machine_info() -> dict:
         "profile": rec["profile"],
         "options": catalog_for(hw),
         "base_install_gb": BASE_INSTALL_GB,
+        "installed": installed_models(),
+        "pull": pull_state(),
     }
+
+
+# --------------------------------------------------------------------------- #
+# Model download — so choosing a model never needs a terminal
+# --------------------------------------------------------------------------- #
+# Ollama exposes a streaming pull API. Driving it from here is what lets the
+# setup screen say "pick one and press Download" instead of telling somebody to
+# type `ollama pull qwen2.5:7b`. Only the model the user picked is fetched.
+_PULL: dict = {"model": None, "status": "idle", "percent": 0,
+               "done_gb": 0.0, "total_gb": 0.0, "error": None}
+
+
+def pull_state() -> dict:
+    return dict(_PULL)
+
+
+def _pull_worker(model: str) -> None:
+    import json as _json
+    import urllib.request
+    from .llm import ollama_base_url
+
+    base = ollama_base_url() if callable(globals().get("ollama_base_url", None)) else None
+    base = base or "http://localhost:11434"
+    _PULL.update(model=model, status="downloading", percent=0,
+                 done_gb=0.0, total_gb=0.0, error=None)
+    try:
+        req = urllib.request.Request(
+            f"{base}/api/pull",
+            data=_json.dumps({"model": model, "stream": True}).encode(),
+            headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=None) as resp:
+            for raw in resp:
+                if not raw.strip():
+                    continue
+                try:
+                    msg = _json.loads(raw.decode("utf-8", "replace"))
+                except ValueError:
+                    continue
+                if msg.get("error"):
+                    _PULL.update(status="failed", error=str(msg["error"]))
+                    return
+                done, total = msg.get("completed"), msg.get("total")
+                if done and total:
+                    _PULL.update(percent=round(done / total * 100, 1),
+                                 done_gb=round(done / 1024 ** 3, 2),
+                                 total_gb=round(total / 1024 ** 3, 2))
+                _PULL["status"] = str(msg.get("status") or "downloading")
+        _PULL.update(status="done", percent=100.0)
+        log("info", f"model {model} downloaded")
+    except Exception as exc:  # noqa: BLE001
+        _PULL.update(status="failed", error=str(exc))
+        log("warn", f"model pull failed: {exc}")
+
+
+def start_pull(model: str) -> dict:
+    if _PULL.get("status") == "downloading":
+        return {"ok": False, "error": "a download is already running"}
+    threading.Thread(target=_pull_worker, args=(model,), daemon=True).start()
+    return {"ok": True, "model": model}
 
 
 # --------------------------------------------------------------------------- #
@@ -138,6 +226,12 @@ def machine_info() -> dict:
 # --------------------------------------------------------------------------- #
 class _Handler(BaseHTTPRequestHandler):
     server_version = "StoryForge"
+    # HTTP/1.1 is required for video. The default (1.0) closes the connection
+    # after every response, and a <video> element issues dozens of range
+    # requests — browsers treat those mid-playback closes as a stall, so clips
+    # played for about a second and stopped. Keep-alive fixes it. Every reply
+    # here sends an accurate Content-Length, which 1.1 requires.
+    protocol_version = "HTTP/1.1"
 
     def log_message(self, fmt, *args):      # noqa: A003 - quiet by default
         pass
@@ -237,22 +331,25 @@ class _Handler(BaseHTTPRequestHandler):
             return self._file(APP_DIR / "index.html")
         if p == "/api/state":
             return self._json(app_state())
+        if p == "/api/pull":
+            return self._json(pull_state())
         if p == "/api/machine":
             return self._json(machine_info())
         if p == "/api/events":
             return self._json({"events": control.events(20)})
+        if p.startswith("/api/script/"):
+            iid = unquote(p.rsplit("/", 1)[-1])
+            item = control.get_pending(iid) or control.find_item(iid, "approved") or {}
+            return self._json({
+                "title": item.get("title"),
+                "scenes": [{"narration": sc.get("narration"),
+                            "purpose": sc.get("purpose")}
+                           for sc in (item.get("scenes") or [])],
+            })
         if p.startswith("/api/video/"):
             return self._file(control.media_path(unquote(p.rsplit("/", 1)[-1]), "video"))
         if p.startswith("/api/thumb/"):
             return self._file(control.media_path(unquote(p.rsplit("/", 1)[-1]), "thumb"))
-        if p.startswith("/api/script/"):
-            item = control.get_pending(unquote(p.rsplit("/", 1)[-1])) or {}
-            return self._json({
-                "title": item.get("title"),
-                "scenes": [{"narration": s.get("narration"),
-                            "purpose": s.get("purpose")}
-                           for s in (item.get("scenes") or [])],
-            })
         # any other static file under app/
         rel = p.lstrip("/")
         cand = (APP_DIR / rel).resolve()
@@ -285,6 +382,34 @@ class _Handler(BaseHTTPRequestHandler):
             return self._json(control.approve(str(body.get("id") or "")))
         if p == "/api/reject":
             return self._json(control.reject(str(body.get("id") or "")))
+        if p == "/api/bulk":
+            # One request for a whole selection: the UI lets you tick several
+            # videos, and firing N separate calls would half-apply on an error.
+            ids = [str(i) for i in (body.get("ids") or []) if i]
+            action = str(body.get("action") or "")
+            if action not in ("approve", "reject", "delete"):
+                return self._json({"error": "unknown action"}, 400)
+            done, failed = [], []
+            for iid in ids:
+                try:
+                    if action == "approve":
+                        r = control.approve(iid)
+                    elif action == "reject":
+                        r = control.reject(iid)
+                    else:
+                        r = control.delete_item(iid, "approved")
+                    (done if r.get("ok") else failed).append(iid)
+                except Exception:  # noqa: BLE001
+                    failed.append(iid)
+            return self._json({"ok": not failed, "done": len(done),
+                               "failed": len(failed)})
+
+        if p == "/api/pull":
+            model = str(body.get("model") or "").strip()
+            if not model:
+                return self._json({"error": "no model given"}, 400)
+            return self._json(start_pull(model))
+
         if p == "/api/rescan":
             from .hardware import rescan
             return self._json(rescan())

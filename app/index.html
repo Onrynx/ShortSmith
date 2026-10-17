@@ -135,6 +135,18 @@ tr.dis{opacity:.42}
 .hw .b .v{font-size:15px;font-weight:650;margin-top:4px}
 .hw .b .v small{font-size:11px;color:var(--dim);font-weight:400;display:block}
 .empty{color:var(--faint);text-align:center;padding:38px 10px;font-size:13px}
+.bar{display:flex;align-items:center;gap:14px;background:var(--panel);
+  border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin:14px 0}
+.ck{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--dim);cursor:pointer}
+.ck input{width:15px;height:15px;accent-color:var(--accent);cursor:pointer}
+.card.pick{border-color:var(--accent);background:rgba(255,122,61,.05)}
+.sel-ck{position:absolute;top:12px;left:12px;width:18px;height:18px;
+  accent-color:var(--accent);cursor:pointer;z-index:2}
+.card.item{position:relative;padding-left:44px}
+.script{margin-top:12px;border-top:1px solid #1e232b;padding-top:10px;display:none}
+.script.on{display:block}
+.pbar{height:8px;background:var(--panel2);border-radius:4px;overflow:hidden;margin:8px 0}
+.pbar i{display:block;height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));transition:width .5s}
 </style>
 </head>
 <body>
@@ -144,6 +156,7 @@ tr.dis{opacity:.42}
     <div class="navb sel" data-s="make"><span class="ic">+</span> Make</div>
     <div class="navb" data-s="progress"><span class="ic">&#9681;</span> In progress</div>
     <div class="navb" data-s="review"><span class="ic">&#9654;</span> Review <span class="cnt" id="cnt">0</span></div>
+    <div class="navb" data-s="library"><span class="ic">&#9636;</span> Library <span class="cnt" id="lcnt">0</span></div>
     <div class="navb" data-s="machine"><span class="ic">&#9881;</span> Settings</div>
     <div class="sp"></div>
     <div class="mini" id="mini">Local only &middot; nothing leaves this computer</div>
@@ -226,7 +239,27 @@ tr.dis{opacity:.42}
       <!-- REVIEW -->
       <div class="scr" id="review">
         <h1>Ready for review<span class="sub" id="rSub">&nbsp;</span></h1>
+        <div class="bar" id="rBar">
+          <label class="ck"><input type="checkbox" id="rAll"> Select all</label>
+          <span class="muted" id="rSel">none selected</span>
+          <span class="right row">
+            <button class="btn ok sm" id="rApprove" disabled onclick="bulk('approve','review')">Approve selected</button>
+            <button class="btn no sm" id="rDelete" disabled onclick="bulk('reject','review')">Delete selected</button>
+          </span>
+        </div>
         <div id="rList"></div>
+      </div>
+
+      <div class="scr" id="library">
+        <h1>Library<span class="sub" id="lSub">&nbsp;</span></h1>
+        <div class="bar" id="lBar">
+          <label class="ck"><input type="checkbox" id="lAll"> Select all</label>
+          <span class="muted" id="lSel">none selected</span>
+          <span class="right row">
+            <button class="btn no sm" id="lDelete" disabled onclick="bulk('delete','library')">Delete selected</button>
+          </span>
+        </div>
+        <div id="lList"></div>
       </div>
 
       <!-- SETTINGS -->
@@ -240,7 +273,9 @@ tr.dis{opacity:.42}
           <button class="btn g sm" style="margin-left:8px" onclick="rescan()">Re-scan</button>
         </p>
         <h2>Writer model</h2>
+        <div class="card" id="pullBox" style="display:none;margin-bottom:12px"></div>
         <div class="card"><table id="models"></table></div>
+        <p class="muted" style="margin-top:10px">Only the model you choose is downloaded. Nothing else is fetched.</p>
       </div>
     </div>
   </div>
@@ -327,24 +362,126 @@ function renderProgress(r){
 
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
-function renderReview(items){
-  $('#cnt').textContent = items.length;
-  $('#rSub').textContent = items.length ? items.length+' waiting' : '';
-  if(!items.length){ $('#rList').innerHTML='<div class="empty">No videos waiting. Make one from the Make tab.</div>'; return; }
-  $('#rList').innerHTML = items.map(it => `
-    <div class="card"><div class="vrow">
-      <video controls preload="metadata" poster="/api/thumb/${encodeURIComponent(it.id)}"
+const SEL = {review:new Set(), library:new Set()};
+
+function cardHTML(it, pane){
+  const on = SEL[pane].has(it.id);
+  return `<div class="card item ${on?'pick':''}" data-id="${it.id}">
+    <input type="checkbox" class="sel-ck" ${on?'checked':''}
+           onchange="toggle('${pane}','${it.id}',this.checked)">
+    <div class="vrow">
+      <video controls preload="none" poster="/api/thumb/${encodeURIComponent(it.id)}"
              src="/api/video/${encodeURIComponent(it.id)}"></video>
       <div style="flex:1;min-width:0">
         <div style="font-size:16px;font-weight:650">${esc(it.title)}</div>
         <div class="kv"><div class="k">Length</div><div>${it.seconds}s · ${it.scenes} scenes</div></div>
+        ${it.when?`<div class="kv"><div class="k">Approved</div><div>${esc(it.when)}</div></div>`:''}
         ${it.structure?`<div class="kv"><div class="k">Shape</div><div>${esc(it.structure)}</div></div>`:''}
         <div class="row" style="margin-top:12px">
-          <button class="btn ok sm" onclick="approve('${it.id}')">Approve</button>
-          <button class="btn no sm" onclick="reject('${it.id}')">Reject</button>
+          ${pane==='review'?`<button class="btn ok sm" onclick="one('approve','${it.id}')">Approve</button>
+          <button class="btn no sm" onclick="one('reject','${it.id}')">Delete</button>`
+          :`<button class="btn no sm" onclick="one('delete','${it.id}')">Delete</button>`}
+          <button class="btn g sm" onclick="showScript('${it.id}',this)">Read script</button>
           <button class="btn g sm" onclick="reveal('${it.id}')">Open folder</button>
         </div>
-      </div></div></div>`).join('');
+        <div class="script" id="sc-${it.id}"></div>
+      </div></div></div>`;
+}
+
+function toggle(pane, id, on){
+  on ? SEL[pane].add(id) : SEL[pane].delete(id);
+  const card = document.querySelector(`#${pane==='review'?'rList':'lList'} .card[data-id="${id}"]`);
+  if(card) card.classList.toggle('pick', on);
+  syncBar(pane);
+}
+
+function syncBar(pane){
+  const n = SEL[pane].size;
+  if(pane==='review'){
+    $('#rSel').textContent = n ? n+' selected' : 'none selected';
+    $('#rApprove').disabled = !n; $('#rDelete').disabled = !n;
+  } else {
+    $('#lSel').textContent = n ? n+' selected' : 'none selected';
+    $('#lDelete').disabled = !n;
+  }
+}
+
+function selectAll(pane, on, items){
+  SEL[pane].clear();
+  if(on) items.forEach(i=>SEL[pane].add(i.id));
+  paint(pane, items, true); syncBar(pane);
+}
+
+let LAST = {review:[], library:[]}, LASTSIG = {review:null, library:null};
+
+// The list is repainted by rebuilding innerHTML, which destroys every <video>
+// in it. With a 3-second poll that meant a clip you were watching was ripped
+// out of the document a second after you pressed play — the browser reports
+// "the media was removed from the document" and playback dies.
+//
+// So only repaint when something actually changed, and never while a video in
+// that pane is playing.
+function paint(pane, items, force){
+  LAST[pane] = items;
+  const host = pane==='review' ? $('#rList') : $('#lList');
+  const bar  = pane==='review' ? $('#rBar')  : $('#lBar');
+  const sig  = items.map(i=>i.id).join('|');
+
+  const watching = [...host.querySelectorAll('video')]
+                    .some(v => !v.paused && !v.ended);
+  if(!force && (sig === LASTSIG[pane] || watching)) return;
+  LASTSIG[pane] = sig;
+
+  if(!items.length){
+    host.innerHTML = '<div class="empty">'+(pane==='review'
+      ? 'No videos waiting. Make one from the Make tab.'
+      : 'Nothing approved yet. Approve a video and it lands here.')+'</div>';
+    bar.style.display='none'; return;
+  }
+  bar.style.display='flex';
+  host.innerHTML = items.map(it=>cardHTML(it,pane)).join('');
+}
+
+async function one(action, id){
+  const word = action==='approve' ? null : 'Delete this video permanently?';
+  if(word && !confirm(word)) return;
+  await api('/api/bulk', {action, ids:[id]});
+  SEL.review.delete(id); SEL.library.delete(id);
+  refresh();
+}
+
+async function bulk(action, pane){
+  const ids = [...SEL[pane]];
+  if(!ids.length) return;
+  if(action!=='approve' && !confirm(`Delete ${ids.length} video${ids.length>1?'s':''} permanently?`)) return;
+  await api('/api/bulk', {action, ids});
+  SEL[pane].clear(); syncBar(pane); refresh();
+}
+
+async function showScript(id, btn){
+  const box = document.getElementById('sc-'+id);
+  if(box.classList.contains('on')){ box.classList.remove('on'); btn.textContent='Read script'; return; }
+  const d = await api('/api/script/'+encodeURIComponent(id));
+  box.innerHTML = (d.scenes||[]).map((sc,i)=>
+    `<div class="scene"><div class="sn">${i+1}</div><div>
+      ${sc.purpose?`<span class="tag">${esc(sc.purpose)}</span>`:''}
+      <div>${esc(sc.narration)}</div></div></div>`).join('')
+    || '<div class="muted">No script stored for this one.</div>';
+  box.classList.add('on'); btn.textContent='Hide script';
+}
+
+function renderReview(items){
+  $('#cnt').textContent = items.length;
+  $('#rSub').textContent = items.length ? items.length+' waiting' : '';
+  for(const id of [...SEL.review]) if(!items.some(i=>i.id===id)) SEL.review.delete(id);
+  paint('review', items); syncBar('review');
+}
+
+function renderLibrary(items){
+  $('#lcnt').textContent = items.length;
+  $('#lSub').textContent = items.length ? items.length+' approved' : '';
+  for(const id of [...SEL.library]) if(!items.some(i=>i.id===id)) SEL.library.delete(id);
+  paint('library', items); syncBar('library');
 }
 
 async function loadMachine(){
@@ -358,11 +495,53 @@ async function loadMachine(){
     ['Processor', (h.cpu_cores||'?')+' cores', ''],
     ['Free disk', (h.disk_free_gb||'?')+' GB', ''],
   ].map(([k,v,s])=>`<div class="b"><div class="k">${k}</div><div class="v">${esc(v)}<small>${esc(s)}</small></div></div>`).join('');
-  $('#models').innerHTML = '<tr><th>Model</th><th>Download</th><th>Total</th><th>What you get</th></tr>' +
-    (m.options||[]).map(o=>`<tr class="${o.tag===m.recommended?'pick':(o.runnable?'':'dis')}">
-      <td><b>${esc(o.label)}</b>${o.tag===m.recommended?' <span class="badge best">in use</span>':''}</td>
+  const have = new Set((m.installed||[]).map(x=>x.split(':').length>1?x:x+':latest'));
+  const isHere = t => have.has(t) || have.has(t+':latest') || [...have].some(h=>h.split(':')[0]===t.split(':')[0] && h.split(':')[1]===t.split(':')[1]);
+  $('#models').innerHTML =
+    '<tr><th>Model</th><th>Download</th><th>Total</th><th>What you get</th><th></th></tr>' +
+    (m.options||[]).map(o=>{
+      const here = isHere(o.tag);
+      const btn = !o.runnable ? ''
+        : here ? '<span class="badge ok">ready</span>'
+        : `<button class="btn g sm" onclick="pullModel('${o.tag}')">Download</button>`;
+      return `<tr class="${o.tag===m.recommended?'pick':(o.runnable?'':'dis')}">
+      <td><b>${esc(o.label)}</b>${o.tag===m.recommended?' <span class="badge best">recommended</span>':''}</td>
       <td>${o.download_gb} GB</td><td>${o.total_install_gb} GB</td>
-      <td>${o.runnable?esc(o.blurb):'<span class="badge no">'+esc(o.reason)+'</span>'}</td></tr>`).join('');
+      <td>${o.runnable?esc(o.blurb):'<span class="badge no">'+esc(o.reason)+'</span>'}</td>
+      <td>${btn}</td></tr>`;}).join('');
+  paintPull(m.pull);
+}
+
+async function pullModel(tag){
+  const r = await api('/api/pull', {model:tag});
+  if(r.error){ alert(r.error); return; }
+  pollPull();
+}
+function paintPull(p){
+  const host = $('#pullBox');
+  if(!host) return;
+  if(!p || p.status==='idle'){ host.style.display='none'; return; }
+  host.style.display='block';
+  if(p.status==='failed'){
+    host.innerHTML = `<b class="bad">Download failed</b><div class="muted">${esc(p.error||'')}</div>`;
+    return;
+  }
+  if(p.status==='done'){
+    host.innerHTML = `<b class="ok">${esc(p.model)} is ready.</b>
+      <div class="muted">Set OLLAMA_MODEL in .env to use it, or keep the recommended one.</div>`;
+    return;
+  }
+  host.innerHTML = `<b>Downloading ${esc(p.model)}</b>
+    <div class="muted">${p.done_gb} of ${p.total_gb} GB — ${p.percent}% · ${esc(p.status)}</div>
+    <div class="pbar"><i style="width:${p.percent}%"></i></div>
+    <div class="muted">You can leave this running and use the rest of the app.</div>`;
+}
+async function pollPull(){
+  const p = await api('/api/pull');
+  paintPull(p);
+  if(p.status==='downloading'||p.status==='pulling manifest') setTimeout(pollPull, 1500);
+  else if(p.status==='done') loadMachine();
+  else if(p.status!=='idle') setTimeout(pollPull, 2500);
 }
 
 async function refresh(){
@@ -379,9 +558,12 @@ async function refresh(){
   $('#makeHint').textContent = BUSY ? 'A render is already running.' : 'Takes about 12–15 minutes.';
   renderProgress(r);
   renderReview(s.pending || []);
+  renderLibrary(s.approved || []);
   $('#mini').innerHTML = 'Local only · nothing leaves this computer<br><b>'
     + (s.pending_count||0) + '</b> waiting for review';
 }
+$('#rAll').onchange = e => selectAll('review', e.target.checked, LAST.review);
+$('#lAll').onchange = e => selectAll('library', e.target.checked, LAST.library);
 refresh(); setInterval(refresh, 3000);
 </script>
 </body>

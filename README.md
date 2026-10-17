@@ -1,197 +1,277 @@
-# 🎬 StoryForge
+# StoryForge V2
 
-A **free, fully-local** YouTube Shorts factory you run on your own laptop and
-control by chatting with your own Discord bot. Ask for a video; a few minutes
-later a finished vertical Short — original story, AI narration, gameplay
-background, synced captions, thumbnail — posts itself back to you for
-approval. Nothing is uploaded anywhere until *you* do it.
+Make YouTube Shorts on your own laptop. You type an idea — or nothing at all —
+and a few minutes later a finished vertical video is waiting for you to approve:
+original story, AI narration, gameplay background, word-by-word captions.
 
-> ## 📖 Setting it up? Follow the guide for your computer — every step, zero coding assumed:
-> ### → **[Windows: README_WINDOWS.md](README_WINDOWS.md)**
-> ### → **[macOS: README_MAC.md](README_MAC.md)**
-> Short version: **[SETUP.md](SETUP.md)**.
+**Everything runs on your computer.** No account, no subscription, no API keys,
+no cloud. Nothing you make is uploaded anywhere until you decide to post it.
 
 ---
 
-## What one video actually contains
+## Get it
 
-- 📱 **Vertical 9:16** — by default a random 2.5–2.9 min (under YouTube's
-  3-minute Shorts limit), or **any length you ask for**: say *"make it 45
-  seconds"* and the AI plans, measures the real narration audio, and revises the
-  story until it genuinely fits.
-- ✍️ **An original story**, developed by a local AI from whatever you give it —
-  a vague gist (*"a guy who finds something strange in his house"*), a theme
-  (*"revolve it around loneliness"*), a real historical subject, or an exact
-  opening line. It invents the premise, cast and setting, and **chooses the
-  structure to suit that story** rather than forcing every idea through one
-  formula. A memory of past videos prevents repeats.
-- 🎙️ **AI narration** — the deep "Adam" voice or a high-pitched "squeaky" one
-  (you pick in chat). Fast pacing (~177 wpm), the viral range.
-- 🎮 **Gameplay background** — your own Minecraft-parkour clips, a *random clip
-  and random section every time*, auto-cropped to 9:16.
-- 🔤 **Word-by-word pop captions**, synced to the voice.
-- 🖼️ **A thumbnail**, plus a report with the full script and a compliance checklist.
+### Step 1 — Download StoryForge
 
----
+Click the green **Code** button at the top of this page → **Download ZIP**.
+Unzip it anywhere you like (your Desktop is fine).
 
-## How it works
+### Step 2 — Install Python (once)
 
-```
-You in Discord:  "make me a short about my uncle's will, 45 seconds"
-        │                       Valentine (your bot) asks: Adam or squeaky?
-        ▼
-   Your laptop runs the 5-stage pipeline:
-   script ─► voice ─► canvas ─► cutter ─► herald
-     │        │         │         │         │
-   plan +   Kokoro   parkour    FFmpeg:   thumbnail +
-   write    TTS      background  captions  saved to
-  (Ollama)  narrates + crop 9:16 + music   output/…/pending/
-     │        │
-     │        └─ measures the REAL audio length, and if the video would
-     │           miss your target it revises those scenes and re-voices them
-     └─ develops your idea → picks a structure → budgets seconds per beat
-        │
-        ▼
-   The finished video posts itself back into your Discord channel
-        │
-        ▼
-   You:  !approve 1   (→ output/…/approved/)   or   !reject 1
-```
+StoryForge is written in Python, so your computer needs it.
 
-**Discord is only the remote control.** All the writing, rendering and approving
-happens on your machine — Discord needs almost no permissions, and if the token
-ever leaked the worst anyone could do is post messages.
+- **Windows** — [python.org/downloads](https://www.python.org/downloads/) → the
+  big yellow **Download Python** button → run the installer →
+  **tick "Add python.exe to PATH"** on the first screen → Install Now.
+- **Mac** — [python.org/downloads](https://www.python.org/downloads/) → Download
+  → open the `.pkg` → click through it.
 
----
+> Ticking **Add python.exe to PATH** on Windows matters. If you miss it, re-run
+> the installer and choose Modify.
 
-## What it's built from (and what's optional)
+### Step 3 — Install Ollama (once)
 
-| Job | What actually runs by default | Free? |
+This is the AI that writes your stories, running locally.
+
+Go to [ollama.com/download](https://ollama.com/download), get the installer for
+your computer, run it. On Mac, drag it to Applications and open it once.
+
+### Step 4 — Run the setup file
+
+Open the StoryForge folder and double-click:
+
+- **Windows** → `setup.bat`
+- **Mac** → `setup.command`
+
+It installs what's needed, builds the app icon, and puts a **StoryForge**
+shortcut on your Desktop. Leave it until it says it's finished.
+
+### Step 5 — Open StoryForge
+
+Double-click the **StoryForge** icon on your Desktop. A window opens — no
+terminal, no commands.
+
+Go to **Settings** the first time. It shows what your computer can handle and
+recommends a writer model. Press **Download** next to the one you want.
+
+**Only the model you pick is downloaded** — nothing else.
+
+| Choice | Download | What you get |
 |---|---|---|
-| **Story planning** | **qwen2.5:14b via Ollama** develops your idea into a premise, cast, setting and beat sheet — and picks the story's structure itself | ✅ local |
-| **Story writing** | the same local model writes the narration to those beats, with per-beat time budgets + anti-repeat memory | ✅ local |
-| **Orchestration** | a lightweight built-in pipeline runner (`run_lite`) | ✅ |
-| **Voice** | **Kokoro** (`am_adam`), local, commercial-safe | ✅ local |
-| **Caption sync** | **faster-whisper** (`tiny`) | ✅ local |
-| **Visuals** | your gameplay clips + FFmpeg | ✅ local |
-| Chat brain (the bot's replies) | Ollama `qwen3:8b` | ✅ local |
+| Qwen 2.5 14B | 8.4 GB | Best stories — richest plots, most reliable pacing |
+| Qwen 2.5 7B | 4.7 GB | Good. Slightly flatter plots, more rewrite passes |
+| Llama 3.2 3B | 2.0 GB | Light. Weaker continuity, shorter scenes |
+| Qwen 2.5 1.5B | 1.0 GB | Minimum. Basic stories. Old laptops only |
 
-**Optional upgrades** (not installed, not required):
-
-| Add | Get | How |
-|---|---|---|
-| `GEMINI_API_KEY` | far stronger + faster story writing | free Google key in `.env` |
-| `ELEVENLABS_API_KEY` | the famous studio "Adam" voice | free-tier key in `.env` |
-| `PEXELS_API_KEY` / `PIXABAY_API_KEY` | real stock footage as a backup visual | free keys |
-| `pip install crewai langgraph` | a multi-agent (Scout/Scribe/Critic) writing mode + LangGraph orchestration | heavier; not worth it on a small GPU |
-| Odysseus / Wan2GP | self-hosted model gateway / local AI video clips | see `scripts/` |
-
-> **Design principle — degrade, never die.** The core depends only on Python +
-> numpy + Pillow + FFmpeg + Ollama. Every heavier piece is optional and guarded:
-> if it's missing, StoryForge falls back instead of failing. That's why a missing
-> CrewAI or LangGraph simply means the single-model path is used.
+Anything your machine can't run is greyed out with the reason. The download
+shows a progress bar and you can keep using the app while it runs.
 
 ---
 
-## 🔌 Optional add-ons — connect only what you want
+## Add gameplay clips
 
-All optional; the app is fully free and works without any of these. To enable one:
-open `.env`, add the line, save, then restart the bot:
-```
-python scripts/install_autostart.py --restart
-```
+Your videos play over gameplay footage, and **you supply that** — shipping
+footage with the app would be a copyright problem.
 
-### 🎙️ ElevenLabs — the famous studio narrator voice (recommended)
-1. Free account at **https://elevenlabs.io** → click your avatar (top-right) →
-   **API Keys** → **Create API Key** → copy it.
-2. Add to `.env`:
-   ```
-   ELEVENLABS_API_KEY=paste-key-here
-   ```
-Free tier ≈ 10,000 characters/month (~5–6 videos); it falls back to the free local
-voice automatically when the quota runs out.
+Put 3–5 clips in the **`assets/backgrounds`** folder inside StoryForge.
 
-### 🧠 Gemini — stronger, faster story writing (optional)
-1. Free key at **https://aistudio.google.com/app/apikey** → **Create API key** → copy.
-2. Add to `.env`:
-   ```
-   GEMINI_API_KEY=paste-key-here
-   ```
-Used automatically whenever local Ollama isn't running.
+- `.mp4`, `.mkv`, `.webm` or `.mov`, ideally 5+ minutes each
+- Record your own, or download clips whose creator allows reuse
+- StoryForge picks a **random clip and a random section every time**, and crops
+  it to vertical, so your videos never look identical
 
-> That's all you need. A few advanced extras (stock-footage keys, self-hosted
-> models, YouTube auto-upload) live in `.env.example` if you ever want them — you
-> can safely ignore them.
+No clips? Videos still render, just over an abstract moving background.
 
 ---
 
-## Everyday use
+## Using it
 
-Once installed and the bot is online, in your Discord channel:
+Open StoryForge and click **Make**.
+
+**Type an idea, or leave it blank.** All of these work:
 
 ```
-!here                                  ← one time: talk without @mentioning
-make me a short                        ← it asks Adam or squeaky, then renders
-make a short about my uncle's will      ← a subject; it invents the rest
-revolve the story around loneliness     ← a theme, made structural
-make a 45 second short about a bad job interview   ← any length you want
-make a video "My wife hid a second phone for a year"   ← a quote becomes the opening line
+a guy who finds something strange in his house
+revolve the story around loneliness
+my brother sold my car while I was away
+make it about a real historical event
 ```
 
-You don't have to spell out a plot. A gist is enough — the planner decides the
-premise, the people, the shape and the ending. While it works you can ask
-**what stage is it in** or **show me a sample** and it answers from the real run.
+A vague idea is enough — it invents the premise, the people, the setting and
+the shape of the story itself. Leave the box empty and it picks something.
 
-The finished video posts itself back in ~8–15 minutes. Then:
+Then choose:
 
-| Command | Does |
+- **Length** — 45 seconds, 90 seconds, or a full 2–3 minutes
+- **Narrator** — Adam (deep) or Squeaky (high and fast)
+- **How involved you want to be:**
+
+| Mode | What happens |
 |---|---|
-| `!approve 1` | keep it → `output/<channel>/approved/` |
-| `!reject 1` | delete it |
-| `!pending` | list videos waiting for review |
-| `!review 1` | re-watch #1 + read its full script |
-| `!status` | what the pipeline is doing right now |
-| `!brain` | which AI model is being used |
-| `!feed` | recent activity + any errors |
-| `!help` | everything |
+| **Guided** | You read the story before it renders, then review the video |
+| **Express** | Skips the story check — straight to rendering |
+| **Full auto** | No stops; it checks its own work and files what passed |
 
-Plain English works too. There is **no scheduling and no "night/day"** to manage —
-you simply ask for a video whenever you want one.
+Press **Make Video**. It takes about 12–15 minutes. You can close the window —
+it keeps working.
 
----
+### The other tabs
 
-## The channels
-
-`config/*.yaml` defines each channel. Two ship by default:
-
-- **`gossip_stories`** — modern real-life drama (the main one). Enforced
-  Reddit-confession doctrine.
-- **`gaming_lore`** — cinematic game-lore storytelling (`story_mode: lore`,
-  exempt from the drama doctrine).
-
-Edit a channel's YAML to change voice, length window, number of scenes, and the
-banned-subjects list. Every setting is documented in the per-OS guides.
+- **In progress** — what it's doing right now: the story it planned, which scene
+  it's writing, and a **Stop** button that works at any point
+- **Review** — finished videos. Play them, read the full script, then Approve or
+  Delete. Tick several to approve or delete them in one go
+- **Library** — everything you approved, with **Open folder** to upload them
+- **Settings** — your computer, your model, and updates
 
 ---
 
-## Bot showing offline? One command tells you why
+## If something goes wrong
+
+**The window doesn't open.** Double-click `StoryForge.bat` (Windows) or
+`StoryForge.command` (Mac) in the folder instead — it opens in your browser,
+which works exactly the same.
+
+**"Ollama unreachable".** Ollama isn't running. Open it from your Start menu or
+Applications; it sits quietly in the tray or menu bar.
+
+**Videos have no gameplay behind them.** No clips in `assets/backgrounds`, or
+they're in a format ffmpeg can't read. Try a normal `.mp4`.
+
+**It's slow.** The story is written by an AI on your own machine. On a laptop
+without a strong graphics card, 12–15 minutes per video is normal. Choosing a
+smaller model in Settings makes it quicker.
+
+---
+
+## Turning it off
+
+Close the window. Nothing runs in the background, nothing starts with your
+computer, nothing phones home.
+
+To remove it completely: delete the StoryForge folder, delete the Desktop
+shortcut, and uninstall Ollama like any other app.
+
+---
+
+## Your privacy
+
+- Everything happens on your computer. There is no server and no account.
+- The app window talks to `127.0.0.1` — your own machine only. Nothing on your
+  Wi-Fi and nothing on the internet can reach it.
+- The hardware check reads your RAM, CPU and graphics card to recommend a model.
+  It is read locally and **sent nowhere**.
+- The only things ever downloaded are the model you explicitly choose, and
+  program updates you approve.
+
+---
+
+## What changed from V1
+
+V1 was controlled through a Discord bot you had to create yourself, and set up
+with a long list of terminal commands. V2 is an app.
+
+### Setup
+
+| V1 | V2 |
+|---|---|
+| ~8 terminal steps: Homebrew, git, pip, virtualenvs, PATH edits | Download, install Python + Ollama, double-click setup |
+| Create a Discord application, enable intents, copy a bot token, build an invite URL | Nothing — there is no account to make |
+| `ollama pull` in a terminal, guessing which model fits | Settings shows what your machine can run; press Download |
+| No idea how much disk it would take | Every option shows its size before you commit |
+
+### Using it
+
+| V1 | V2 |
+|---|---|
+| Chat with a Discord bot | A real app window with an icon |
+| Wait 15 minutes to find out the story was bad | **Read the story before it renders** and regenerate if you don't like it |
+| Approve videos one at a time with `!approve 1` | Play them in the app; tick several and approve or delete in one go |
+| No record of approved videos | A Library of everything you kept |
+| "What's it doing?" answered by guesswork | Live progress: the plan it chose, the scene it's writing, the opening lines |
+
+### The stories themselves
+
+V1 pushed every idea through one fixed arc — hook, setup, escalation, twist, and
+a question at the end — and mechanically rejected anything that didn't end in a
+question mark. Every video came out the same shape and raced through its plot.
+
+V2 plans before it writes. It develops your idea into a premise, a cast and a
+setting, **chooses a structure that suits that particular story**, and decides
+how many seconds each beat deserves — so a scene that needs to establish
+something gets room to, instead of everything escalating at once.
+
+- Different stories now come out genuinely different shapes
+- A theme like "loneliness" shapes the whole story instead of being mentioned twice
+- A continuity pass re-reads the finished draft and fixes contradictions and
+  characters who appeared from nowhere
+- Repeated scenes are detected and rewritten
+
+### Length
+
+V1 multiplied a target by a fixed words-per-minute and hoped; videos came out
+roughly 27% short because the assumed speaking rate was simply wrong. If a video
+overran, the narration was sped up until it fit, which made the narrator sound
+rushed.
+
+V2 **measures the real narration audio** and revises the story to fit — tightening
+flabby scenes or developing thin ones, while protecting the opening, the turn and
+the ending. Ask for 45 seconds and you get about 45 seconds.
+
+### Audio
+
+V1 mixed background music under the voice. V2 has **no music and no background
+noise at all** — the only sound is the narrator.
+
+### Running it
+
+| V1 | V2 |
+|---|---|
+| A background process that started with your computer | Runs only while the window is open |
+| Night/day "lanes" and a daily schedule to manage | Gone. It makes a video when you ask |
+| Fantasy/game-lore channel could be picked by accident | Real-life drama by default; other styles only if you ask |
+| Left ~300 MB of working files behind per video | Cleans up after itself automatically |
+| Same settings on every machine | Adapts to your laptop — smaller models get shorter writing batches and more revision passes, so they still finish properly |
+
+---
+
+## For developers
+
+The app is a local HTTP server (`storyforge/webapp.py`, standard library only)
+over an interface-agnostic core (`storyforge/control.py`). The source is plain
+Python in `src` layout — edit anything, restart the app, your change applies.
+
+```
+storyforge/
+  story_planner.py   develops a brief into a premise, cast and beat sheet
+  crews/story_crew.py writes the narration to those beats
+  continuity.py      re-reads the draft for contradictions and strangers
+  timing.py          duration model, calibrated against measured audio
+  model_profiles.py  per-model tuning; hardware-aware quality settings
+  hardware.py        local-only machine scan
+  nodes/             the 5 pipeline stages
+  webapp.py          the local app server
+```
+
+Useful commands:
 
 ```bash
-python scripts/install_autostart.py --doctor
+python run.py --dry-run --seconds 45 --topic "your idea"
 ```
-It checks Python, discord.py, ffmpeg, your token, Ollama, your clips, whether the
-bot is running, and prints the real error from the log. Then:
+
+writes a story and prints it **without rendering**, in about two minutes — the
+fastest way to judge story quality.
+
 ```bash
-python scripts/install_autostart.py --restart
+python -m storyforge.hardware
 ```
-Full offline troubleshooting is in the per-OS guides.
+
+prints what the hardware scan sees.
+
+Discord is still supported as an optional remote control
+(`python -m storyforge.discord_bot`) for driving it from your phone.
 
 ---
 
-## Compliance
-
-Human approval on every video is **required and permanent** — YouTube's 2025–2026
-policy demonetises mass-produced content with no meaningful human involvement, and
-that review is the safeguard. Descriptions carry the AI-content disclosure, stories
-are fiction (never presented as real), and prompts exclude real people and brands.
-See [COMPLIANCE.md](COMPLIANCE.md).
+Human review before publishing is deliberate and permanent — see
+[COMPLIANCE.md](COMPLIANCE.md).
