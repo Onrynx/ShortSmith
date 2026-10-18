@@ -246,7 +246,7 @@ def explain(tag: str) -> str:
             "correction passes; expect the canned fallback sometimes.")
 
 
-if __name__ == "__main__":       # python -m storyforge.model_profiles
+if __name__ == "__main__":       # python -m shortsmith.model_profiles
     import json
 
     # Guard: the large tier must still reproduce the old hardcoded constants.

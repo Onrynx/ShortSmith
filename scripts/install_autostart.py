@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install StoryForge's Discord bot as a silent background service.
+"""Install Shortsmith's Discord bot as a silent background service.
 
 ONE script for every OS — Windows, macOS and Linux. It starts hidden at login
 (no console window ever) and restarts itself if it crashes, so the bot is simply
@@ -22,10 +22,10 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-STATE = ROOT / ".storyforge_state"
+STATE = ROOT / ".shortsmith_state"
 LOG = STATE / "bot.log"
-LABEL = "com.storyforge.bot"
-MODULE = "storyforge.discord_bot"
+LABEL = "com.shortsmith.bot"
+MODULE = "shortsmith.discord_bot"
 
 # This is a break-glass tool people run when things are broken, so it must never
 # itself crash on a Windows cp1252 console when printing status emoji.
@@ -54,7 +54,7 @@ def _run(cmd, **kw) -> subprocess.CompletedProcess:
 # Windows — a shortcut in the Startup folder pointing at pythonw (windowless)
 # --------------------------------------------------------------------------- #
 def _win_lnk() -> Path:
-    return Path(os.environ["APPDATA"]) / "Microsoft/Windows/Start Menu/Programs/Startup" / "StoryForge Bot.lnk"
+    return Path(os.environ["APPDATA"]) / "Microsoft/Windows/Start Menu/Programs/Startup" / "Shortsmith Bot.lnk"
 
 
 def win_install() -> None:
@@ -66,7 +66,7 @@ def win_install() -> None:
         f"$s.Arguments='-m {MODULE}';"
         f"$s.WorkingDirectory='{ROOT}';"
         f"$s.WindowStyle=7;"
-        f"$s.Description='StoryForge Discord bot (silent)';"
+        f"$s.Description='Shortsmith Discord bot (silent)';"
         f"$s.Save()"
     )
     r = _run(["powershell", "-NoProfile", "-Command", ps])
@@ -158,14 +158,14 @@ def mac_running() -> bool:
 # Linux — a user systemd unit
 # --------------------------------------------------------------------------- #
 def _linux_unit() -> Path:
-    return Path.home() / ".config/systemd/user/storyforge-bot.service"
+    return Path.home() / ".config/systemd/user/shortsmith-bot.service"
 
 
 def linux_install() -> None:
     u = _linux_unit()
     u.parent.mkdir(parents=True, exist_ok=True)
     u.write_text(f"""[Unit]
-Description=StoryForge Discord bot
+Description=Shortsmith Discord bot
 After=network-online.target
 
 [Service]
@@ -178,12 +178,12 @@ RestartSec=10
 WantedBy=default.target
 """, encoding="utf-8")
     _run(["systemctl", "--user", "daemon-reload"])
-    _run(["systemctl", "--user", "enable", "--now", "storyforge-bot"])
+    _run(["systemctl", "--user", "enable", "--now", "shortsmith-bot"])
     print(f"  installed: {u}")
 
 
 def linux_uninstall() -> None:
-    _run(["systemctl", "--user", "disable", "--now", "storyforge-bot"])
+    _run(["systemctl", "--user", "disable", "--now", "shortsmith-bot"])
     u = _linux_unit()
     if u.exists():
         u.unlink()
@@ -192,7 +192,7 @@ def linux_uninstall() -> None:
 
 
 def linux_running() -> bool:
-    return (_run(["systemctl", "--user", "is-active", "storyforge-bot"]).stdout or "").strip() == "active"
+    return (_run(["systemctl", "--user", "is-active", "shortsmith-bot"]).stdout or "").strip() == "active"
 
 
 # --------------------------------------------------------------------------- #
@@ -212,7 +212,7 @@ def stop_only() -> None:
     elif OS == "Darwin":
         _run(["launchctl", "unload", str(_mac_plist())])   # plist kept -> reloads at login
     else:
-        _run(["systemctl", "--user", "stop", "storyforge-bot"])
+        _run(["systemctl", "--user", "stop", "shortsmith-bot"])
 
 
 def restart() -> None:
@@ -225,7 +225,7 @@ def restart() -> None:
     elif OS == "Darwin":
         mac_install()                       # unload + load = restart
     else:
-        _run(["systemctl", "--user", "restart", "storyforge-bot"])
+        _run(["systemctl", "--user", "restart", "shortsmith-bot"])
     time.sleep(3)
 
 
@@ -238,7 +238,7 @@ def doctor() -> int:
     """Diagnose exactly why the bot is offline. Checks every requirement."""
     import shutil
     import urllib.request
-    print(f"\nStoryForge doctor  ({OS})\n" + "-" * 48)
+    print(f"\nShortsmith doctor  ({OS})\n" + "-" * 48)
     fatal_ok = True
 
     _check(f"Python {platform.python_version()}  [{sys.executable}]",
@@ -317,12 +317,12 @@ def main() -> int:
     arg = (sys.argv[1] if len(sys.argv) > 1 else "").lstrip("-").lower()
 
     if arg == "status":
-        print(f"StoryForge bot on {OS}: {'RUNNING' if running() else 'NOT running'}")
+        print(f"Shortsmith bot on {OS}: {'RUNNING' if running() else 'NOT running'}")
         return 0
     if arg == "doctor":
         return doctor()
     if arg in ("restart", "start"):
-        print("Restarting the StoryForge bot ...")
+        print("Restarting the Shortsmith bot ...")
         restart()
         print("bot running:", "yes" if running() else "NO — run --doctor to see why")
         return 0
@@ -342,7 +342,7 @@ def main() -> int:
         print("[!] No .env yet — copy .env.example to .env and add DISCORD_BOT_TOKEN first.")
         return 1
 
-    print(f"Installing StoryForge autostart for {OS} ...")
+    print(f"Installing Shortsmith autostart for {OS} ...")
     install()
     if OS == "Windows":          # the shortcut only fires at next login, so start now
         if not win_running():

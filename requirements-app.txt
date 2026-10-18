@@ -1,4 +1,4 @@
-# StoryForge Discord interface.
+# Shortsmith Discord interface.
 # Outbound notifications need NOTHING (stdlib webhook POST).
 # The two-way control bot needs:
 discord.py>=2.3

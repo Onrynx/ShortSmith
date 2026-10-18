@@ -9,7 +9,7 @@ env/
 # --- Secrets / local runtime state ---
 # tokens, push subscriptions, checkpoints, cloud-cap, VAPID pem, run logs
 .env
-.storyforge_state/
+.shortsmith_state/
 
 # --- Large downloaded model weights (auto-download on first run) ---
 models/*.onnx
@@ -33,6 +33,6 @@ mockup/
 
 # Generated launchers hold absolute paths to one machine — each user
 # creates their own with: python scripts/make_shortcut.py
-StoryForge.lnk
-StoryForge.app/
-StoryForge.desktop
+Shortsmith.lnk
+Shortsmith.app/
+Shortsmith.desktop

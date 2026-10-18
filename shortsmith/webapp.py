@@ -1,6 +1,6 @@
 """The local app server — a thin HTTP layer over control.py.
 
-StoryForge's whole product surface already exists as plain functions in
+Shortsmith's whole product surface already exists as plain functions in
 control.py, with no interface assumptions baked in. This module exposes those
 functions over HTTP so a local page can drive them, which is what makes an app
 possible without rewriting any of the pipeline.
@@ -252,7 +252,7 @@ def voice_preview(style: str) -> Path | None:
 # HTTP
 # --------------------------------------------------------------------------- #
 class _Handler(BaseHTTPRequestHandler):
-    server_version = "StoryForge"
+    server_version = "Shortsmith"
     # HTTP/1.1 is required for video. The default (1.0) closes the connection
     # after every response, and a <video> element issues dozens of range
     # requests — browsers treat those mid-playback closes as a stall, so clips
@@ -488,7 +488,7 @@ def serve(port: int | None = None, background: bool = False):
     httpd = ThreadingHTTPServer((HOST, port), _Handler)
     httpd.daemon_threads = True
     url = f"http://{HOST}:{port}/"
-    log("info", f"StoryForge app listening on {url} (this machine only)")
+    log("info", f"Shortsmith app listening on {url} (this machine only)")
     if background:
         t = threading.Thread(target=httpd.serve_forever, daemon=True)
         t.start()
@@ -500,10 +500,10 @@ def serve(port: int | None = None, background: bool = False):
     return url, httpd
 
 
-if __name__ == "__main__":      # python -m storyforge.webapp
+if __name__ == "__main__":      # python -m shortsmith.webapp
     import webbrowser
     url, httpd = serve(background=True)
-    print(f"StoryForge running at {url}")
+    print(f"Shortsmith running at {url}")
     webbrowser.open(url)
     try:
         threading.Event().wait()

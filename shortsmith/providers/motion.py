@@ -4,7 +4,7 @@ When a real AI-video provider (Wan2GP / cloud) and stock footage are unavailable
 — including full MOCK mode with no GPU and no network — this renders an actual
 animated clip per scene with FFmpeg's generative sources (animated `gradients` +
 hue drift + film grain + vignette + slow push). The output is real H.264 motion
-video, which is what keeps StoryForge "AI-generated videos, not photos" even
+video, which is what keeps Shortsmith "AI-generated videos, not photos" even
 offline. It is the visual floor of the router: fast, deterministic, always video.
 """
 from __future__ import annotations

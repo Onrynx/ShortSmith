@@ -256,7 +256,7 @@ def summary(hw: dict | None = None) -> str:
     return " · ".join(bits)
 
 
-if __name__ == "__main__":       # python -m storyforge.hardware
+if __name__ == "__main__":       # python -m shortsmith.hardware
     info = scan(use_cache=False)
     print(summary(info))
     print(json.dumps(info, indent=2))

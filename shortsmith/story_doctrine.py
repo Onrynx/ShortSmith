@@ -1,4 +1,4 @@
-"""THE STORY DOCTRINE — craft standards for every script StoryForge writes.
+"""THE STORY DOCTRINE — craft standards for every script Shortsmith writes.
 
 This used to be a template. It specified one arc (hook -> setup -> escalation ->
 twist -> ending), demanded the conflict land in the first sentence in under 15

@@ -1,4 +1,4 @@
-"""StoryForge Discord interface — THE control surface (replaces the PWA).
+"""Shortsmith Discord interface — THE control surface (replaces the PWA).
 
 Outbound events go via DISCORD_WEBHOOK_URL (notify/push.py, no bot required).
 This bot adds two-way control from any Discord client (phone included):
@@ -17,7 +17,7 @@ This bot adds two-way control from any Discord client (phone included):
 Setup: pip install discord.py ; create a bot (discord.com/developers), enable the
 MESSAGE CONTENT intent, invite it to your server, then in .env:
   DISCORD_BOT_TOKEN=...   DISCORD_CHANNEL_ID=<channel id>   (0 = all channels)
-Run:  python -m storyforge.discord_bot
+Run:  python -m shortsmith.discord_bot
 """
 from __future__ import annotations
 
@@ -168,7 +168,7 @@ def build_bot(chan_id: int = 0):
     @bot.command()
     async def help(ctx):
         if allowed(ctx):
-            await ctx.send("**StoryForge** — just say **make me a short**. Commands: "
+            await ctx.send("**Shortsmith** — just say **make me a short**. Commands: "
                            "`!status` `!pending` `!review n` `!approve n` `!reject n` "
                            "`!cancel` `!run <channel> [mock]` `!brain` `!digest` `!feed [n]`")
 

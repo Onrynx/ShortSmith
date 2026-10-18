@@ -138,7 +138,7 @@ def load_channel(name: str) -> dict:
 def format_spec(cfg: dict) -> dict:
     """Resolve output format: Shorts (vertical 9:16, <=60s) vs long (16:9).
 
-    StoryForge defaults to Shorts. Fields drive the whole pipeline (canvas dims,
+    Shortsmith defaults to Shorts. Fields drive the whole pipeline (canvas dims,
     cutter aspect + duration cap, script scene-count bounds).
     """
     fmt = str(cfg.get("format", "shorts")).lower()

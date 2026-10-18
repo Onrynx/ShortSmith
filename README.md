@@ -1,4 +1,4 @@
-# StoryForge V2
+# Shortsmith V2
 
 Make YouTube Shorts on your own laptop. You type an idea — or nothing at all —
 and a few minutes later a finished vertical video is waiting for you to approve:
@@ -11,14 +11,14 @@ no cloud. Nothing you make is uploaded anywhere until you decide to post it.
 
 ## Get it
 
-### Step 1 — Download StoryForge
+### Step 1 — Download Shortsmith
 
 Click the green **Code** button at the top of this page → **Download ZIP**.
 Unzip it anywhere you like (your Desktop is fine).
 
 ### Step 2 — Install Python (once)
 
-StoryForge is written in Python, so your computer needs it.
+Shortsmith is written in Python, so your computer needs it.
 
 - **Windows** — [python.org/downloads](https://www.python.org/downloads/) → the
   big yellow **Download Python** button → run the installer →
@@ -38,17 +38,17 @@ your computer, run it. On Mac, drag it to Applications and open it once.
 
 ### Step 4 — Run the setup file
 
-Open the StoryForge folder and double-click:
+Open the Shortsmith folder and double-click:
 
 - **Windows** → `setup.bat`
 - **Mac** → `setup.command`
 
-It installs what's needed, builds the app icon, and puts a **StoryForge**
+It installs what's needed, builds the app icon, and puts a **Shortsmith**
 shortcut on your Desktop. Leave it until it says it's finished.
 
-### Step 5 — Open StoryForge
+### Step 5 — Open Shortsmith
 
-Double-click the **StoryForge** icon on your Desktop. A window opens — no
+Double-click the **Shortsmith** icon on your Desktop. A window opens — no
 terminal, no commands.
 
 Go to **Settings** the first time. It shows what your computer can handle and
@@ -73,11 +73,11 @@ shows a progress bar and you can keep using the app while it runs.
 Your videos play over gameplay footage, and **you supply that** — shipping
 footage with the app would be a copyright problem.
 
-Put 3–5 clips in the **`assets/backgrounds`** folder inside StoryForge.
+Put 3–5 clips in the **`assets/backgrounds`** folder inside Shortsmith.
 
 - `.mp4`, `.mkv`, `.webm` or `.mov`, ideally 5+ minutes each
 - Record your own, or download clips whose creator allows reuse
-- StoryForge picks a **random clip and a random section every time**, and crops
+- Shortsmith picks a **random clip and a random section every time**, and crops
   it to vertical, so your videos never look identical
 
 No clips? Videos still render, just over an abstract moving background.
@@ -86,7 +86,7 @@ No clips? Videos still render, just over an abstract moving background.
 
 ## Using it
 
-Open StoryForge and click **Make**.
+Open Shortsmith and click **Make**.
 
 **Type an idea, or leave it blank.** All of these work:
 
@@ -128,8 +128,8 @@ it keeps working.
 
 ## If something goes wrong
 
-**The window doesn't open.** Double-click `StoryForge.bat` (Windows) or
-`StoryForge.command` (Mac) in the folder instead — it opens in your browser,
+**The window doesn't open.** Double-click `Shortsmith.bat` (Windows) or
+`Shortsmith.command` (Mac) in the folder instead — it opens in your browser,
 which works exactly the same.
 
 **"Ollama unreachable".** Ollama isn't running. Open it from your Start menu or
@@ -149,7 +149,7 @@ smaller model in Settings makes it quicker.
 Close the window. Nothing runs in the background, nothing starts with your
 computer, nothing phones home.
 
-To remove it completely: delete the StoryForge folder, delete the Desktop
+To remove it completely: delete the Shortsmith folder, delete the Desktop
 shortcut, and uninstall Ollama like any other app.
 
 ---
@@ -237,12 +237,12 @@ noise at all** — the only sound is the narrator.
 
 ## For developers
 
-The app is a local HTTP server (`storyforge/webapp.py`, standard library only)
-over an interface-agnostic core (`storyforge/control.py`). The source is plain
+The app is a local HTTP server (`shortsmith/webapp.py`, standard library only)
+over an interface-agnostic core (`shortsmith/control.py`). The source is plain
 Python in `src` layout — edit anything, restart the app, your change applies.
 
 ```
-storyforge/
+shortsmith/
   story_planner.py   develops a brief into a premise, cast and beat sheet
   crews/story_crew.py writes the narration to those beats
   continuity.py      re-reads the draft for contradictions and strangers
@@ -263,13 +263,13 @@ writes a story and prints it **without rendering**, in about two minutes — the
 fastest way to judge story quality.
 
 ```bash
-python -m storyforge.hardware
+python -m shortsmith.hardware
 ```
 
 prints what the hardware scan sees.
 
 Discord is still supported as an optional remote control
-(`python -m storyforge.discord_bot`) for driving it from your phone.
+(`python -m shortsmith.discord_bot`) for driving it from your phone.
 
 ---
 

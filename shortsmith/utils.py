@@ -1,4 +1,4 @@
-"""Shared utilities for StoryForge.
+"""Shared utilities for Shortsmith.
 
 Deliberately stdlib-only (plus lazy Pillow/numpy inside functions). Importing this
 module must never fail, so anything heavy is imported lazily where it is used.
@@ -46,7 +46,7 @@ CONFIG_DIR = ROOT / "config"
 OUTPUT_DIR = ROOT / "output"
 MODELS_DIR = ROOT / "models"
 ASSETS_DIR = ROOT / "assets"
-STATE_DIR = ROOT / ".storyforge_state"
+STATE_DIR = ROOT / ".shortsmith_state"
 STATUS_DIR = STATE_DIR / "status"
 
 for _d in (OUTPUT_DIR, MODELS_DIR, ASSETS_DIR, STATE_DIR, STATUS_DIR):
@@ -244,7 +244,7 @@ def http_download(url: str, dest: Path | str, headers: dict | None = None,
                   timeout: float = 120.0) -> Path:
     dest = Path(dest)
     dest.parent.mkdir(parents=True, exist_ok=True)
-    req = urllib.request.Request(url, headers=headers or {"User-Agent": "StoryForge/1.0"})
+    req = urllib.request.Request(url, headers=headers or {"User-Agent": "Shortsmith/1.0"})
     with urllib.request.urlopen(req, timeout=timeout) as resp, open(dest, "wb") as out:
         shutil.copyfileobj(resp, out)
     if dest.stat().st_size == 0:

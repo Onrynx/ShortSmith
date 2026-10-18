@@ -21,7 +21,7 @@ def build_run_report(state: dict) -> str:
     lines = []
     add = lines.append
     add("=" * 64)
-    add("  STORYFORGE — APPROVAL REPORT")
+    add("  SHORTSMITH — APPROVAL REPORT")
     add("=" * 64)
     add(f"Generated : {utcnow_iso()}")
     add(f"Channel   : {cfg.get('name', state.get('channel'))}  [{state.get('channel')}]")
@@ -102,7 +102,7 @@ def nightly_digest() -> str:
 
     lines = [
         "=" * 48,
-        f"  STORYFORGE — NIGHTLY DIGEST  {day}",
+        f"  SHORTSMITH — NIGHTLY DIGEST  {day}",
         "=" * 48,
         f"Videos completed today : {produced}",
         f"Awaiting approval      : {pending}",

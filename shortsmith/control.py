@@ -19,7 +19,7 @@ from .utils import (CREATE_NEW_PROCESS_GROUP, CREATE_NO_WINDOW, OUTPUT_DIR, ROOT
                     write_json, write_status)
 
 # The single, neutral slot every on-demand render writes its status into.
-# (There is no "night"/"day" any more — StoryForge is on-demand only.)
+# (There is no "night"/"day" any more — Shortsmith is on-demand only.)
 RENDER_SLOT = "render"
 _PIDFILE = STATE_DIR / "render.pid"
 

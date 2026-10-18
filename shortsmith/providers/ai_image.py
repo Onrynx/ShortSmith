@@ -38,7 +38,7 @@ class AIImageProvider(VisualProvider):
                f"&model={self.model}")
         dest = Path(workdir) / f"ai_{idx:02d}.jpg"
         try:
-            http_download(url, dest, headers={"User-Agent": "StoryForge/1.0"}, timeout=90)
+            http_download(url, dest, headers={"User-Agent": "Shortsmith/1.0"}, timeout=90)
         except Exception as exc:  # noqa: BLE001
             raise ProviderError(f"pollinations failed: {exc}")
         if dest.stat().st_size < 2000:  # too small = error page, not an image

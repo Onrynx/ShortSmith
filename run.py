@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""StoryForge CLI — render one short for one channel.
+"""Shortsmith CLI — render one short for one channel.
 
     python run.py --channel gossip_stories --mock
     python run.py --channel gaming_lore --topic "the fall of an ancient AI"
@@ -18,9 +18,9 @@ from __future__ import annotations
 import argparse
 import sys
 
-from storyforge.config import (default_channel, list_channels,
+from shortsmith.config import (default_channel, list_channels,
                                load_channel, render_budget)
-from storyforge.graph import run_one
+from shortsmith.graph import run_one
 
 
 def _dry_run(channel: str, args) -> int:
@@ -29,9 +29,9 @@ def _dry_run(channel: str, args) -> int:
     Renders take 8-15 minutes, which makes judging story quality painfully slow.
     This runs only the parts that decide whether a video is any good.
     """
-    from storyforge.crews.story_crew import generate_script
-    from storyforge.llm import select_model
-    from storyforge.timing import estimate_seconds
+    from shortsmith.crews.story_crew import generate_script
+    from shortsmith.llm import select_model
+    from shortsmith.timing import estimate_seconds
 
     cfg = load_channel(channel)
     model_info = select_model(args.mock)
@@ -66,7 +66,7 @@ def _dry_run(channel: str, args) -> int:
 
 
 def main(argv=None) -> int:
-    p = argparse.ArgumentParser(description="StoryForge — render one short for one channel")
+    p = argparse.ArgumentParser(description="Shortsmith — render one short for one channel")
     p.add_argument("--channel", help="channel key (config/<key>.yaml); defaults to gossip_stories")
     p.add_argument("--lane", default="render", help=argparse.SUPPRESS)  # internal status slot
     p.add_argument("--mock", action="store_true", help="mock mode: no keys/network/GPU")
@@ -98,7 +98,7 @@ def main(argv=None) -> int:
         return 2
 
     print("=" * 60)
-    print(f"StoryForge · channel={channel} · mock={args.mock}")
+    print(f"Shortsmith · channel={channel} · mock={args.mock}")
     print("=" * 60)
 
     if args.dry_run:

@@ -1,6 +1,6 @@
 """The planning stage — turn a vague human brief into a developed story concept.
 
-This is the layer StoryForge was missing. Before this existed, a request went
+This is the layer Shortsmith was missing. Before this existed, a request went
 straight from "make a story about loneliness" into a scene-by-scene writer that
 had been handed a fixed arc (hook -> setup -> escalation -> twist -> ending) and
 a flat word budget. Every video therefore had the same shape and the same

@@ -28,7 +28,7 @@ def _send_discord(severity: str, lane: str, channel: str, stage: str,
     if not url:
         return
     payload = {
-        "username": "StoryForge",
+        "username": "Shortsmith",
         "embeds": [{
             "title": f"{ICON[severity]} {channel} · {lane} · {stage}",
             "description": message[:2000],

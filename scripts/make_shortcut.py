@@ -1,4 +1,4 @@
-"""Create a proper double-clickable launcher with StoryForge's icon.
+"""Create a proper double-clickable launcher with Shortsmith's icon.
 
 A .bat file cannot carry an icon — Windows shows it with a generic gear, which
 is exactly what we don't want. A SHORTCUT can, so on Windows this writes a .lnk
@@ -18,7 +18,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-NAME = "StoryForge"
+NAME = "Shortsmith"
 
 
 def _target_dir(argv: list[str]) -> Path:
@@ -38,10 +38,10 @@ def windows(dest: Path) -> Path:
     ps = f"""
 $s = (New-Object -ComObject WScript.Shell).CreateShortcut('{link}')
 $s.TargetPath = '{pyw}'
-$s.Arguments = '-m storyforge.app'
+$s.Arguments = '-m shortsmith.app'
 $s.WorkingDirectory = '{ROOT}'
 $s.IconLocation = '{icon}'
-$s.Description = 'StoryForge - make a Short'
+$s.Description = 'Shortsmith - make a Short'
 $s.Save()
 """
     subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", ps],
@@ -61,7 +61,7 @@ def macos(dest: Path) -> Path:
     launcher.write_text(
         "#!/bin/bash\n"
         f'cd "{ROOT}"\n'
-        f'exec "{sys.executable}" -m storyforge.app\n',
+        f'exec "{sys.executable}" -m shortsmith.app\n',
         encoding="utf-8")
     launcher.chmod(0o755)
 
@@ -73,7 +73,7 @@ def macos(dest: Path) -> Path:
         "CFBundleName": NAME,
         "CFBundleDisplayName": NAME,
         "CFBundleExecutable": NAME,
-        "CFBundleIdentifier": "local.storyforge.app",
+        "CFBundleIdentifier": "local.shortsmith.app",
         "CFBundleIconFile": "icon",
         "CFBundlePackageType": "APPL",
         "CFBundleShortVersionString": "2.0",
@@ -90,7 +90,7 @@ def linux(dest: Path) -> Path:
     entry.write_text(
         "[Desktop Entry]\nType=Application\n"
         f"Name={NAME}\nComment=Make a Short\n"
-        f'Exec="{sys.executable}" -m storyforge.app\n'
+        f'Exec="{sys.executable}" -m shortsmith.app\n'
         f"Path={ROOT}\n"
         f"Icon={ROOT / 'app' / 'icon.png'}\n"
         "Terminal=false\nCategories=AudioVideo;\n",
@@ -116,7 +116,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"could not create the launcher: {exc}")
         return 1
     print(f"created {made}")
-    print("Double-click it to open StoryForge. No terminal, no commands.")
+    print("Double-click it to open Shortsmith. No terminal, no commands.")
     return 0
 
 

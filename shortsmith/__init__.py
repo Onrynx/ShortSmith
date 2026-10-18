@@ -1,4 +1,4 @@
-"""StoryForge — a personal, local YouTube Shorts factory controlled from Discord.
+"""Shortsmith — a personal, local YouTube Shorts factory controlled from Discord.
 
 Pipeline: script -> voice -> canvas -> cutter -> herald. Stories are written by a
 local model via Ollama; narration by Kokoro; visuals over gameplay backgrounds;

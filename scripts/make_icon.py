@@ -1,4 +1,4 @@
-"""Generate StoryForge's app icon.
+"""Generate Shortsmith's app icon.
 
 Uses Pillow, which the pipeline already depends on, so the icon can be rebuilt
 on any machine without design tools. Produces:
@@ -7,9 +7,10 @@ on any machine without design tools. Produces:
     app/icon.ico    Windows (multi-resolution, 16 -> 256)
     app/icon.icns   macOS, when Pillow's ICNS writer is available
 
-The mark is a forge spark over a vertical frame: the 9:16 shape StoryForge
-outputs, with an ember rising out of it. Flat shapes only — an icon is usually
-seen at 32 px, where gradients and detail turn to mud.
+The mark is an anvil with sparks coming off it. An earlier attempt drew a
+hammer across a 9:16 frame and it read as a phone with a line through it — at
+icon size a single unmistakable silhouette beats a clever composition. The
+anvil profile (horn, waist, splayed base) survives being shrunk to 32 px.
 
 Run:  python scripts/make_icon.py
 """
@@ -22,7 +23,6 @@ ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "app"
 
 BG_TOP = (28, 20, 32)
-BG_BOT = (16, 14, 20)
 EMBER = (255, 122, 61)
 EMBER_HOT = (255, 190, 70)
 FRAME = (248, 243, 238)
@@ -33,36 +33,29 @@ def build(size: int = 1024):
 
     img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
-    s = size / 1024.0          # everything below is authored at 1024
+    s = size / 1024.0          # authored at 1024
 
-    # One solid plate. An earlier two-tone version left a hard seam across the
-    # middle that looked like a rendering fault at small sizes.
-    d.rounded_rectangle([0, 0, size - 1, size - 1], radius=int(220 * s), fill=BG_TOP)
+    def S(v):
+        return int(v * s)
 
-    # The 9:16 frame — the shape StoryForge outputs.
-    fw, fh = int(330 * s), int(580 * s)
-    fx, fy = (size - fw) // 2, int(250 * s)
-    d.rounded_rectangle([fx, fy, fx + fw, fy + fh], radius=int(46 * s),
-                        outline=FRAME, width=int(32 * s))
+    d.rounded_rectangle([0, 0, size - 1, size - 1], radius=S(220), fill=BG_TOP)
 
-    # The flame fills the frame and breaks through its top edge, so the mark
-    # reads as something coming OUT of the video rather than sitting in it.
-    cx = size // 2
-    tip_y = int(168 * s)
-    base_y = fy + fh - int(74 * s)
-    # Keep the flame inside the frame's inner width (half-width minus the
-    # stroke), or it crosses the side strokes and reads as a drawing error.
-    half = (fw // 2) - int(32 * s) - int(16 * s)
-    d.polygon([(cx, tip_y), (cx + half, base_y), (cx - half, base_y)], fill=EMBER)
-    inner = int(half * 0.52)
-    d.polygon([(cx, int(340 * s)), (cx + inner, base_y),
-               (cx - inner, base_y)], fill=EMBER_HOT)
+    # ---- anvil ----------------------------------------------------------- #
+    # face: the long flat top the smith works on
+    d.rounded_rectangle([S(250), S(430), S(770), S(530)], radius=S(16), fill=EMBER)
+    # horn: tapers off the left of the face
+    d.polygon([(S(250), S(440)), (S(250), S(524)), (S(108), S(500))], fill=EMBER)
+    # waist: the narrow column under the face
+    d.polygon([(S(404), S(530)), (S(616), S(530)),
+               (S(576), S(654)), (S(444), S(654))], fill=EMBER)
+    # base: splayed foot, slightly brighter so the form reads at small sizes
+    d.rounded_rectangle([S(316), S(654), S(704), S(762)], radius=S(18),
+                        fill=EMBER_HOT)
 
-    # Sparks, placed outside the frame so they survive the 32px shrink.
-    for dx, dy, rad in ((-250, 300, 34), (246, 360, 26), (-214, 452, 19)):
-        rr = int(rad * s)
-        d.ellipse([cx + int(dx * s) - rr, int(dy * s) - rr,
-                   cx + int(dx * s) + rr, int(dy * s) + rr], fill=EMBER)
+    # ---- sparks ---------------------------------------------------------- #
+    for x, y, r in ((352, 318, 34), (520, 250, 24), (646, 330, 18),
+                    (250, 250, 14)):
+        d.ellipse([S(x - r), S(y - r), S(x + r), S(y + r)], fill=EMBER_HOT)
     return img
 
 

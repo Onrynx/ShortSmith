@@ -1,7 +1,7 @@
 """The desktop entry point — starts the local server and opens a window.
 
 Run it with `pythonw` (Windows) or from the .app/.command launcher and there is
-no terminal involved at all: a real window appears with StoryForge's icon in the
+no terminal involved at all: a real window appears with Shortsmith's icon in the
 dock or taskbar.
 
 The window is drawn by pywebview, which borrows the operating system's own
@@ -24,7 +24,7 @@ from pathlib import Path
 from .utils import ROOT, log
 from .webapp import serve
 
-WINDOW_TITLE = "StoryForge"
+WINDOW_TITLE = "Shortsmith"
 WIN_W, WIN_H = 1180, 820
 
 
@@ -77,7 +77,7 @@ def _safe_stdio() -> None:
     if sys.stdout is not None and sys.stderr is not None:
         return
     try:
-        logfile = ROOT / ".storyforge_state" / "app.log"
+        logfile = ROOT / ".shortsmith_state" / "app.log"
         logfile.parent.mkdir(parents=True, exist_ok=True)
         fh = open(logfile, "a", encoding="utf-8", buffering=1)
         if sys.stdout is None:
@@ -104,7 +104,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # Fallback path: open the default browser and stay alive to serve it.
     webbrowser.open(url)
-    print(f"StoryForge is running at {url}")
+    print(f"Shortsmith is running at {url}")
     print("Close this window to quit.")
     try:
         threading.Event().wait()

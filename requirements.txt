@@ -1,4 +1,4 @@
-# StoryForge — core AI pipeline dependencies.
+# Shortsmith — core AI pipeline dependencies.
 #
 # NONE of these are needed for MOCK mode: the mock pipeline runs on the Python
 # stdlib + numpy + Pillow + FFmpeg alone and still emits a real vertical .mp4.
@@ -22,5 +22,5 @@ onnxruntime>=1.17
 faster-whisper>=1.0
 
 # desktop app window (uses the OS webview — ~1 MB, not a bundled browser).
-# Without it StoryForge still runs, just in your normal browser.
+# Without it Shortsmith still runs, just in your normal browser.
 pywebview>=4.4

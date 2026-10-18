@@ -144,7 +144,7 @@ def run_lite(state: PipelineState, resume: bool = True) -> PipelineState:
 def run_pipeline(state: PipelineState) -> PipelineState:
     lane = state.get("lane", "?")
     channel = state.get("channel", "?")
-    engine = (env("STORYFORGE_ENGINE", "auto") or "auto").lower()
+    engine = (env("SHORTSMITH_ENGINE", "auto") or "auto").lower()
     use_lg = engine != "lite" and langgraph_available()
 
     notify("info", lane, channel, "pipeline",
@@ -189,7 +189,7 @@ def cleanup_workdir(state: PipelineState, keep: bool = False) -> int:
     evidence of what went wrong, so it is kept deliberately.
     """
     wd = state.get("workdir")
-    if not wd or keep or env("STORYFORGE_KEEP_WORK", "").strip():
+    if not wd or keep or env("SHORTSMITH_KEEP_WORK", "").strip():
         return 0
     path = Path(wd)
     if path.name != state.get("run_id") or "_work" not in path.parts:
