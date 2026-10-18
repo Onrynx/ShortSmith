@@ -308,6 +308,10 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(length))
         self.send_header("Accept-Ranges", "bytes")
         self.send_header("Last-Modified", formatdate(path.stat().st_mtime, usegmt=True))
+        if path.suffix.lower() in (".html", ".css", ".js"):
+            # The webview will happily keep serving yesterday's interface
+            # otherwise, which looks exactly like "the fix didn't work".
+            self.send_header("Cache-Control", "no-store, must-revalidate")
         if partial:
             self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
         if download:

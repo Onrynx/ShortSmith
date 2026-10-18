@@ -54,6 +54,9 @@ h2{font-size:13px;text-transform:uppercase;letter-spacing:.9px;color:var(--faint
   margin:26px 0 10px;font-weight:650}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px}
 .card+.card{margin-top:12px}
+/* ...but inside a grid the second card is a COLUMN, not a stacked card, so
+   that margin pushed Narrator 12px below Length and the pair looked crooked. */
+.grid2>.card+.card,.grid3>.card+.card{margin-top:0}
 label{display:block;font-size:12px;color:var(--dim);margin-bottom:6px}
 textarea,select,input{width:100%;background:var(--panel2);border:1px solid var(--line);
   color:var(--txt);border-radius:9px;padding:11px 12px;font:inherit;outline:none}
@@ -214,6 +217,9 @@ tr.dis{opacity:.42}
               <div class="chip" data-sec="45">45s<span class="s">punchy</span></div>
               <div class="chip" data-sec="90">90s<span class="s">standard</span></div>
               <div class="chip sel" data-sec="">2&ndash;3 min<span class="s">full story</span></div>
+            </div>
+            <div class="row" style="margin-top:10px">
+              <span class="muted">It measures the real narration and trims to fit.</span>
             </div>
           </div>
           <div class="card">

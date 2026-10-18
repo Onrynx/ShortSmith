@@ -26,7 +26,7 @@ import re
 from ..config import format_spec
 from ..llm import complete
 from ..model_profiles import profile_for
-from ..story_doctrine import DOCTRINE, violations
+from ..story_doctrine import DOCTRINE, FACTUAL_CRAFT, violations
 from ..timing import (estimate_seconds, load_calibration, plan_revisions,
                       scene_seconds, words_for_seconds, wpm_for)
 from .. import story_memory
@@ -214,7 +214,10 @@ def write_script(plan: dict, cfg: dict, model_info: dict, t: dict, *,
     summary = plan_summary(plan)
     style = _visual_style(cfg, t)
     mode = t.get("story_mode", "real_life_drama")
-    rules = DOCTRINE
+    # An explainer must not be written to drama craft — that is what turned a
+    # physics brief into a personal anecdote.
+    factual = plan.get("brief_kind") in ("factual", "historical")
+    rules = FACTUAL_CRAFT if factual else DOCTRINE
 
     opening_line = ""
     if plan.get("brief_kind") == "opening_line":
@@ -453,9 +456,11 @@ def enforce_doctrine(script: dict, plan: dict, cfg: dict, model_info: dict,
     over a single bad line — which is what the old full-rewrite loop did.
     """
     mode = t.get("story_mode", "real_life_drama")
-    grounded = plan.get("brief_kind") != "historical" and mode != "lore"
+    factual = plan.get("brief_kind") in ("factual", "historical")
+    grounded = not factual and mode != "lore"
     narrator = str(plan.get("narrator", "")).lower()
-    first_person = "first person" in narrator or "first-person" in narrator or not narrator
+    first_person = (not factual) and (
+        "first person" in narrator or "first-person" in narrator or not narrator)
 
     faults = violations(script, mode=mode, grounded=grounded,
                         first_person=first_person)

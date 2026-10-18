@@ -62,6 +62,31 @@ like narration ABOUT a story instead of the story itself.
 ORIGINALITY: anything mentioned in these rules is an illustration, never a
 template. Invent your own premise, cast and situation."""
 
+FACTUAL_CRAFT = """YOU ARE EXPLAINING SOMETHING REAL. ACCURACY COMES FIRST.
+
+The viewer should finish actually understanding the thing. Everything below
+serves that, not the other way round.
+
+BE TRUE. Never invent a number, a date, a name, a study or a quote. If you are
+not sure, either leave it out or say plainly that it is uncertain or disputed.
+A vaguer true sentence always beats a specific invented one.
+
+NO CHARACTERS. There is no narrator with a life, no "I", no anecdote about
+someone who discovered this. The subject is the thing itself.
+
+MAKE IT CONCRETE. Abstractions slide off people. Anchor every idea to something
+they can picture — a bathtub, a plane, a spinning merry-go-round — and keep the
+same image running rather than swapping metaphors every line.
+
+EARN ATTENTION HONESTLY. Open on the part that is genuinely surprising or
+counter-intuitive, not on a manufactured cliffhanger. Curiosity is the hook.
+
+ONE IDEA AT A TIME, in an order where each sentence depends on the last. If a
+term needs defining, define it the moment it appears.
+
+LANGUAGE: plain spoken English, short sentences, no jargon left unexplained and
+no lecturing tone. Say "the water turns" before "angular momentum"."""
+
 DOCTRINE_SUMMARY = (
     "Story doctrine: believable, specific, first-person storytelling. Establish "
     "who and where before things escalate, let each story choose its own shape "

@@ -53,6 +53,17 @@ STRUCTURES = """AVAILABLE STORY SHAPES (choose the one that fits THIS idea, or i
 - chronicle: an event told in order because the sequence itself is the payload (works for history).
 - quiet_ending: everything resolves except the feeling — the last beat sits in the aftermath."""
 
+# Explainers need their own shapes. Running a factual subject through the drama
+# menu above is what produced a story about a man discovering physics instead of
+# a video about the physics.
+STRUCTURES_FACTUAL = """AVAILABLE EXPLAINER SHAPES (choose the one that fits THIS subject):
+- counterintuitive_hook: open on the part that sounds wrong, then show why it's true.
+- build_up: start from something the viewer already knows and add one layer at a time.
+- common_mistake: state what most people believe, then take it apart.
+- consequences: explain the mechanism, then show what it causes in the real world.
+- scale_shift: show it at a scale people can feel, then zoom out to where it really matters.
+- question_chain: each answer raises the next question, until the whole picture lands."""
+
 # Beat purposes the writer and the timing module both understand.
 PURPOSES = ("establish", "context", "develop", "complicate", "turn",
             "reveal", "escalate", "resolve", "aftermath")
@@ -109,8 +120,27 @@ def classify_brief(brief: str) -> dict:
                  r"explore|feel(ing)? of|capture)\b", b, re.I):
         return {"kind": "theme", "value": b}
     if re.search(r"\b(historical|history|real event|actually happened|true story|"
-                 r"in \d{3,4}|war|dynasty|revolution)\b", b, re.I):
+                 r"in \d{3,4}|\d{4}s|war|dynasty|revolution|empire|battle of|"
+                 r"fall of|rise of|discovery of|invention of|ancient|medieval|"
+                 r"century)\b", b, re.I):
         return {"kind": "historical", "value": b}
+    # A real phenomenon, law or concept — explain the thing itself.
+    #
+    # Without this, "the coriolis effect" was classed as a story SUBJECT, and
+    # the planner was then instructed to "decide who the person is". That is
+    # exactly how a physics topic became a man who discovers physics on a
+    # bicycle: the system had no way to make a video ABOUT something.
+    # "How/why/what ..." is almost always a request to explain something real.
+    if re.match(r"^\s*(how|why|what)\b", b, re.I):
+        return {"kind": "factual", "value": b}
+    if re.search(r"\b(effect|phenomenon|phenomena|theory|theorem|law of|"
+                 r"principle|paradox|equation|experiment|hypothesis|syndrome|"
+                 r"disorder|algorithm|explain|science|physics|biology|"
+                 r"chemistry|astronomy|economics|psychology|climate|gravity|"
+                 r"black hole|evolution|universe|galaxy|quantum|atom|dna|"
+                 r"volcano|earthquake|ecosystem|inflation|recession)\b",
+                 b, re.I):
+        return {"kind": "factual", "value": b}
     # an exact line to open on: first-person sentence of reasonable length
     if re.match(r"^(my|i|he|she|they|we|our)\b", b, re.I) and len(b.split()) >= 4:
         return {"kind": "opening_line", "value": b}
@@ -133,7 +163,20 @@ def _brief_instruction(brief: str) -> str:
         return (f'THE CREATOR ASKED FOR A REAL/HISTORICAL SUBJECT: "{val}"\n'
                 "Pick ONE specific, real, well-documented event or moment. Use "
                 "real names, dates and places. Be honest where the record is "
-                "uncertain — say so rather than inventing certainty.")
+                "uncertain — say so rather than inventing certainty.\n"
+                "Do NOT invent a fictional narrator who happens to witness it.")
+    if kind == "factual":
+        return (f'THE CREATOR ASKED FOR A REAL SUBJECT, EXPLAINED: "{val}"\n'
+                "The video is ABOUT this thing. Explain what it actually is, "
+                "why it happens, and why it matters — accurately.\n"
+                "There is no protagonist. Do NOT invent a character who "
+                "discovers it, and do NOT turn it into a personal anecdote. "
+                "The subject itself is the thing the viewer should end up "
+                "understanding.\n"
+                "Accuracy outranks drama here: if you are not confident of a "
+                "detail, leave it out. Never invent a number, a name, a date "
+                "or a study. Saying 'nobody is certain' is allowed and better "
+                "than a confident wrong answer.")
     if kind == "opening_line":
         return (f'THE CREATOR GAVE THE EXACT OPENING LINE: "{val}"\n'
                 "This sentence must be the first thing spoken, word for word. "
@@ -250,6 +293,14 @@ def build_plan(brief: str, cfg: dict, model_info: dict, *, target_seconds: float
     if kind == "historical":
         register = ("REGISTER: real history, told like a documentary narrator who "
                     "knows how to hold an audience. Real names and dates.")
+    elif kind == "factual":
+        register = ("REGISTER: an explainer. A clear, confident narrator making a "
+                    "real thing make sense to someone who has never thought about "
+                    "it. Concrete examples the viewer can picture, in plain "
+                    "language, no jargon left unexplained. It still has to hold "
+                    "attention — open on the part that is surprising or "
+                    "counter-intuitive — but it is TRUE first and gripping "
+                    "second. No invented characters, no fabricated specifics.")
     elif mode == "lore":
         register = ("REGISTER: cinematic game-lore storytelling. Worldbuilding is "
                     "welcome here.")
@@ -260,6 +311,7 @@ def build_plan(brief: str, cfg: dict, model_info: dict, *, target_seconds: float
                     "explicitly asks for something else, in which case follow the "
                     "creator.")
 
+    shapes = STRUCTURES_FACTUAL if kind in ("factual", "historical") else STRUCTURES
     freshness = f"\n{seed}\n{avoid}\n" if (seed or avoid) and kind in ("open",) else ""
 
     # The TTS voice is a fixed gender, so the person telling the story has to
@@ -283,7 +335,7 @@ NEVER include: {cfg.get('banned')}
 TARGET LENGTH: about {int(target_seconds)} seconds of finished video, told in
 {lo}-{hi} beats. You decide how to spend that time.
 
-{STRUCTURES}
+{shapes}
 
 HOW TO PACE IT (this matters more than anything else):
 The most common failure in short video is racing. A story that introduces

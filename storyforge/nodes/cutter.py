@@ -103,7 +103,7 @@ def _word_srt_via_whisper(audio_paths, durations, workdir) -> str | None:
         if not pcm:
             return None
         audio = np.concatenate(pcm).astype("float32") / 32768.0
-        model = WhisperModel(os.environ.get("WHISPER_MODEL", "tiny"),
+        model = WhisperModel(os.environ.get("WHISPER_MODEL", "base"),
                              device="cpu", compute_type="int8")
         segments, _ = model.transcribe(audio, word_timestamps=True, language="en")
         cues = []
@@ -144,7 +144,7 @@ def _words_whisper(audio_paths, factor=1.0):
             n = int(len(audio) * 16000 / rate)
             audio = np.interp(np.linspace(0, len(audio), n, endpoint=False),
                               np.arange(len(audio)), audio).astype("float32")
-        model = WhisperModel(os.environ.get("WHISPER_MODEL", "tiny"),
+        model = WhisperModel(os.environ.get("WHISPER_MODEL", "base"),
                              device="cpu", compute_type="int8")
         segs, _ = model.transcribe(audio, word_timestamps=True, language="en")
         words = [(wd.start / factor, wd.end / factor, wd.word.strip())
@@ -153,6 +153,76 @@ def _words_whisper(audio_paths, factor=1.0):
     except Exception as exc:  # noqa: BLE001
         log("warn", f"whisper word-timing failed: {exc}")
         return None
+
+
+def _align_to_script(heard, scenes):
+    """Put the SCRIPT's words on screen, using whisper only for timing.
+
+    Captions used to be whatever whisper transcribed, from the `tiny` model —
+    so a mis-heard word became a wrong subtitle, even though the exact text was
+    sitting right there in the script that produced the audio.
+
+    We already know every word that was spoken. So match whisper's output
+    against the real text, keep its timings, and display the real words. Words
+    whisper dropped or garbled get a timing interpolated from their neighbours.
+    """
+    import difflib
+    import re as _re
+
+    truth = [w for sc in scenes
+             for w in str(sc.get("narration", "")).split()]
+    if not heard or not truth:
+        return heard
+
+    def norm(w):
+        return _re.sub(r"[^a-z0-9']", "", w.lower())
+
+    h = [norm(w[2]) for w in heard]
+    t = [norm(w) for w in truth]
+    sm = difflib.SequenceMatcher(None, h, t, autojunk=False)
+
+    timed: list = [None] * len(truth)
+    matched = 0
+    for a, b, size in sm.get_matching_blocks():
+        for k in range(size):
+            timed[b + k] = (heard[a + k][0], heard[a + k][1])
+            matched += 1
+
+    # If almost nothing lined up, the audio probably isn't this script — keep
+    # what whisper heard rather than forcing the wrong text onto it.
+    if matched < len(truth) * 0.45:
+        log("warn", f"caption alignment weak ({matched}/{len(truth)} words); "
+                    "using the transcript as-is")
+        return heard
+
+    # Fill gaps by spreading them evenly between the nearest known anchors.
+    first = next((i for i, v in enumerate(timed) if v), None)
+    last = next((i for i in range(len(timed) - 1, -1, -1) if timed[i]), None)
+    if first is None:
+        return heard
+    for i in range(first):
+        timed[i] = timed[first]
+    for i in range(last + 1, len(timed)):
+        timed[i] = timed[last]
+    i = first
+    while i <= last:
+        if timed[i] is not None:
+            i += 1
+            continue
+        j = i
+        while timed[j] is None:
+            j += 1
+        start, end = timed[i - 1][1], timed[j][0]
+        span = max(0.0, end - start) / (j - i + 1)
+        for k in range(i, j):
+            s0 = start + span * (k - i)
+            timed[k] = (s0, s0 + span)
+        i = j
+
+    out = [(timed[i][0], timed[i][1], truth[i]) for i in range(len(truth))]
+    log("info", f"captions aligned to the script ({matched}/{len(truth)} words "
+                "matched directly)")
+    return out
 
 
 def _words_estimate(scenes, spoken, slots):
@@ -357,6 +427,8 @@ def node_cutter(state: dict) -> dict:
     words = None
     if not state.get("mock"):
         words = _words_whisper(audio_paths, factor)
+        if words:
+            words = _align_to_script(words, scenes)
         captions_kind = "word-synced"
     if not words:
         words = _words_estimate(scenes, spoken, edur)
