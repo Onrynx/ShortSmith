@@ -23,9 +23,11 @@ seek and some will not play an mp4 at all.
 """
 from __future__ import annotations
 
+import hmac
 import json
 import mimetypes
 import os
+import secrets
 import socket
 import threading
 from email.utils import formatdate
@@ -54,6 +56,38 @@ _STAGE_TEXT = {
 # --------------------------------------------------------------------------- #
 # What the UI needs to know
 # --------------------------------------------------------------------------- #
+# --------------------------------------------------------------------------- #
+# Who is allowed to talk to this server
+# --------------------------------------------------------------------------- #
+# Binding to 127.0.0.1 keeps the network out. It does NOT keep web pages out:
+# a site the user is browsing can POST to http://127.0.0.1:8765 from their own
+# browser. With a text/plain body that is a "simple request", so there is no
+# CORS preflight to refuse — the request simply arrives and runs. The attacker
+# cannot read the reply, but deleting every video needs no reply.
+#
+# And a site can get the reply too, via DNS rebinding: point evil.example at
+# 127.0.0.1, and the browser treats this server as same-origin for evil.example.
+#
+# Three locks, because each one covers what the others miss:
+#   Host     must be loopback — kills rebinding, which depends on a foreign name
+#   Origin   if present, must be ours — kills the ordinary cross-site POST
+#   token    a per-run secret, injected into the page we serve, required on
+#            every /api/ call. Sent as a header, which cannot be set on a
+#            cross-origin simple request at all.
+SESSION_TOKEN = secrets.token_urlsafe(24)
+_LOOPBACK = {"127.0.0.1", "localhost", "::1", "0:0:0:0:0:0:0:1"}
+MAX_BODY = 1 << 20          # 1 MB; no legitimate call is anywhere near this
+
+
+def _host_is_loopback(value: str) -> bool:
+    host = (value or "").strip()
+    if host.startswith("["):                       # [::1]:8765
+        host = host[1:].split("]")[0]
+    elif host.count(":") == 1:                     # 127.0.0.1:8765
+        host = host.split(":")[0]
+    return host.lower() in _LOOPBACK
+
+
 def render_state() -> dict:
     """Current render, in the shape the progress screen wants."""
     st = read_status(control.RENDER_SLOT) or {}
@@ -310,9 +344,80 @@ class _Handler(BaseHTTPRequestHandler):
     def _body(self) -> dict:
         try:
             n = int(self.headers.get("Content-Length") or 0)
+            if n < 0 or n > MAX_BODY:
+                return {}
             return json.loads(self.rfile.read(n) or b"{}")
         except Exception:  # noqa: BLE001
             return {}
+
+    def _caller_ok(self) -> bool:
+        """Loopback Host, and an Origin/Referer that is ours or absent."""
+        if not _host_is_loopback(self.headers.get("Host") or ""):
+            return False
+        for header in ("Origin", "Referer"):
+            value = self.headers.get(header)
+            if not value or value == "null":
+                continue
+            try:
+                parsed = urlparse(value)
+            except ValueError:
+                return False
+            if (parsed.hostname or "").lower() not in _LOOPBACK:
+                return False
+        return True
+
+    def _token_ok(self) -> bool:
+        """The page we served knows the token; nothing else does.
+
+        Accepted as a header for fetch(), or as ?k= for <img>/<video>/<audio>,
+        which cannot send headers at all.
+        """
+        got = self.headers.get("X-Shortsmith-Token") or ""
+        if not got:
+            got = (parse_qs(urlparse(self.path).query).get("k") or [""])[0]
+        return hmac.compare_digest(str(got), SESSION_TOKEN)
+
+    def _allowed(self, path: str) -> bool:
+        if not self._caller_ok():
+            return False
+        return self._token_ok() if path.startswith("/api/") else True
+
+    def do_OPTIONS(self):  # noqa: N802
+        # Never answer a preflight. A cross-origin caller that needs one is,
+        # by definition, not the page we served.
+        self.send_response(403)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def _index(self) -> None:
+        """index.html with this run's token substituted in.
+
+        The token has to reach the page somehow, and the page is the one thing
+        we can hand it to directly — anything fetched afterwards would need a
+        way to authenticate itself first.
+        """
+        try:
+            html = (APP_DIR / "index.html").read_text(encoding="utf-8")
+        except OSError:
+            return self._json({"error": "index.html is missing"}, 500)
+        body = html.replace("__SHORTSMITH_TOKEN__", SESSION_TOKEN).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store, must-revalidate")
+        # The page never embeds anything remote, so say so.
+        self.send_header("Content-Security-Policy",
+                         "default-src 'self'; script-src 'self' 'unsafe-inline'; "
+                         "style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
+                         "media-src 'self'; connect-src 'self'; "
+                         "object-src 'none'; base-uri 'none'; form-action 'none'")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.end_headers()
+        try:
+            self.wfile.write(body)
+        except OSError:
+            pass
 
     def _file(self, path: Path, download: bool = False) -> None:
         """Send a file, honouring Range so browsers can seek video."""
@@ -389,8 +494,11 @@ class _Handler(BaseHTTPRequestHandler):
         u = urlparse(self.path)
         p, q = u.path, parse_qs(u.query)
 
+        if not self._allowed(p):
+            return self._json({"error": "forbidden"}, 403)
+
         if p in ("/", "/index.html"):
-            return self._file(APP_DIR / "index.html")
+            return self._index()
         if p == "/api/state":
             return self._json(app_state())
         if p.startswith("/api/voice/"):
@@ -445,12 +553,16 @@ class _Handler(BaseHTTPRequestHandler):
         # any other static file under app/
         rel = p.lstrip("/")
         cand = (APP_DIR / rel).resolve()
-        if rel and str(cand).startswith(str(APP_DIR.resolve())) and cand.is_file():
+        # is_relative_to, not startswith: as strings, "<root>/app2/x" starts
+        # with "<root>/app", so one neighbouring folder would be served too.
+        if rel and cand.is_relative_to(APP_DIR.resolve()) and cand.is_file():
             return self._file(cand)
         return self._json({"error": "not found"}, 404)
 
     def _route_post(self):
         p = urlparse(self.path).path
+        if not self._allowed(p):
+            return self._json({"error": "forbidden"}, 403)
         body = self._body()
 
         if p == "/api/make":
@@ -534,6 +646,11 @@ class _Handler(BaseHTTPRequestHandler):
             model = str(body.get("model") or "").strip()
             if not model:
                 return self._json({"error": "no model given"}, 400)
+            # Only tags from our own menu. Downloading is a multi-gigabyte,
+            # long-running action and the name should never be free text.
+            from .model_profiles import CATALOG
+            if model not in {e["tag"] for e in CATALOG}:
+                return self._json({"error": "unknown model"}, 400)
             return self._json(start_pull(model))
 
         if p == "/api/update":

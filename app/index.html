@@ -505,9 +505,21 @@ $('#lens').onclick  = e => { const c=e.target.closest('.chip'); if(c) pickIn($('
 $('#voices').onclick= e => { const c=e.target.closest('.chip'); if(c) pickIn($('#voices'),c,()=>VOICE=c.dataset.voice); };
 $('#counts').onclick= e => { const c=e.target.closest('.chip'); if(c) pickIn($('#counts'),c,()=>COUNT=+c.dataset.n); };
 
+// The server injects this when it serves the page, and refuses any /api call
+// without it. That is what stops a website you happen to be visiting from
+// driving this app behind your back — a cross-origin request cannot set a
+// custom header without a CORS preflight, and the server refuses those.
+const TOKEN = "__SHORTSMITH_TOKEN__";
+
+// <img>, <video> and <audio> cannot send headers, so they carry it in the URL.
+function signed(url){ return url + (url.includes('?') ? '&' : '?') + 'k=' + TOKEN; }
+
 async function api(path, body){
-  const opt = body ? {method:'POST',headers:{'Content-Type':'application/json'},
-                      body:JSON.stringify(body)} : {};
+  const headers = {'X-Shortsmith-Token': TOKEN};
+  const opt = body
+    ? {method:'POST', headers:{...headers, 'Content-Type':'application/json'},
+       body:JSON.stringify(body)}
+    : {headers};
   const r = await fetch(path, opt);
   return r.json();
 }
@@ -741,8 +753,8 @@ function cardHTML(it, pane){
     <input type="checkbox" class="sel-ck" ${on?'checked':''}
            onchange="toggle('${pane}','${it.id}',this.checked)">
     <div class="vrow">
-      <video controls preload="none" poster="/api/thumb/${encodeURIComponent(it.id)}"
-             src="/api/video/${encodeURIComponent(it.id)}"></video>
+      <video controls preload="none" poster="${signed('/api/thumb/'+encodeURIComponent(it.id))}"
+             src="${signed('/api/video/'+encodeURIComponent(it.id))}"></video>
       <div style="flex:1;min-width:0">
         <div style="font-size:16px;font-weight:650">${esc(it.title)}</div>
         <div class="kv"><div class="k">Length</div><div>${it.seconds}s · ${it.scenes} scenes</div></div>
@@ -889,7 +901,7 @@ function fileHTML(it){
     + ' ondblclick="openSheet(&quot;' + id + '&quot;)"'
     + ' oncontextmenu="fileMenu(event,&quot;' + id + '&quot;)">'
     + '<div class="dots" onclick="fileMenu(event,&quot;' + id + '&quot;)">&#8942;</div>'
-    + '<div class="thumb"><img loading="lazy" alt="" src="/api/thumb/' + e + '"></div>'
+    + '<div class="thumb"><img loading="lazy" alt="" src="' + signed('/api/thumb/' + e) + '"></div>'
     + '<div class="nm">' + t + '</div>'
     + '<div class="meta">' + (it.seconds || '?') + 's &middot; '
     + (it.scenes || '?') + ' scenes</div></div>';
@@ -979,8 +991,8 @@ function openSheet(id){
     + ' scenes' + (it.when ? ' &middot; ' + esc(it.when) : '')
     + (it.structure ? ' &middot; ' + esc(it.structure) : '') + '</div></div>'
     + '<button class="btn g sm" onclick="closeSheet()">Close</button></div>'
-    + '<video controls preload="metadata" poster="/api/thumb/' + e
-    + '" src="/api/video/' + e + '"></video>'
+    + '<video controls preload="metadata" poster="' + signed('/api/thumb/' + e)
+    + '" src="' + signed('/api/video/' + e) + '"></video>'
     + '<div class="row" style="margin-top:14px">'
     + '<button class="btn g sm" onclick="showScript(&quot;' + id + '&quot;,this)">Read script</button>'
     + '<button class="btn g sm" onclick="reveal(&quot;' + id + '&quot;)">Show in folder</button>'
@@ -1124,44 +1136,81 @@ function renderLibrary(items){
   paint('library', items); syncBar('library');
 }
 
+// Five honest answers, not two. The old version only knew "behind by N
+// commits", so a ZIP install was told to download forever and a checkout with
+// one local commit of its own was told an update was waiting that did not
+// exist. What is shown now follows the state the checker worked out.
 async function loadUpdates(force){
   const u = await api('/api/updates' + (force ? '?force=1' : ''));
   $('#uSub').textContent = 'You are on v' + u.version;
-  const behind = u.behind;
+  const again = '<button class="btn g sm" onclick="loadUpdates(true)">Check again</button>';
+  const newest = u.latest_version ? ' (v' + esc(u.latest_version) + ')' : '';
   let head = '';
-  if(u.error){
-    head = `<b class="warn">Could not check for updates</b>
-      <div class="muted">${esc(u.error)}</div>
-      <div class="row" style="margin-top:12px">
-        <button class="btn g sm" onclick="loadUpdates(true)">Try again</button></div>`;
-  } else if(!u.git){
-    head = `<b>This copy was downloaded as a ZIP</b>
-      <div class="muted">It cannot update itself safely while running. Download the
-      new version and unzip it over this folder — your videos, clips and settings
-      are kept separately and are not touched.</div>
-      <div class="row" style="margin-top:12px">
-        <a class="btn sm" href="${u.zip_url}" target="_blank" rel="noopener">Download the latest</a>
-        <a class="btn g sm" href="${u.page}" target="_blank" rel="noopener">See it on GitHub</a>
-      </div>`;
-  } else if(behind === 0){
-    head = `<b class="ok">You are up to date</b>
-      <div class="muted">Nothing newer has been published.</div>
-      <div class="row" style="margin-top:12px">
-        <button class="btn g sm" onclick="loadUpdates(true)">Check again</button></div>`;
-  } else {
-    const n = behind > 0 ? `${behind} update${behind>1?'s':''} available` : 'An update is available';
-    head = `<b class="warn">${n}</b>
-      <div class="muted">Only program files change — your model, clips and videos stay as they are.</div>
-      <div class="row" style="margin-top:12px">
-        <button class="btn sm" id="uBtn" onclick="applyUpdate()">Install update</button>
-        <button class="btn g sm" onclick="loadUpdates(true)">Check again</button>
-      </div>`;
-  }
-  $('#uCard').innerHTML = head;
-  $('#ucnt').style.display = (behind && behind !== 0) ? '' : 'none';
 
-  $('#uLog').innerHTML = (u.changelog || []).join(String.fromCharCode(10))
+  if(u.state === 'error'){
+    head = '<b class="warn">Could not check for updates</b>'
+      + '<div class="muted">' + esc(u.error || '') + '</div>'
+      + '<div class="row" style="margin-top:12px">' + again + '</div>';
+
+  } else if(u.state === 'current'){
+    head = '<b class="ok">You have the latest version</b>'
+      + '<div class="muted">v' + esc(u.version) + ' is what is published. '
+      + 'Nothing to install.</div>'
+      + '<div class="row" style="margin-top:12px">' + again + '</div>';
+
+  } else if(u.state === 'ahead'){
+    head = '<b class="ok">This copy is ahead of what is published</b>'
+      + '<div class="muted">You are on v' + esc(u.version) + ' and the published '
+      + 'version is v' + esc(u.latest_version || '?') + '. There is nothing to '
+      + 'update to.</div>'
+      + '<div class="row" style="margin-top:12px">' + again + '</div>';
+
+  } else if(u.state === 'behind' && u.can_install){
+    const n = u.behind > 0 ? u.behind + ' update' + (u.behind > 1 ? 's' : '') + ' available'
+                           : 'An update is available' + newest;
+    head = '<b class="warn">' + esc(n) + '</b>'
+      + '<div class="muted">Only program files change — your model, clips and '
+      + 'videos stay as they are.</div>'
+      + '<div class="row" style="margin-top:12px">'
+      + '<button class="btn sm" id="uBtn" onclick="applyUpdate()">Install update</button>'
+      + again + '</div>';
+
+  } else if(u.state === 'behind'){
+    head = '<b class="warn">A newer version is out' + newest + '</b>'
+      + '<div class="muted">This copy was downloaded as a ZIP, so it cannot '
+      + 'replace itself while running. Download the new one and unzip it over '
+      + 'this folder — your videos, clips and settings live elsewhere and are '
+      + 'not touched.</div>'
+      + '<div class="row" style="margin-top:12px">'
+      + '<a class="btn sm" href="' + esc(u.zip_url) + '" target="_blank" rel="noopener">Download v'
+      + esc(u.latest_version || 'latest') + '</a>'
+      + '<a class="btn g sm" href="' + esc(u.page) + '" target="_blank" rel="noopener">See it on GitHub</a>'
+      + again + '</div>';
+
+  } else {
+    head = '<b>Could not tell whether this copy is current</b>'
+      + '<div class="muted">You are on v' + esc(u.version) + '. '
+      + (u.latest_version ? 'The published version is v' + esc(u.latest_version) + '.'
+                          : 'The published version could not be read.') + '</div>'
+      + '<div class="row" style="margin-top:12px">'
+      + '<a class="btn g sm" href="' + esc(u.page) + '" target="_blank" rel="noopener">See it on GitHub</a>'
+      + again + '</div>';
+  }
+
+  if((u.whats_new || []).length){
+    head += '<div class="metafield"><div class="lbl">What you would get</div>'
+      + '<div class="val">' + esc(u.whats_new.join(String.fromCharCode(10))) + '</div></div>';
+  }
+
+  $('#uCard').innerHTML = head;
+  // The badge means "there is something to install", nothing else.
+  $('#ucnt').style.display = (u.state === 'behind') ? '' : 'none';
+
+  // Escape FIRST, then add the one bit of markup we want. Going the other way
+  // round pastes a file straight into the page as HTML.
+  $('#uLog').innerHTML = esc((u.changelog || []).join(String.fromCharCode(10)))
       .replace(/^# .*$/m, '')
+      .replace(/^## *(.+)$/gm, '<b class="ok">Version $1</b>')
       .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
       .trim() || 'No changelog in this copy.';
   $('#uCommits').innerHTML = (u.commits || []).map(c =>
@@ -1174,8 +1223,9 @@ async function applyUpdate(){
   const b = $('#uBtn'); if(b){ b.disabled = true; b.textContent = 'Installing…'; }
   const r = await api('/api/update', {});
   if(r.ok){
-    notify('Update installed', 'Close and reopen Shortsmith to use it.', 'good');
-    loadUpdates(true);
+    notify('Updated to v' + (r.version || '?'),
+           'Close and reopen Shortsmith to run the new version.', 'good');
+    await loadUpdates(true);     // re-read from disk so the button goes away
   } else {
     notify('Update failed', r.error || 'Unknown problem', 'bad');
     if(b){ b.disabled = false; b.textContent = 'Install update'; }
@@ -1216,7 +1266,7 @@ async function previewVoice(){
   if(PREVIEW_PLAYING){ au.pause(); au.currentTime = 0; }
   btn.disabled = true; msg.textContent = 'preparing…';
   try{
-    au.src = '/api/voice/' + encodeURIComponent(VOICE) + '?t=' + Date.now();
+    au.src = signed('/api/voice/' + encodeURIComponent(VOICE) + '?t=' + Date.now());
     au.onended = () => { btn.disabled = false; msg.textContent=''; PREVIEW_PLAYING=false; };
     au.onerror  = () => { btn.disabled = false; msg.textContent='voice not ready yet'; PREVIEW_PLAYING=false; };
     await au.play();

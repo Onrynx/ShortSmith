@@ -8,13 +8,28 @@ Deliberately honest about two different installs:
   them to the download rather than pretending a button can do it.
 
 The check is the only part of Shortsmith that talks to the internet without
-being asked, it sends nothing but a plain GET, and it never installs anything
-on its own.
+being asked, it sends nothing but two plain GETs, and it never installs
+anything on its own.
+
+Knowing whether you are actually up to date is harder than it looks, and the
+first version of this got it wrong in three ways:
+
+* A ZIP install was never compared against anything, so it was told to
+  "download the latest" forever — including immediately after doing exactly
+  that. The answer is to publish a version number and compare it, which is why
+  the remote CHANGELOG is fetched as well as the commit list.
+* A git checkout was compared only against the last ten commits. One local
+  commit of your own put HEAD outside that list and the app decided an update
+  was waiting, permanently. Being AHEAD is now a state of its own.
+* The version was read from the module that was imported at startup, so after
+  a pull the app still reported the old one. It is now read from disk.
 """
 from __future__ import annotations
 
 import json
+import re
 import subprocess
+import time
 import urllib.request
 from pathlib import Path
 
@@ -22,11 +37,18 @@ from . import __version__
 from .utils import CREATE_NO_WINDOW, ROOT, log
 
 REPO = "Onrynx/ShortSmith"
+BRANCH = "main"
 API = f"https://api.github.com/repos/{REPO}/commits?per_page=10"
-ZIP_URL = f"https://github.com/{REPO}/archive/refs/heads/main.zip"
+RAW_CHANGELOG = f"https://raw.githubusercontent.com/{REPO}/{BRANCH}/CHANGELOG.md"
+ZIP_URL = f"https://github.com/{REPO}/archive/refs/heads/{BRANCH}.zip"
 PAGE = f"https://github.com/{REPO}"
 
+# Long enough that opening the Updates tab repeatedly does not hammer GitHub,
+# short enough that a check an hour later is a real one.
+CACHE_SECONDS = 900
+
 _cache: dict = {}
+_cache_at: float = 0.0
 
 
 def is_git_checkout() -> bool:
@@ -39,6 +61,44 @@ def _git(*args, timeout: float = 25):
                           text=True, timeout=timeout, **kw)
 
 
+# --------------------------------------------------------------------------- #
+# Versions
+# --------------------------------------------------------------------------- #
+_VERSION_RE = re.compile(r'__version__\s*=\s*["\']([0-9][0-9A-Za-z.\-]*)["\']')
+_HEADING_RE = re.compile(r"^##\s+v?([0-9][0-9A-Za-z.\-]*)\s*$", re.M)
+
+
+def installed_version() -> str:
+    """The version ON DISK, not the one imported when the app started.
+
+    After a pull the files have changed but this process is still running the
+    code it loaded at launch, so `__version__` would report the version we just
+    replaced — and the app would keep offering the update it had already
+    installed.
+    """
+    try:
+        text = (ROOT / "shortsmith" / "__init__.py").read_text(encoding="utf-8")
+        m = _VERSION_RE.search(text)
+        if m:
+            return m.group(1)
+    except OSError:
+        pass
+    return __version__
+
+
+def _vtuple(v: str) -> tuple:
+    """Comparable form of a version string; unknown pieces sort low."""
+    parts = []
+    for chunk in re.split(r"[.\-]", str(v or "")):
+        parts.append((0, int(chunk)) if chunk.isdigit() else (1, 0) if chunk else (0, 0))
+    return tuple(parts)
+
+
+def _newer(a: str, b: str) -> bool:
+    """True when version a is strictly newer than b."""
+    return _vtuple(a) > _vtuple(b)
+
+
 def local_changelog(limit: int = 40) -> list[str]:
     path = ROOT / "CHANGELOG.md"
     if not path.exists():
@@ -46,14 +106,48 @@ def local_changelog(limit: int = 40) -> list[str]:
     return path.read_text(encoding="utf-8").splitlines()[:limit]
 
 
+def _fetch(url: str, timeout: float = 8) -> str:
+    req = urllib.request.Request(url, headers={
+        "Accept": "application/vnd.github+json",
+        "User-Agent": "Shortsmith"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return r.read().decode("utf-8", "replace")
+
+
+def _published_version() -> tuple[str | None, list[str]]:
+    """The newest version named in the published CHANGELOG, and its notes."""
+    try:
+        text = _fetch(RAW_CHANGELOG)
+    except Exception as exc:  # noqa: BLE001
+        log("warn", f"could not read the published changelog: {exc}")
+        return None, []
+    m = _HEADING_RE.search(text)
+    if not m:
+        return None, []
+    # Everything from that heading up to the next one is what you would get.
+    start = m.start()
+    nxt = _HEADING_RE.search(text, m.end())
+    notes = text[start:nxt.start() if nxt else len(text)].strip().splitlines()
+    return m.group(1), notes[:40]
+
+
+# --------------------------------------------------------------------------- #
+# The check
+# --------------------------------------------------------------------------- #
 def check(force: bool = False) -> dict:
-    """What version we are on, and whether the repo has moved on."""
-    if _cache and not force:
+    """What version we are on, and whether the published one has moved ahead."""
+    global _cache_at
+    if _cache and not force and (time.time() - _cache_at) < CACHE_SECONDS:
         return _cache
 
+    version = installed_version()
     out = {
-        "version": __version__,
+        "version": version,
+        "latest_version": None,
         "git": is_git_checkout(),
+        "state": "unknown",      # current | behind | ahead | unknown | error
+        "up_to_date": False,
+        "can_install": False,
         "behind": 0,
         "latest": None,
         "commits": [],
@@ -62,15 +156,11 @@ def check(force: bool = False) -> dict:
         "zip_url": ZIP_URL,
         "page": PAGE,
         "changelog": local_changelog(),
+        "whats_new": [],
     }
 
-    # What does the published repo look like right now?
     try:
-        req = urllib.request.Request(API, headers={
-            "Accept": "application/vnd.github+json",
-            "User-Agent": "Shortsmith"})
-        with urllib.request.urlopen(req, timeout=8) as r:
-            data = json.loads(r.read().decode("utf-8", "replace"))
+        data = json.loads(_fetch(API))
         out["commits"] = [{
             "sha": c.get("sha", "")[:7],
             "message": (c.get("commit", {}).get("message") or "").split("\n")[0],
@@ -79,28 +169,56 @@ def check(force: bool = False) -> dict:
         out["latest"] = out["commits"][0]["sha"] if out["commits"] else None
     except Exception as exc:  # noqa: BLE001
         out["error"] = f"Could not reach GitHub ({exc})"
+        out["state"] = "error"
         _cache.clear()
         return out
 
-    # How far behind is this copy? Only a git checkout can know precisely.
+    # The published version number is what makes a ZIP install answerable at
+    # all, and it is the tiebreaker when the commit history cannot decide.
+    published, notes = _published_version()
+    out["latest_version"] = published
+    if published and _newer(published, version):
+        out["whats_new"] = notes
+
+    by_version = None
+    if published:
+        if _newer(published, version):
+            by_version = "behind"
+        elif _newer(version, published):
+            by_version = "ahead"
+        else:
+            by_version = "current"
+
     if out["git"] and out["latest"]:
         try:
             head = _git("rev-parse", "HEAD").stdout.strip()[:7]
             out["head"] = head
+            shas = [c["sha"] for c in out["commits"]]
             if head == out["latest"]:
-                out["behind"] = 0
+                out["state"], out["behind"] = "current", 0
+            elif head in shas:
+                out["state"], out["behind"] = "behind", shas.index(head)
             else:
-                shas = [c["sha"] for c in out["commits"]]
-                out["behind"] = shas.index(head) if head in shas else -1
+                # HEAD is not in the published history. Either this copy has
+                # commits of its own (the normal state while developing) or it
+                # is more than ten behind. The version number settles it.
+                out["state"] = by_version or "unknown"
         except Exception:  # noqa: BLE001
-            out["behind"] = -1
+            out["state"] = by_version or "unknown"
+    else:
+        out["state"] = by_version or "unknown"
+
+    out["up_to_date"] = out["state"] in ("current", "ahead")
+    out["can_install"] = out["git"] and out["state"] == "behind"
     _cache.clear()
     _cache.update(out)
+    _cache_at = time.time()
     return out
 
 
 def apply_update() -> dict:
     """Pull the newest code. Only possible on a git checkout."""
+    global _cache_at
     if not is_git_checkout():
         return {"ok": False,
                 "error": "This copy was downloaded as a ZIP, so it cannot "
@@ -115,9 +233,17 @@ def apply_update() -> dict:
         pull = _git("pull", "--ff-only", timeout=90)
         if pull.returncode != 0:
             return {"ok": False, "error": (pull.stderr or pull.stdout).strip()[:300]}
+        # Force the next check to look again, and report the version that is
+        # now on disk rather than the one this process started with.
         _cache.clear()
-        log("info", "updated from GitHub")
+        _cache_at = 0.0
+        new_version = installed_version()
+        log("info", f"updated from GitHub (now v{new_version})")
         return {"ok": True, "output": pull.stdout.strip()[:400],
-                "restart": True}
+                "version": new_version, "restart": True}
     except Exception as exc:  # noqa: BLE001
         return {"ok": False, "error": str(exc)}
+
+
+__all__ = ["check", "apply_update", "is_git_checkout", "installed_version",
+           "local_changelog", "REPO", "PAGE", "ZIP_URL"]

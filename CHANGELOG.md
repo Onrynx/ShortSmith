@@ -36,7 +36,27 @@
 - Video playback moved into the details drawer, so the list refreshing can
   never interrupt something you are watching.
 
+**Security**
+- The local server now refuses anything that is not the app's own page. It
+  checks that the request came to a loopback address, that any Origin is ours,
+  and that it carries a per-run token that only the page we served knows.
+  Before this, a website you happened to be visiting could reach
+  http://127.0.0.1 from your browser and drive the whole app behind your back
+  — including deleting every video in the Library. A foreign hostname pointed
+  at 127.0.0.1 could also read your data back.
+- The changelog is escaped before it is put on the page, instead of after.
+- Model downloads only accept tags from the app's own menu.
+- Request bodies are capped, and the folder check that keeps the file server
+  inside app/ no longer compares paths as strings.
+
 **Fixed**
+- Update checking told you an update was waiting when there was not. A ZIP
+  install was never compared against anything, so it was told to download the
+  latest forever — including right after doing so. A git copy was compared
+  only against the last ten commits, so one commit of your own made it claim
+  an update existed permanently. It now compares published version numbers,
+  knows the difference between behind, current and ahead, and reads the
+  version from disk so an installed update registers immediately.
 - A status update with an unusual lane name could raise and take a whole render
   down on Windows.
 
