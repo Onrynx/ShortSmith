@@ -45,6 +45,21 @@
   disk, so a 2 GB clip copies with a progress bar instead of being held in
   memory, and a file that is not really a video is refused rather than stored.
 
+**Security**
+- Pillow was pinned at a release carrying 26 published advisories, several of
+  them heap out-of-bounds writes. It was pinned there only because that was
+  what one machine had installed. Now on a release with none, and every pin —
+  57 packages once transitive dependencies are included — is checked against
+  the advisory database.
+- The lockfile covers the whole dependency tree. The previous one listed only
+  the eight direct packages, so `--require-hashes` refused to install at all
+  on a clean machine; it only appeared to work where everything was already
+  present.
+- A malformed job id crashed a request. Cancelling a queued job called int()
+  on whatever arrived, so a string, a list or an object produced a 500 instead
+  of a refusal. Found by fuzzing, which sent 1273 malformed requests across
+  every route and now finds nothing unhandled.
+
 **Fixed**
 - Approved videos carried a duplicate. Every one had a second, compressed
   `.preview.mp4` beside it — built to fit Discord's 10 MB upload cap by a

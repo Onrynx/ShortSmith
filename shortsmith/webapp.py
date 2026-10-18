@@ -738,9 +738,17 @@ class _Handler(BaseHTTPRequestHandler):
             return self._json(r, 200 if r.get("ok") else 400)
 
         if p == "/api/queue/cancel":
+            # int() on whatever arrived threw for anything that was not a
+            # number — a string, a dict, a list — and the handler turned that
+            # into a 500. An id that is not an id means "cancel everything
+            # waiting", which is what omitting it already meant.
             from .queue import cancel as queue_cancel
-            jid = body.get("id")
-            return self._json(queue_cancel(int(jid) if jid else None))
+            raw_id = body.get("id")
+            try:
+                jid = int(raw_id) if raw_id not in (None, "", False) else None
+            except (TypeError, ValueError):
+                return self._json({"ok": False, "error": "that is not a job id"}, 400)
+            return self._json(queue_cancel(jid))
         if p == "/api/queue/clear":
             from .queue import clear_finished
             return self._json(clear_finished())

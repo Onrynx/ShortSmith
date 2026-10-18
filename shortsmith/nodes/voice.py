@@ -31,9 +31,11 @@ KOKORO_VOICES_URL = env("KOKORO_VOICES_URL",
 # release, and the URLs above are overridable from .env. A mismatch refuses the
 # file rather than loading it.
 #
-# These digests were taken from the copies this installation already had, so
-# they pin the app to what it has been using. They are not a publisher
-# signature and do not prove the upstream author's intent.
+# These digests were taken from the local copies AND re-downloaded from the
+# release URLs above and confirmed byte-for-byte, so they are what the
+# publisher is serving rather than just what one machine happened to hold.
+# That is still not a signature: it proves the file has not changed since it
+# was checked, not that the author intended its contents.
 KOKORO_ONNX_SHA256 = "7d5df8ecf7d4b1878015a32686053fd0eebe2bc377234608764cc0ef3636a6c5"
 KOKORO_VOICES_SHA256 = "bca610b8308e8d99f32e6fe4197e7ec01679264efed0cac9140fe9c29f1fbf7d"
 

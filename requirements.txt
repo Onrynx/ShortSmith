@@ -10,12 +10,18 @@
 # To move a pin: change it here deliberately, run a render end to end, and
 # commit the change with the rest of the work.
 #
+# Check pins against known advisories before shipping them. Pillow was pinned
+# at 12.2.0 here simply because that was what one machine had installed, and
+# that release carries 26 published advisories including several heap
+# out-of-bounds writes. Pinning is only a safety property if you look at what
+# you are pinning to.
+#
 # NONE of these are needed for MOCK mode: the mock pipeline runs on the Python
 # stdlib + numpy + Pillow + FFmpeg alone and still emits a real vertical .mp4.
 
 # already-common (listed for completeness / fresh envs)
 numpy==2.4.6
-Pillow==12.2.0
+Pillow==13.0.0
 PyYAML==6.0.3
 psutil==7.2.2
 
