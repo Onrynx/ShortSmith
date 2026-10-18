@@ -107,6 +107,33 @@ def reject(item_id: str) -> dict:
     return {"ok": True, "deleted": deleted}
 
 
+def get_item(item_id: str) -> dict | None:
+    """An item from pending/ or approved/, wherever it lives."""
+    return find_item(item_id, "pending") or find_item(item_id, "approved")
+
+
+def save_metadata(item_id: str, meta: dict) -> dict:
+    """Attach metadata to one video's own record."""
+    for where in ("pending", "approved"):
+        m = find_item(item_id, where)
+        if not m:
+            continue
+        jp = Path(m["_dir"]) / f"{item_id}.json"
+        data = read_json(jp, {}) or {}
+        data["metadata"] = meta
+        if meta.get("title"):
+            data["title"] = meta["title"]
+        if meta.get("hashtags"):
+            data["hashtags"] = meta["hashtags"]
+        if meta.get("tags"):
+            data["tags"] = meta["tags"]
+        if meta.get("description"):
+            data["description"] = meta["description"]
+        write_json(jp, data)
+        return {"ok": True}
+    return {"ok": False, "error": "not found"}
+
+
 def delete_item(item_id: str, where: str = "pending") -> dict:
     """Delete one item's files from pending/ or approved/.
 
@@ -197,7 +224,7 @@ def _spawn(cmd: list[str], tag: str) -> dict:
 
 def run_now(channel: str, lane: str = RENDER_SLOT, mock: bool = False,
             voice: str | None = None, topic: str = "",
-            seconds: float | None = None) -> dict:
+            seconds: float | None = None, mode: str = "express") -> dict:
     if channel not in (list_channels() or []):
         return {"ok": False, "error": f"unknown channel {channel}"}
     cmd = [sys.executable, str(ROOT / "run.py"), "--channel", channel, "--lane", lane]
@@ -209,6 +236,8 @@ def run_now(channel: str, lane: str = RENDER_SLOT, mock: bool = False,
         cmd += ["--topic", topic[:600]]
     if seconds:
         cmd += ["--seconds", str(float(seconds))]
+    if mode in ("guided", "express", "auto"):
+        cmd += ["--mode", mode]
     res = _spawn(cmd, f"{channel}_{lane}")
     if lane == RENDER_SLOT and res.get("ok"):
         try:
@@ -229,6 +258,13 @@ def render_in_progress() -> bool:
 
 def cancel_render() -> dict:
     """Stop the in-progress on-demand render (and its ffmpeg children), if any."""
+    # A run paused at the script gate is waiting on a file, not on the CPU.
+    # Removing the request releases it even before the kill lands.
+    try:
+        from .gate import drop_all
+        drop_all()
+    except Exception:  # noqa: BLE001
+        pass
     if not render_in_progress():
         try:
             _PIDFILE.unlink()

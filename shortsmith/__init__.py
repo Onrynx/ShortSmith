@@ -1,4 +1,4 @@
-"""Shortsmith — a personal, local YouTube Shorts factory controlled from Discord.
+"""Shortsmith — a local YouTube Shorts factory with its own desktop app.
 
 Pipeline: script -> voice -> canvas -> cutter -> herald. Stories are written by a
 local model via Ollama; narration by Kokoro; visuals over gameplay backgrounds;
@@ -13,4 +13,4 @@ absent. That is what lets MOCK mode run end-to-end with zero keys, zero network,
 and zero GPU and still emit a real .mp4.
 """
 
-__version__ = "1.0.0"
+__version__ = "2.1.0"

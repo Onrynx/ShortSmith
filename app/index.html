@@ -26,8 +26,14 @@ body{margin:0;background:var(--bg);color:var(--txt);overflow:hidden;
 .navb:hover{background:var(--panel);color:var(--txt)}
 .navb.sel{background:var(--panel2);color:var(--txt);border-color:var(--line)}
 .navb .ic{width:17px;text-align:center}
-.navb .cnt{margin-left:auto;background:#1d2530;color:#8fa6c2;border-radius:5px;
-  font-size:10.5px;padding:1px 7px}
+/* Sidebar counts are gold so "something is waiting for you" is visible at a
+   glance. A zero is dimmed instead, so only real counts draw the eye. */
+.navb .cnt{margin-left:auto;border-radius:6px;font-size:10.5px;padding:1px 7px;
+  font-weight:700;background:rgba(255,178,36,.18);color:var(--accent2);
+  border:1px solid rgba(255,178,36,.45);
+  box-shadow:0 0 10px rgba(255,178,36,.18)}
+.navb .cnt.zero{background:#191d24;color:#5d6673;border-color:#272c35;
+  box-shadow:none;font-weight:600}
 .side .sp{flex:1}
 .mini{background:var(--panel);border:1px solid var(--line);border-radius:10px;
   padding:10px;font-size:11.5px;color:var(--faint)}
@@ -158,17 +164,165 @@ tr.dis{opacity:.42}
 .script{margin-top:12px;border-top:1px solid #1e232b;padding-top:10px;display:none}
 .script.on{display:block}
 .pbar{height:8px;background:var(--panel2);border-radius:4px;overflow:hidden;margin:8px 0}
+.chlog{font-size:13px;line-height:1.65;color:#c9d0d9;white-space:pre-wrap}
+.chlog b{color:var(--txt)}
+.commit{display:flex;gap:10px;padding:8px 0;border-top:1px solid #1e232b;font-size:12.5px}
+.commit:first-child{border-top:0}
+.commit .sha{color:var(--faint);font-family:ui-monospace,Menlo,Consolas,monospace;flex-shrink:0}
+.commit .when{color:var(--faint);margin-left:auto;flex-shrink:0}
 .pbar i{display:block;height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));transition:width .5s}
+/* ---- compact library grid: files-on-a-desktop ---- */
+.grid-files{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));
+  gap:14px;margin-top:6px}
+.file{position:relative;border-radius:10px;padding:8px;cursor:default;
+  border:1.5px solid transparent;transition:background .12s,border-color .12s}
+.file:hover{background:#171b21}
+.file.sel{background:rgba(255,122,61,.13);border-color:var(--accent)}
+.file .thumb{position:relative;aspect-ratio:9/16;border-radius:8px;overflow:hidden;
+  background:#000;border:1px solid var(--line)}
+.file .thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.file .nm{font-size:12px;line-height:1.35;margin-top:7px;color:var(--txt);
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.file .meta{font-size:10.5px;color:var(--faint);margin-top:2px}
+.file .dots{position:absolute;top:12px;right:12px;width:24px;height:24px;
+  border-radius:6px;background:rgba(10,12,16,.82);color:#cbd3dd;border:1px solid var(--line);
+  display:none;align-items:center;justify-content:center;cursor:pointer;
+  font-size:14px;line-height:1;z-index:2}
+.file:hover .dots,.file.sel .dots{display:flex}
+.file .dots:hover{background:var(--panel2);color:#fff}
+.menu{position:fixed;z-index:90;background:var(--panel2);border:1px solid var(--line);
+  border-radius:9px;padding:5px;min-width:168px;box-shadow:0 14px 34px rgba(0,0,0,.6)}
+.menu div{padding:8px 11px;border-radius:6px;font-size:13px;cursor:pointer;color:var(--txt)}
+.menu div:hover{background:#262c35}
+.menu div.danger{color:var(--bad)}
+.menu div.danger:hover{background:rgba(248,113,113,.12)}
+
+/* ---- details drawer ---- */
+#sheet{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:70;display:none}
+#sheet.on{display:block}
+.sheetbox{position:absolute;right:0;top:0;bottom:0;width:min(680px,94vw);
+  background:var(--bg);border-left:1px solid var(--line);overflow:auto;
+  padding:22px 24px;animation:slideIn .2s ease}
+@keyframes slideIn{from{transform:translateX(30px);opacity:.6}to{transform:none;opacity:1}}
+.sheetbox h2.t{font-size:18px;margin:0 0 4px;color:var(--txt);text-transform:none;letter-spacing:-.2px}
+.metafield{margin-top:14px}
+.metafield .lbl{font-size:11px;text-transform:uppercase;letter-spacing:.7px;
+  color:var(--faint);margin-bottom:5px;display:flex;align-items:center;gap:8px}
+.metafield .val{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
+  padding:10px 12px;font-size:13px;line-height:1.55;white-space:pre-wrap;color:#d7dde5}
+.copy{font-size:10.5px;background:var(--panel2);border:1px solid var(--line);
+  color:var(--dim);border-radius:5px;padding:2px 8px;cursor:pointer}
+.copy:hover{border-color:var(--accent);color:var(--accent2)}
+.titleopt{display:flex;gap:8px;align-items:center;padding:7px 0;
+  border-bottom:1px solid #1e232b;font-size:13px}
+.titleopt:last-child{border:0}
+.qrow{display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid #1e232b;font-size:13px}
+.qrow:last-child{border:0}
+.gate{border:1.5px solid var(--accent);background:linear-gradient(180deg,#1b1711,#141720)}
+.gate .facts{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 4px}
+.gate .fact{font-size:11px;padding:3px 9px;border-radius:999px;background:var(--panel2);
+  border:1px solid var(--line);color:var(--dim)}
+.gate .fact b{color:var(--txt);font-weight:600}
+.gate .read{max-height:40vh;overflow:auto;margin-top:14px;padding-right:6px}
+.gate textarea{width:100%;min-height:68px;margin-top:12px;background:var(--panel2);
+  border:1px solid var(--line);border-radius:9px;color:var(--txt);padding:10px 12px;
+  font:inherit;font-size:13px;resize:vertical}
+.gate textarea:focus{outline:none;border-color:var(--accent)}
+.qrow .n{width:22px;height:22px;border-radius:6px;background:var(--panel2);border:1px solid var(--line);
+  display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--dim);flex-shrink:0}
+.qrow .ang{flex:1;min-width:0;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.qrow .st{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--faint)}
+.qrow.go .n{background:rgba(255,122,61,.18);border-color:var(--accent);color:var(--accent2)}
+.qrow.go .st{color:var(--accent2)}
+.qrow.ok .st{color:var(--good)}
+.qrow.no .st{color:var(--bad)}
+.sheetbox video{width:100%;max-height:50vh;margin-top:14px;border-radius:10px;
+  background:#000;border:1px solid var(--line);display:block}
+.sheetbox .x{position:absolute;top:0;right:0}
+.metafield .lbl .copy{margin-left:auto}
+
+/* ---- notifications: gold, high contrast, unmissable ---- */
+#toasts{position:fixed;top:18px;right:18px;z-index:80;display:flex;
+  flex-direction:column;gap:10px;max-width:380px;pointer-events:none}
+.toast{pointer-events:auto;display:flex;gap:11px;align-items:flex-start;
+  background:linear-gradient(135deg,#2a1f0c,#1d1708);
+  border:1px solid var(--accent2);border-left:4px solid var(--accent2);
+  border-radius:10px;padding:12px 14px;
+  box-shadow:0 10px 30px rgba(0,0,0,.55), 0 0 0 1px rgba(255,178,36,.12);
+  animation:toastIn .28s cubic-bezier(.2,.9,.3,1.2)}
+.toast.out{animation:toastOut .22s ease forwards}
+@keyframes toastIn{from{opacity:0;transform:translateX(26px) scale(.96)}
+                   to{opacity:1;transform:none}}
+@keyframes toastOut{to{opacity:0;transform:translateX(26px) scale(.97)}}
+.toast .ic{font-size:15px;line-height:1.2;color:var(--accent2);flex-shrink:0}
+.toast .tx{flex:1;min-width:0}
+.toast .tt{font-weight:700;font-size:13.5px;color:#ffd98a;letter-spacing:.1px}
+.toast .td{font-size:12.5px;color:#d9c49a;margin-top:2px;line-height:1.45}
+.toast .x{color:#9a8863;cursor:pointer;font-size:15px;line-height:1;padding:0 2px}
+.toast .x:hover{color:#ffd98a}
+.toast.bad{background:linear-gradient(135deg,#2c1414,#1d0e0e);
+  border-color:#f87171;border-left-color:#f87171}
+.toast.bad .tt{color:#ffc4c4}.toast.bad .td{color:#e0a8a8}.toast.bad .ic{color:#f87171}
+.toast.good{border-color:#34d399;border-left-color:#34d399;
+  background:linear-gradient(135deg,#0f2a20,#0c1d16)}
+.toast.good .tt{color:#9ff0cd}.toast.good .td{color:#8fd8b8}.toast.good .ic{color:#34d399}
+
+/* ---- boot screen ---- */
+#boot{position:fixed;inset:0;background:var(--bg);z-index:50;display:none;
+  align-items:center;justify-content:center;padding:24px}
+#boot.on{display:flex}
+.bootbox{width:min(560px,100%);text-align:center}
+.bootbox h2{font-size:21px;margin:0 0 6px;color:var(--txt);text-transform:none;letter-spacing:-.2px}
+.bootbox .sub{color:var(--dim);font-size:13px;margin-bottom:20px}
+.bootbar{height:10px;background:var(--panel2);border:1px solid var(--line);
+  border-radius:6px;overflow:hidden}
+.bootbar i{display:block;height:100%;width:0;border-radius:6px;
+  background:linear-gradient(90deg,var(--accent),var(--accent2));transition:width .45s ease}
+.bootpct{display:flex;justify-content:space-between;font-size:12px;
+  color:var(--faint);margin-top:7px}
+.gamewrap{margin-top:26px;background:var(--panel);border:1px solid var(--line);
+  border-radius:12px;padding:14px}
+.gamehead{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--faint);
+  margin-bottom:10px}
+.gamehead b{color:var(--txt);font-size:13px}
+#snake{background:#0b0d11;border:1px solid var(--line);border-radius:8px;
+  display:block;margin:0 auto;touch-action:none}
+.gamehint{font-size:11.5px;color:var(--faint);margin-top:9px}
 </style>
 </head>
 <body>
+<div id="sheet" onclick="if(event.target===this) closeSheet()">
+  <div class="sheetbox" id="sheetBox"></div>
+</div>
+
+<div id="toasts"></div>
+
+<div id="boot">
+  <div class="bootbox">
+    <h2 id="bootTitle">Starting Shortsmith</h2>
+    <div class="sub" id="bootMsg">Waking the AI engine…</div>
+    <div class="bootbar"><i id="bootFill"></i></div>
+    <div class="bootpct"><span id="bootStage">starting</span><span id="bootNum">0%</span></div>
+
+    <div class="gamewrap">
+      <div class="gamehead">
+        <b>Snake</b><span>while you wait</span>
+        <span class="right" id="snakeScore">0</span>
+      </div>
+      <canvas id="snake" width="360" height="260"></canvas>
+      <div class="gamehint">Arrow keys or WASD to steer &middot; click the board to start</div>
+    </div>
+  </div>
+</div>
+
 <div class="app">
   <div class="side">
-    <div class="brand">Story<span>Forge</span></div>
+    <div class="brand">Short<span>smith</span></div>
     <div class="navb sel" data-s="make"><span class="ic">+</span> Make</div>
     <div class="navb" data-s="progress"><span class="ic">&#9681;</span> In progress</div>
     <div class="navb" data-s="review"><span class="ic">&#9654;</span> Review <span class="cnt" id="cnt">0</span></div>
     <div class="navb" data-s="library"><span class="ic">&#9636;</span> Library <span class="cnt" id="lcnt">0</span></div>
+    <div class="navb" data-s="updates"><span class="ic">&#8635;</span> Updates <span class="cnt" id="ucnt" style="display:none">1</span></div>
     <div class="navb" data-s="machine"><span class="ic">&#9881;</span> Settings</div>
     <div class="sp"></div>
     <div class="mini" id="mini">Local only &middot; nothing leaves this computer</div>
@@ -202,7 +356,7 @@ tr.dis{opacity:.42}
             <div class="d">Read the story before it renders, then review the video.</div>
             <div class="flow">write &rarr; <b>you read</b> &rarr; render &rarr; <b>you review</b></div></div>
           <div class="m" data-mode="express"><div class="t">Express</div>
-            <div class="d">Skip the story check. Render straight through.</div>
+            <div class="d">No stop for the script. The finished video still waits for you.</div>
             <div class="flow">write &rarr; render &rarr; <b>you review</b></div></div>
           <div class="m" data-mode="auto"><div class="t">Full auto</div>
             <div class="d">No stops. It checks its own work and files what passed.</div>
@@ -237,6 +391,18 @@ tr.dis{opacity:.42}
           </div>
         </div>
 
+        <div class="card" style="margin-top:12px">
+          <label>How many versions of this?</label>
+          <div class="grid3" id="counts">
+            <div class="chip sel" data-n="1">1<span class="s">just one</span></div>
+            <div class="chip" data-n="2">2<span class="s">compare</span></div>
+            <div class="chip" data-n="3">3<span class="s">pick the best</span></div>
+          </div>
+          <p class="muted" style="margin:10px 0 0">Each version takes a different
+            angle on the same idea &mdash; a different hook, shape and script &mdash;
+            so you can see which lands. They render one after another.</p>
+        </div>
+
         <div class="row" style="margin-top:20px">
           <button class="btn" id="makeBtn" onclick="makeVideo()">Make Video</button>
           <span class="muted" id="makeHint">Takes about 12&ndash;15 minutes.</span>
@@ -246,6 +412,8 @@ tr.dis{opacity:.42}
       <!-- PROGRESS -->
       <div class="scr" id="progress">
         <h1 id="pTitle">Nothing is rendering<span class="sub" id="pSub">Start one from Make.</span></h1>
+        <div id="pGate" style="display:none"></div>
+        <div id="pQueue" style="display:none"></div>
         <div id="pBody" style="display:none">
           <div class="steps" id="steps"></div>
           <div class="slab"><span>Story</span><span>Voice</span><span>Visuals</span><span>Edit</span><span>Finish</span></div>
@@ -277,10 +445,23 @@ tr.dis{opacity:.42}
           <label class="ck"><input type="checkbox" id="lAll"> Select all</label>
           <span class="muted" id="lSel">none selected</span>
           <span class="right row">
-            <button class="btn no sm" id="lDelete" disabled onclick="bulk('delete','library')">Delete selected</button>
+            <button class="btn g sm" id="lOpen" disabled onclick="openSelected('library')">Open</button>
+            <button class="btn g sm" id="lClear" disabled onclick="clearSel()">Clear selection</button>
+            <button class="btn no sm" id="lDelete" disabled onclick="bulk('delete','library')">Delete</button>
           </span>
         </div>
-        <div id="lList"></div>
+        <div id="lList" class="grid-files"></div>
+        <p class="muted" style="margin-top:14px">Click to select &middot; double-click to open &middot; the ⋮ menu has more.</p>
+      </div>
+
+      <!-- UPDATES -->
+      <div class="scr" id="updates">
+        <h1>Updates<span class="sub" id="uSub">&nbsp;</span></h1>
+        <div class="card" id="uCard" style="margin-top:16px">Checking…</div>
+        <h2>What's in this version</h2>
+        <div class="card"><div id="uLog" class="chlog"></div></div>
+        <h2>Recent changes on GitHub</h2>
+        <div class="card"><div id="uCommits"></div></div>
       </div>
 
       <!-- SETTINGS -->
@@ -304,13 +485,14 @@ tr.dis{opacity:.42}
 
 <script>
 const $ = s => document.querySelector(s);
-let MODE = "guided", SECS = "", VOICE = "adam", BUSY = false;
+let MODE = "guided", SECS = "", VOICE = "adam", BUSY = false, COUNT = 1;
 
 function go(id){
   document.querySelectorAll('.scr').forEach(s=>s.classList.toggle('on', s.id===id));
   document.querySelectorAll('.navb').forEach(n=>n.classList.toggle('sel', n.dataset.s===id));
   $('.scroll').scrollTop = 0;
   if(id==='machine') loadMachine();
+  if(id==='updates') loadUpdates();
 }
 document.querySelectorAll('.navb').forEach(n=> n.onclick=()=>go(n.dataset.s));
 function pickIn(container, el, set){
@@ -320,6 +502,7 @@ function pickIn(container, el, set){
 $('#modes').onclick = e => { const m=e.target.closest('.m'); if(m) pickIn($('#modes'),m,()=>MODE=m.dataset.mode); };
 $('#lens').onclick  = e => { const c=e.target.closest('.chip'); if(c) pickIn($('#lens'),c,()=>SECS=c.dataset.sec); };
 $('#voices').onclick= e => { const c=e.target.closest('.chip'); if(c) pickIn($('#voices'),c,()=>VOICE=c.dataset.voice); };
+$('#counts').onclick= e => { const c=e.target.closest('.chip'); if(c) pickIn($('#counts'),c,()=>COUNT=+c.dataset.n); };
 
 async function api(path, body){
   const opt = body ? {method:'POST',headers:{'Content-Type':'application/json'},
@@ -330,8 +513,12 @@ async function api(path, body){
 
 async function makeVideo(){
   const r = await api('/api/make', {brief:$('#brief').value, seconds:SECS||null,
-                                    voice:VOICE, mode:MODE});
-  if(r.error){ $('#makeHint').innerHTML = '<span class="bad">'+r.error+'</span>'; return; }
+                                    voice:VOICE, mode:MODE, count:COUNT});
+  if(r.error){ notify('Could not start', r.error, 'bad'); return; }
+  notify(COUNT > 1 ? `Queued ${COUNT} versions` : 'Making your Short',
+         COUNT > 1 ? 'They render one after another — about '
+                     + (COUNT*13) + ' minutes in total.'
+                   : 'This takes about 12–15 minutes.');
   go('progress'); refresh();
 }
 async function cancelRender(){ await api('/api/cancel', {}); refresh(); }
@@ -349,12 +536,107 @@ function stepBar(step){
   return h;
 }
 
+// The queue only earns its place on screen when more than one video was
+// asked for. One render is already described by the step bar above it.
+// Guided mode stops the render between writing and voicing, and this is what
+// it stops for. Showing the whole script matters: a hook that misread the
+// brief is obvious in two lines, and catching it here saves the thirteen
+// minutes the rest of the pipeline would spend on it.
+let GATE_RUN = null;
+
+function renderGate(g){
+  const box = $('#pGate');
+  if(!g || !g.run_id){ box.style.display = 'none'; GATE_RUN = null; return; }
+  const fresh = GATE_RUN !== g.run_id + ':' + (g.revision || 0);
+  GATE_RUN = g.run_id + ':' + (g.revision || 0);
+  box.style.display = 'block';
+  if(!fresh) return;        // don't wipe what is being typed in the note box
+
+  const off = g.target ? Math.round(100 * (g.estimate - g.target) / g.target) : 0;
+  const fact = (k, v) => '<span class="fact">' + k + ' <b>' + esc(v) + '</b></span>';
+  box.innerHTML = '<div class="card gate">'
+    + '<div class="lbl" style="font-size:11px;text-transform:uppercase;letter-spacing:.7px;'
+    + 'color:var(--accent2);margin-bottom:6px">Read this before it renders</div>'
+    + '<div style="font-size:17px;font-weight:650">' + esc(g.title) + '</div>'
+    + (g.logline ? '<div class="muted" style="margin-top:4px">' + esc(g.logline) + '</div>' : '')
+    + '<div class="facts">'
+    + fact('length', g.estimate + 's' + (g.target ? ' of ' + g.target + 's asked'
+                                                    + (off ? ' (' + (off>0?'+':'') + off + '%)' : '') : ''))
+    + fact('scenes', (g.scenes || []).length)
+    + fact('words', g.words)
+    + (g.structure ? fact('shape', g.structure) : '')
+    + (g.kind ? fact('kind', g.kind) : '')
+    + (g.revision ? fact('rewrite', '#' + g.revision) : '')
+    + '</div>'
+    + '<div class="read">' + (g.scenes || []).map((sc, i) =>
+        '<div class="scene"><div class="sn">' + (i+1) + '</div><div>'
+        + (sc.purpose ? '<span class="tag">' + esc(sc.purpose) + '</span>' : '')
+        + '<div>' + esc(sc.narration) + '</div></div></div>').join('')
+    + '</div>'
+    + '<textarea id="gNote" placeholder="What should change? Leave empty to render it as written."></textarea>'
+    + '<div class="row" style="margin-top:12px">'
+    + '<button class="btn ok" onclick="gateDo(&quot;go&quot;)">Render it</button>'
+    + '<button class="btn g" onclick="gateDo(&quot;rewrite&quot;)">Rewrite with my note</button>'
+    + '<button class="btn no" onclick="gateDo(&quot;drop&quot;)">Throw it away</button>'
+    + '<span class="muted right">It is holding here — nothing is being rendered.</span>'
+    + '</div></div>';
+}
+
+async function gateDo(action){
+  const g = (LASTSTATE && LASTSTATE.gate) || null;
+  if(!g) return;
+  const note = (($('#gNote') || {}).value || '').trim();
+  if(action === 'rewrite' && !note)
+    return notify('Say what to change', 'The rewrite note is empty.', 'bad');
+  if(action === 'drop' && !confirm('Throw this script away and stop the render?')) return;
+  const r = await api('/api/gate', {run_id: g.run_id, action: action, note: note});
+  if(r.error) return notify('Could not do that', r.error, 'bad');
+  if(action === 'go')      notify('Approved', 'Rendering it now — about 12 minutes.', 'good');
+  if(action === 'rewrite') notify('Rewriting', 'It is writing another version from your note.');
+  if(action === 'drop')    notify('Thrown away', 'Nothing was rendered.', 'good');
+  GATE_RUN = null;
+  $('#pGate').style.display = 'none';
+  refresh();
+}
+
+function renderQueue(q){
+  const box = $('#pQueue');
+  const jobs = (q && q.jobs || []).filter(j => j.state !== 'cancelled');
+  if(!jobs.length || !(q.waiting || q.running)){ box.style.display = 'none'; return; }
+  const word = {waiting:'waiting', running:'rendering', done:'done', failed:'failed'};
+  const cls  = {waiting:'', running:'go', done:'ok', failed:'no'};
+  box.style.display = 'block';
+  box.innerHTML = '<div class="card" style="margin-bottom:18px">'
+    + '<div class="row" style="justify-content:space-between;align-items:center">'
+    + '<b>' + jobs.length + ' versions of one idea</b>'
+    + '<span class="muted">' + q.waiting + ' still to go</span></div>'
+    + jobs.map((j, i) =>
+        '<div class="qrow ' + (cls[j.state] || '') + '"><div class="n">' + (i+1) + '</div>'
+        + '<div class="ang">' + esc(j.angle || 'the brief as you wrote it') + '</div>'
+        + '<div class="st">' + (word[j.state] || j.state) + '</div></div>').join('')
+    + '<div class="row" style="margin-top:14px">'
+    + (q.waiting ? '<button class="btn no sm" onclick="dropQueue()">Cancel the ones waiting</button>' : '')
+    + '</div></div>';
+}
+
+async function dropQueue(){
+  if(!confirm('Cancel every version that has not started yet?')) return;
+  const r = await api('/api/queue/cancel', {});
+  notify('Queue cleared', (r.cancelled || 0) + ' waiting version(s) dropped.', 'good');
+  refresh();
+}
+
 function renderProgress(r){
   const on = r.phase==='running';
   $('#pBody').style.display = (r.phase==='idle') ? 'none' : 'block';
   if(r.phase==='idle'){
     $('#pTitle').childNodes[0].nodeValue='Nothing is rendering';
     $('#pSub').textContent='Start one from Make.'; return;
+  }
+  if(r.phase==='awaiting'){
+    $('#pTitle').childNodes[0].nodeValue='Waiting for you';
+    $('#pSub').textContent='Read the script below, then say go.';
+    $('#pBody').style.display='none'; return;
   }
   if(r.phase==='failed'){
     $('#pTitle').childNodes[0].nodeValue='That render failed';
@@ -398,6 +680,7 @@ function cardHTML(it, pane){
         <div class="kv"><div class="k">Length</div><div>${it.seconds}s · ${it.scenes} scenes</div></div>
         ${it.when?`<div class="kv"><div class="k">Approved</div><div>${esc(it.when)}</div></div>`:''}
         ${it.structure?`<div class="kv"><div class="k">Shape</div><div>${esc(it.structure)}</div></div>`:''}
+        ${checkLine(it.check)}
         <div class="row" style="margin-top:12px">
           ${pane==='review'?`<button class="btn ok sm" onclick="one('approve','${it.id}')">Approve</button>
           <button class="btn no sm" onclick="one('reject','${it.id}')">Delete</button>`
@@ -407,6 +690,18 @@ function cardHTML(it, pane){
         </div>
         <div class="script" id="sc-${it.id}"></div>
       </div></div></div>`;
+}
+
+// Full auto measures its own output and files what passes. When something
+// failed, the video is here instead of the Library and the reason belongs on
+// the card — "it's in Review" with no explanation would be worse than not
+// checking at all.
+function checkLine(c){
+  if(!c || !c.checks) return '';
+  if(c.passed) return '<div class="kv"><div class="k">Self-check</div>'
+    + '<div class="ok">passed all ' + c.checks.length + ' checks</div></div>';
+  return '<div class="kv"><div class="k">Self-check</div><div class="warn">'
+    + esc((c.reasons || []).join(' · ')) + '</div></div>';
 }
 
 function toggle(pane, id, on){
@@ -424,13 +719,16 @@ function syncBar(pane){
   } else {
     $('#lSel').textContent = n ? n+' selected' : 'none selected';
     $('#lDelete').disabled = !n;
+    $('#lOpen').disabled = n !== 1;
+    $('#lClear').disabled = !n;
   }
 }
 
 function selectAll(pane, on, items){
   SEL[pane].clear();
   if(on) items.forEach(i=>SEL[pane].add(i.id));
-  paint(pane, items, true); syncBar(pane);
+  if(pane==='library') paintSel(); else paint(pane, items, true);
+  syncBar(pane);
 }
 
 let LAST = {review:[], library:[]}, LASTSIG = {review:null, library:null};
@@ -457,10 +755,13 @@ function paint(pane, items, force){
     host.innerHTML = '<div class="empty">'+(pane==='review'
       ? 'No videos waiting. Make one from the Make tab.'
       : 'Nothing approved yet. Approve a video and it lands here.')+'</div>';
+    if(pane==='library') host.classList.remove('grid-files');
     bar.style.display='none'; return;
   }
   bar.style.display='flex';
-  host.innerHTML = items.map(it=>cardHTML(it,pane)).join('');
+  if(pane==='library') host.classList.add('grid-files');
+  host.innerHTML = items.map(it => pane==='library' ? fileHTML(it)
+                                                     : cardHTML(it,pane)).join('');
 }
 
 async function one(action, id){
@@ -468,14 +769,19 @@ async function one(action, id){
   if(word && !confirm(word)) return;
   await api('/api/bulk', {action, ids:[id]});
   SEL.review.delete(id); SEL.library.delete(id);
-  refresh();
+  if(SHEET_ID === id) closeSheet();
+  syncBar('library'); refresh();
 }
 
 async function bulk(action, pane){
   const ids = [...SEL[pane]];
   if(!ids.length) return;
   if(action!=='approve' && !confirm(`Delete ${ids.length} video${ids.length>1?'s':''} permanently?`)) return;
-  await api('/api/bulk', {action, ids});
+  const r = await api('/api/bulk', {action, ids});
+  if(SHEET_ID && ids.includes(SHEET_ID)) closeSheet();
+  const word = action === 'approve' ? 'Approved' : 'Deleted';
+  if(r && r.failed) notify(word + ' with problems', `${r.done} done, ${r.failed} failed.`, 'bad');
+  else notify(word, `${ids.length} video${ids.length>1?'s':''}.`, 'good');
   SEL[pane].clear(); syncBar(pane); refresh();
 }
 
@@ -491,18 +797,321 @@ async function showScript(id, btn){
   box.classList.add('on'); btn.textContent='Hide script';
 }
 
+/* ------------------------------------------------------------------ *
+ * The library as files on a desktop.
+ *
+ * The old cards carried a live <video> each, which is why a 24-video
+ * library took a second to open and why a repaint could tear a playing
+ * clip out of the page. A thumbnail and a name is all a grid needs;
+ * the player belongs in the details drawer, which the poll never
+ * touches. Click selects, double-click opens, and the menu beside
+ * each item carries everything else.
+ * ------------------------------------------------------------------ */
+let ANCHOR = null;          // for shift-range selection
+let MENU = null;            // the open three-dot menu, if any
+let SHEET_ID = null;        // the video the drawer is showing
+const METAC = {};           // metadata, once fetched, per video
+
+function fileHTML(it){
+  const id = it.id, e = encodeURIComponent(id);
+  const t = esc(it.title || 'Untitled');
+  return '<div class="file ' + (SEL.library.has(id) ? 'sel' : '') + '"'
+    + ' data-id="' + id + '" title="' + t + '"'
+    + ' onclick="pickFile(event,&quot;' + id + '&quot;)"'
+    + ' ondblclick="openSheet(&quot;' + id + '&quot;)"'
+    + ' oncontextmenu="fileMenu(event,&quot;' + id + '&quot;)">'
+    + '<div class="dots" onclick="fileMenu(event,&quot;' + id + '&quot;)">&#8942;</div>'
+    + '<div class="thumb"><img loading="lazy" alt="" src="/api/thumb/' + e + '"></div>'
+    + '<div class="nm">' + t + '</div>'
+    + '<div class="meta">' + (it.seconds || '?') + 's &middot; '
+    + (it.scenes || '?') + ' scenes</div></div>';
+}
+
+function paintSel(){
+  document.querySelectorAll('#lList .file').forEach(el =>
+    el.classList.toggle('sel', SEL.library.has(el.dataset.id)));
+  const n = SEL.library.size, all = $('#lAll');
+  if(all) all.checked = n > 0 && n === (LAST.library || []).length;
+}
+
+function pickFile(ev, id){
+  closeMenu();
+  const items = LAST.library || [];
+  if(ev.ctrlKey || ev.metaKey){
+    SEL.library.has(id) ? SEL.library.delete(id) : SEL.library.add(id);
+  } else if(ev.shiftKey && ANCHOR){
+    const a = items.findIndex(i => i.id === ANCHOR);
+    const b = items.findIndex(i => i.id === id);
+    if(a >= 0 && b >= 0){
+      SEL.library.clear();
+      for(let i = Math.min(a,b); i <= Math.max(a,b); i++) SEL.library.add(items[i].id);
+    }
+  } else {
+    // Clicking the only selected item again lets it go, the way a
+    // desktop does.
+    const only = SEL.library.size === 1 && SEL.library.has(id);
+    SEL.library.clear();
+    if(!only) SEL.library.add(id);
+  }
+  ANCHOR = id;
+  paintSel(); syncBar('library');
+}
+
+function clearSel(){
+  SEL.library.clear(); ANCHOR = null;
+  paintSel(); syncBar('library');
+}
+
+function openSelected(pane){
+  const id = [...SEL[pane]][0];
+  if(id) openSheet(id);
+}
+
+/* ---- the three-dot menu ---- */
+function closeMenu(){ if(MENU){ MENU.remove(); MENU = null; } }
+
+function fileMenu(ev, id){
+  ev.preventDefault(); ev.stopPropagation();
+  closeMenu();
+  if(!SEL.library.has(id)){
+    SEL.library.clear(); SEL.library.add(id); ANCHOR = id;
+    paintSel(); syncBar('library');
+  }
+  const n = SEL.library.size;
+  const m = document.createElement('div');
+  m.className = 'menu';
+  const row = (label, call, cls) =>
+    '<div class="' + (cls || '') + '" onclick="closeMenu();' + call + '">' + label + '</div>';
+  m.innerHTML =
+      row('Open details', 'openSheet(&quot;' + id + '&quot;)')
+    + row('Copy title', 'copyMeta(&quot;' + id + '&quot;,&quot;title&quot;)')
+    + row('Copy description', 'copyMeta(&quot;' + id + '&quot;,&quot;description&quot;)')
+    + row('Copy hashtags', 'copyMeta(&quot;' + id + '&quot;,&quot;hashtags&quot;)')
+    + row('Show in folder', 'reveal(&quot;' + id + '&quot;)')
+    + (n > 1
+        ? row('Delete ' + n + ' videos', 'bulk(&quot;delete&quot;,&quot;library&quot;)', 'danger')
+        : row('Delete', 'one(&quot;delete&quot;,&quot;' + id + '&quot;)', 'danger'));
+  document.body.appendChild(m);
+  const w = m.offsetWidth, h = m.offsetHeight;
+  m.style.left = Math.max(8, Math.min(ev.clientX, window.innerWidth  - w - 10)) + 'px';
+  m.style.top  = Math.max(8, Math.min(ev.clientY, window.innerHeight - h - 10)) + 'px';
+  MENU = m;
+}
+
+/* ---- the details drawer ---- */
+function openSheet(id){
+  closeMenu();
+  const it = (LAST.library || []).find(x => x.id === id) || {id:id, title:''};
+  SHEET_ID = id;
+  const e = encodeURIComponent(id);
+  $('#sheetBox').innerHTML =
+      '<div class="row" style="justify-content:space-between;align-items:flex-start;gap:14px">'
+    + '<div style="min-width:0"><h2 class="t">' + esc(it.title || 'Untitled') + '</h2>'
+    + '<div class="muted">' + (it.seconds || '?') + 's &middot; ' + (it.scenes || '?')
+    + ' scenes' + (it.when ? ' &middot; ' + esc(it.when) : '')
+    + (it.structure ? ' &middot; ' + esc(it.structure) : '') + '</div></div>'
+    + '<button class="btn g sm" onclick="closeSheet()">Close</button></div>'
+    + '<video controls preload="metadata" poster="/api/thumb/' + e
+    + '" src="/api/video/' + e + '"></video>'
+    + '<div class="row" style="margin-top:14px">'
+    + '<button class="btn g sm" onclick="showScript(&quot;' + id + '&quot;,this)">Read script</button>'
+    + '<button class="btn g sm" onclick="reveal(&quot;' + id + '&quot;)">Show in folder</button>'
+    + '<button class="btn g sm" onclick="regenMeta(&quot;' + id + '&quot;,this)">Rewrite metadata</button>'
+    + '<button class="btn no sm" onclick="one(&quot;delete&quot;,&quot;' + id + '&quot;)">Delete</button>'
+    + '</div><div class="script" id="sc-' + id + '"></div>'
+    + (it.check ? '<div class="metafield"><div class="lbl">Self-check</div>'
+        + '<div class="val">' + (it.check.checks || []).map(c =>
+            (c.ok ? '[ok] ' : '[failed] ') + esc(c.name) + ' — ' + esc(c.detail)
+          ).join(String.fromCharCode(10)) + '</div></div>' : '')
+    + '<h2 style="margin-top:22px">For posting</h2>'
+    + '<div id="metaBox"><div class="muted">Reading this video&#39;s metadata&hellip;</div></div>';
+  $('#sheet').classList.add('on');
+  if(METAC[id]) renderMeta(id, METAC[id]); else loadMeta(id);
+}
+
+function closeSheet(){
+  $('#sheet').classList.remove('on');
+  $('#sheetBox').innerHTML = '';      // stops the player
+  SHEET_ID = null;
+}
+
+async function loadMeta(id){
+  const m = await api('/api/meta/' + encodeURIComponent(id));
+  if(!m || m.error) return;
+  METAC[id] = m;
+  if(SHEET_ID === id) renderMeta(id, m);
+}
+
+function renderMeta(id, m){
+  const box = $('#metaBox');
+  if(!box) return;
+  const field = (label, value, key) =>
+      '<div class="metafield"><div class="lbl">' + label
+    + '<button class="copy" data-src="mf-' + key + '">Copy</button></div>'
+    + '<div class="val" id="mf-' + key + '">' + esc(value || '—') + '</div></div>';
+  const titles = (m.titles || []).map(t =>
+      '<div class="titleopt"><span style="flex:1;min-width:0">' + esc(t) + '</span>'
+    + '<button class="copy use" data-t="' + esc(t) + '">Use this</button></div>').join('');
+  box.innerHTML =
+      (titles ? '<div class="metafield"><div class="lbl">Title options</div>'
+                + '<div class="val">' + titles + '</div></div>' : '')
+    + field('Chosen title', m.title, 'title')
+    + field('Description', m.description, 'desc')
+    + field('Hashtags', m.hashtags, 'hash')
+    + field('Keywords', (m.tags || []).join(', '), 'kw')
+    + field('One-line caption', m.caption, 'cap')
+    + '<p class="muted" style="margin-top:12px">'
+    + (m.source === 'legacy'
+        ? 'This video was made before per-video metadata. Press Rewrite metadata for a full set.'
+        : 'Written from this video&#39;s own finished script, so no two videos share it.')
+    + '</p>';
+  box.querySelectorAll('.copy').forEach(b => {
+    b.onclick = () => {
+      if(b.classList.contains('use')) return useTitle(id, b.dataset.t);
+      const el = document.getElementById(b.dataset.src);
+      copyText(el ? el.textContent : '', b);
+    };
+  });
+}
+
+function copyText(txt, btn){
+  const done = () => {
+    if(!btn) return;
+    const was = btn.textContent;
+    btn.textContent = 'Copied';
+    setTimeout(() => { btn.textContent = was; }, 1200);
+  };
+  const manual = () => {
+    // Older webviews refuse the clipboard API; a hidden textarea still works.
+    try{
+      const ta = document.createElement('textarea');
+      ta.value = txt; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      document.execCommand('copy'); ta.remove(); done();
+    }catch(err){
+      notify('Could not copy', 'Select the text and copy it by hand.', 'bad');
+    }
+  };
+  if(navigator.clipboard && navigator.clipboard.writeText)
+    navigator.clipboard.writeText(txt).then(done, manual);
+  else manual();
+}
+
+async function copyMeta(id, field){
+  const m = METAC[id] || await api('/api/meta/' + encodeURIComponent(id));
+  if(!m || m.error) return notify('Nothing to copy', 'No metadata for that video yet.', 'bad');
+  METAC[id] = m;
+  const val = field === 'tags' ? (m.tags || []).join(', ') : (m[field] || '');
+  if(!val) return notify('Nothing to copy', 'That field is empty.', 'bad');
+  copyText(val, null);
+  notify('Copied', field === 'title' ? val : field + ' is on the clipboard.', 'good');
+}
+
+async function useTitle(id, t){
+  const m = METAC[id] || {};
+  m.title = t;
+  METAC[id] = m;
+  await api('/api/meta', {id:id, meta:m});
+  renderMeta(id, m);
+  notify('Title set', t, 'good');
+  LASTSIG.library = null;      // the name under the thumbnail changed
+  refresh();
+}
+
+async function regenMeta(id, btn){
+  const box = $('#metaBox');
+  if(btn){ btn.disabled = true; btn.textContent = 'Writing…'; }
+  if(box) box.innerHTML = '<div class="muted">Writing new titles, description and '
+    + 'hashtags from this video&#39;s script. This takes a minute or two.</div>';
+  const m = await api('/api/meta', {id:id});
+  if(btn){ btn.disabled = false; btn.textContent = 'Rewrite metadata'; }
+  if(!m || m.error){
+    notify('Could not rewrite', (m && m.error) || 'The writer model did not answer.', 'bad');
+    if(METAC[id]) renderMeta(id, METAC[id]);
+    return;
+  }
+  METAC[id] = m;
+  renderMeta(id, m);
+  notify('Metadata rewritten', 'Five fresh title options.', 'good');
+  LASTSIG.library = null;
+  refresh();
+}
+
+function setCount(el, n){
+  el.textContent = n;
+  el.classList.toggle('zero', !n);
+}
+
 function renderReview(items){
-  $('#cnt').textContent = items.length;
+  setCount($('#cnt'), items.length);
   $('#rSub').textContent = items.length ? items.length+' waiting' : '';
   for(const id of [...SEL.review]) if(!items.some(i=>i.id===id)) SEL.review.delete(id);
   paint('review', items); syncBar('review');
 }
 
 function renderLibrary(items){
-  $('#lcnt').textContent = items.length;
+  setCount($('#lcnt'), items.length);
   $('#lSub').textContent = items.length ? items.length+' approved' : '';
   for(const id of [...SEL.library]) if(!items.some(i=>i.id===id)) SEL.library.delete(id);
   paint('library', items); syncBar('library');
+}
+
+async function loadUpdates(force){
+  const u = await api('/api/updates' + (force ? '?force=1' : ''));
+  $('#uSub').textContent = 'You are on v' + u.version;
+  const behind = u.behind;
+  let head = '';
+  if(u.error){
+    head = `<b class="warn">Could not check for updates</b>
+      <div class="muted">${esc(u.error)}</div>
+      <div class="row" style="margin-top:12px">
+        <button class="btn g sm" onclick="loadUpdates(true)">Try again</button></div>`;
+  } else if(!u.git){
+    head = `<b>This copy was downloaded as a ZIP</b>
+      <div class="muted">It cannot update itself safely while running. Download the
+      new version and unzip it over this folder — your videos, clips and settings
+      are kept separately and are not touched.</div>
+      <div class="row" style="margin-top:12px">
+        <a class="btn sm" href="${u.zip_url}" target="_blank" rel="noopener">Download the latest</a>
+        <a class="btn g sm" href="${u.page}" target="_blank" rel="noopener">See it on GitHub</a>
+      </div>`;
+  } else if(behind === 0){
+    head = `<b class="ok">You are up to date</b>
+      <div class="muted">Nothing newer has been published.</div>
+      <div class="row" style="margin-top:12px">
+        <button class="btn g sm" onclick="loadUpdates(true)">Check again</button></div>`;
+  } else {
+    const n = behind > 0 ? `${behind} update${behind>1?'s':''} available` : 'An update is available';
+    head = `<b class="warn">${n}</b>
+      <div class="muted">Only program files change — your model, clips and videos stay as they are.</div>
+      <div class="row" style="margin-top:12px">
+        <button class="btn sm" id="uBtn" onclick="applyUpdate()">Install update</button>
+        <button class="btn g sm" onclick="loadUpdates(true)">Check again</button>
+      </div>`;
+  }
+  $('#uCard').innerHTML = head;
+  $('#ucnt').style.display = (behind && behind !== 0) ? '' : 'none';
+
+  $('#uLog').innerHTML = (u.changelog || []).join(String.fromCharCode(10))
+      .replace(/^# .*$/m, '')
+      .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
+      .trim() || 'No changelog in this copy.';
+  $('#uCommits').innerHTML = (u.commits || []).map(c =>
+    `<div class="commit"><span class="sha">${esc(c.sha)}</span>
+       <span>${esc(c.message)}</span><span class="when">${esc(c.when)}</span></div>`
+  ).join('') || '<div class="muted">Nothing to show.</div>';
+}
+
+async function applyUpdate(){
+  const b = $('#uBtn'); if(b){ b.disabled = true; b.textContent = 'Installing…'; }
+  const r = await api('/api/update', {});
+  if(r.ok){
+    notify('Update installed', 'Close and reopen Shortsmith to use it.', 'good');
+    loadUpdates(true);
+  } else {
+    notify('Update failed', r.error || 'Unknown problem', 'bad');
+    if(b){ b.disabled = false; b.textContent = 'Install update'; }
+  }
 }
 
 async function loadMachine(){
@@ -553,7 +1162,8 @@ async function previewVoice(){
 
 async function pullModel(tag){
   const r = await api('/api/pull', {model:tag});
-  if(r.error){ alert(r.error); return; }
+  if(r.error){ notify('Download not started', r.error, 'bad'); return; }
+  notify('Downloading ' + tag, 'You can keep using the app meanwhile.');
   pollPull();
 }
 function paintPull(p){
@@ -566,6 +1176,7 @@ function paintPull(p){
     return;
   }
   if(p.status==='done'){
+    if(!paintPull._told){ paintPull._told = true; notify('Model ready', esc(p.model) + ' is installed.', 'good'); }
     host.innerHTML = `<b class="ok">${esc(p.model)} is ready.</b>
       <div class="muted">Set OLLAMA_MODEL in .env to use it, or keep the recommended one.</div>`;
     return;
@@ -583,12 +1194,18 @@ async function pollPull(){
   else if(p.status!=='idle') setTimeout(pollPull, 2500);
 }
 
+let LASTSTATE = {};
 async function refresh(){
   let s;
   try { s = await api('/api/state'); } catch(e){ return; }
+  LASTSTATE = s;
   BUSY = s.busy;
   const r = s.render || {};
-  $('#strip').classList.toggle('on', r.phase==='running');
+  $('#strip').classList.toggle('on', r.phase==='running' || r.phase==='awaiting');
+  if(r.phase==='awaiting'){
+    $('#stripText').innerHTML = '<b>A script is waiting for you</b> '
+      + '<span class="muted2">· nothing renders until you say so</span>';
+  }
   if(r.phase==='running'){
     $('#stripText').innerHTML = '<b>'+esc(r.title||'Making your Short')+'</b> <span class="muted2">· step '
       + (r.step||'?') + ' of 5 · ' + esc(r.label) + '</span>';
@@ -596,6 +1213,9 @@ async function refresh(){
   $('#makeBtn').disabled = BUSY;
   $('#makeHint').textContent = BUSY ? 'A render is already running.' : 'Takes about 12–15 minutes.';
   renderProgress(r);
+  renderGate(s.gate);
+  renderQueue(s.queue);
+  announce(s);
   renderReview(s.pending || []);
   renderLibrary(s.approved || []);
   $('#mini').innerHTML = 'Local only · nothing leaves this computer<br><b>'
@@ -603,6 +1223,149 @@ async function refresh(){
 }
 $('#rAll').onchange = e => selectAll('review', e.target.checked, LAST.review);
 $('#lAll').onchange = e => selectAll('library', e.target.checked, LAST.library);
+
+// Clicking the empty space around the files drops the selection, and Escape
+// backs out of whatever is open — menu first, then the drawer, then the
+// selection, so one key never closes two things at once.
+$('#lList').addEventListener('click', e => { if(e.target === e.currentTarget) clearSel(); });
+document.addEventListener('click', e => {
+  if(MENU && !MENU.contains(e.target)) closeMenu();
+});
+window.addEventListener('keydown', e => {
+  if($('#boot').classList.contains('on')) return;
+  if(e.key === 'Escape'){
+    if(MENU) return closeMenu();
+    if(SHEET_ID) return closeSheet();
+    if(SEL.library.size) return clearSel();
+  }
+  if(e.key === 'Delete' && SEL.library.size && !SHEET_ID
+     && $('#library').classList.contains('on')) bulk('delete','library');
+  if(e.key === 'Enter' && SEL.library.size === 1 && !SHEET_ID
+     && $('#library').classList.contains('on')) openSelected('library');
+});
+// ---------- notifications ----------
+// Gold by default so they read as "something happened" at a glance, red for
+// problems, green for a completed action.
+function notify(title, detail, kind){
+  const host = $('#toasts');
+  const el = document.createElement('div');
+  el.className = 'toast' + (kind ? ' ' + kind : '');
+  const mark = kind === 'bad' ? '!' : (kind === 'good' ? '✓' : '●');
+  el.innerHTML = `<div class="ic">${mark}</div><div class="tx">
+      <div class="tt">${esc(title)}</div>
+      ${detail ? `<div class="td">${esc(detail)}</div>` : ''}
+    </div><div class="x">×</div>`;
+  const kill = () => { el.classList.add('out'); setTimeout(()=>el.remove(), 220); };
+  el.querySelector('.x').onclick = kill;
+  host.appendChild(el);
+  setTimeout(kill, kind === 'bad' ? 9000 : 5500);
+  while (host.children.length > 4) host.firstChild.remove();
+}
+
+// Watch for things worth announcing, rather than announcing every poll.
+let SEEN = {phase:null, pending:null, ready:false};
+function announce(s){
+  const r = s.render || {}, n = (s.pending || []).length;
+  if(SEEN.phase && r.phase !== SEEN.phase){
+    if(r.phase === 'done')   notify('Video ready', (r.title||'Your short') + ' is waiting in Review.', 'good');
+    if(r.phase === 'failed') notify('Render failed', r.message || 'See In progress for details.', 'bad');
+    if(r.phase === 'running' && SEEN.phase === 'idle') notify('Started', 'Writing your story now.');
+  }
+  if(SEEN.pending !== null && n > SEEN.pending && r.phase !== 'done')
+    notify('New video', 'One more is waiting for review.', 'good');
+  SEEN.phase = r.phase; SEEN.pending = n;
+}
+
+// ---------- startup ----------
+let BOOTED = false;
+function paintBoot(b){
+  if(b.ready || b.stage === 'ready'){
+    if(!BOOTED){ BOOTED = true; $('#boot').classList.remove('on'); stopSnake(); refresh(); }
+    return;
+  }
+  $('#boot').classList.add('on');
+  if(b.stage === 'failed'){
+    $('#bootTitle').textContent = 'Shortsmith could not start';
+    $('#bootMsg').innerHTML = '<span class="bad">' + esc(b.error || 'Unknown problem') + '</span>';
+    $('#bootStage').textContent = 'stopped';
+    return;
+  }
+  $('#bootMsg').textContent = b.message || 'Starting…';
+  $('#bootStage').textContent = b.stage || '';
+  $('#bootFill').style.width = (b.percent || 0) + '%';
+  $('#bootNum').textContent = Math.round(b.percent || 0) + '%';
+}
+async function pollBoot(){
+  try{
+    const b = await api('/api/boot');
+    paintBoot(b);
+    if(!b.ready && b.stage !== 'failed') setTimeout(pollBoot, 600);
+  }catch(e){ setTimeout(pollBoot, 1200); }
+}
+
+// ---------- Snake ----------
+const CELL = 20, COLS = 18, ROWS = 13;
+let snk, dir, nextDir, food, snakeTimer = null, score = 0, dead = false;
+const cv = document.getElementById('snake'), cx2 = cv.getContext('2d');
+
+function resetSnake(){
+  snk = [{x:4,y:6},{x:3,y:6},{x:2,y:6}];
+  dir = {x:1,y:0}; nextDir = dir; score = 0; dead = false;
+  placeFood(); drawSnake();
+}
+function placeFood(){
+  do { food = {x:(Math.random()*COLS)|0, y:(Math.random()*ROWS)|0}; }
+  while(snk.some(s=>s.x===food.x && s.y===food.y));
+}
+function stepSnake(){
+  if(dead) return;
+  dir = nextDir;
+  const head = {x:snk[0].x+dir.x, y:snk[0].y+dir.y};
+  if(head.x<0||head.y<0||head.x>=COLS||head.y>=ROWS||snk.some(s=>s.x===head.x&&s.y===head.y)){
+    dead = true; drawSnake(); return;
+  }
+  snk.unshift(head);
+  if(head.x===food.x && head.y===food.y){ score++; $('#snakeScore').textContent = score; placeFood(); }
+  else snk.pop();
+  drawSnake();
+}
+function drawSnake(){
+  cx2.fillStyle = '#0b0d11'; cx2.fillRect(0,0,cv.width,cv.height);
+  cx2.fillStyle = '#ffb224';
+  cx2.fillRect(food.x*CELL+4, food.y*CELL+4, CELL-8, CELL-8);
+  snk.forEach((p,i)=>{
+    cx2.fillStyle = i===0 ? '#ff7a3d' : '#9a4a26';
+    cx2.fillRect(p.x*CELL+2, p.y*CELL+2, CELL-4, CELL-4);
+  });
+  if(dead){
+    cx2.fillStyle = 'rgba(0,0,0,.66)'; cx2.fillRect(0,0,cv.width,cv.height);
+    cx2.fillStyle = '#e8eaed'; cx2.font = '600 15px system-ui'; cx2.textAlign = 'center';
+    cx2.fillText('Score ' + score + ' — click to play again', cv.width/2, cv.height/2);
+  }
+}
+function startSnake(){
+  resetSnake();
+  if(snakeTimer) clearInterval(snakeTimer);
+  snakeTimer = setInterval(stepSnake, 110);
+}
+function stopSnake(){ if(snakeTimer){ clearInterval(snakeTimer); snakeTimer = null; } }
+cv.addEventListener('click', ()=>{ if(!snakeTimer || dead) startSnake(); });
+window.addEventListener('keydown', e=>{
+  if(!$('#boot').classList.contains('on')) return;
+  const k = e.key.toLowerCase();
+  const m = {arrowup:[0,-1], w:[0,-1], arrowdown:[0,1], s:[0,1],
+             arrowleft:[-1,0], a:[-1,0], arrowright:[1,0], d:[1,0]}[k];
+  if(!m) return;
+  e.preventDefault();
+  if(!snakeTimer) startSnake();
+  // no instant reversal into your own neck
+  if(m[0] === -dir.x && m[1] === -dir.y) return;
+  nextDir = {x:m[0], y:m[1]};
+});
+resetSnake();
+
+pollBoot();
+loadUpdates();
 refresh(); setInterval(refresh, 3000);
 </script>
 </body>

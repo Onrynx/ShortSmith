@@ -16,18 +16,27 @@ import shutil
 from pathlib import Path
 
 from .config import load_channel
+from .gate import node_gate
 from .llm import select_model
 from .nodes import node_canvas, node_cutter, node_herald, node_script, node_voice
 from .notify import notify
+from .selfcheck import node_file
 from .state import PipelineState, new_run_state
 from .utils import STATE_DIR, env, log, read_json, write_json, write_status
 
+# "approve" sits between writing and rendering. It returns immediately
+# unless the chosen mode wants a person to read the script first, so the shape
+# of the pipeline is the same whether or not anybody is watching.
 STAGES = [
     ("script", node_script),
+    ("approve", node_gate),
     ("voice", node_voice),
     ("canvas", node_canvas),
     ("cutter", node_cutter),
     ("herald", node_herald),
+    # "file" is Full auto's self-check. Like the gate it returns immediately
+    # in every other mode, so the assembly line has one shape.
+    ("file", node_file),
 ]
 _ACCUMULATORS = ("fallbacks", "errors")
 
@@ -82,8 +91,7 @@ def build_langgraph():
     g.add_edge(START, "script")
     for (a, _), (b, _) in zip(STAGES, STAGES[1:]):
         g.add_edge(a, b)
-    g.add_edge("cutter", "herald")
-    g.add_edge("herald", END)
+    g.add_edge("file", END)
     return g.compile(checkpointer=_build_checkpointer())
 
 
@@ -210,12 +218,13 @@ def cleanup_workdir(state: PipelineState, keep: bool = False) -> int:
 def run_one(channel: str, lane: str, *, mock: bool = False, publish: bool = False,
             topic: str = "", run_id: str | None = None,
             voice: str | None = None,
-            seconds: float | None = None) -> PipelineState:
+            seconds: float | None = None,
+            mode: str = "express") -> PipelineState:
     """Build state for one render and run the pipeline. Used by run.py + control."""
     cfg = load_channel(channel)
     model_info = select_model(mock)
     state = new_run_state(channel, cfg, lane, mock=mock, publish=publish,
-                          topic=topic, run_id=run_id)
+                          topic=topic, run_id=run_id, mode=mode)
     state["model_info"] = model_info
     if voice:
         state["voice_style"] = voice

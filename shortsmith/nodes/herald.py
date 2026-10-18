@@ -218,15 +218,22 @@ def node_herald(state: dict) -> dict:
     progress(state, "herald", "finalizing metadata, thumbnail, and approval package")
 
     spec = format_spec(state.get("channel_cfg", {}))
-    title = script["title"]
-    tags = script.get("tags", [])
-    # Hashtags near the top so YouTube shows the first 3 above the title (Shorts).
-    hashtags = build_hashtags(tags, is_shorts=(spec["format"] == "shorts"))
-    description = ensure_disclosure(script.get("description", ""))
+
+    # Posting metadata is written HERE, from the FINISHED script — after the
+    # length fit and the continuity repair. The writer's own title was produced
+    # mid-draft and can end up describing a version that no longer exists.
+    from ..metadata import build as build_metadata
+    meta = build_metadata(script, state.get("model_info"), state.get("plan"))
+    state["metadata"] = meta
+
+    title = meta.get("title") or script["title"]
+    tags = meta.get("tags") or script.get("tags", [])
+    hashtags = meta.get("hashtags") or build_hashtags(
+        tags, is_shorts=(spec["format"] == "shorts"))
+    description = meta.get("description") or ensure_disclosure(
+        script.get("description", ""))
     if state.get("channel_cfg", {}).get("fiction") and "fiction" not in description.lower():
         description += "\nThis is a fictional story created for entertainment."
-    if hashtags:
-        description = f"{hashtags}\n\n{description}"
 
     base = run_basename(state)
     pend = pending_dir(channel)
@@ -278,6 +285,9 @@ def node_herald(state: dict) -> dict:
         "mock": state.get("mock"),
         "publish_mode": mode,
         "hashtags": hashtags,
+        # Everything needed to post THIS video, kept on THIS video's record so
+        # two shorts on the same topic never share metadata.
+        "metadata": meta,
         "format": spec["format"],
         "orientation": "vertical" if spec["vertical"] else "horizontal",
         "resolution": f"{spec['width']}x{spec['height']}",

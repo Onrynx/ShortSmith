@@ -19,6 +19,7 @@ class PipelineState(TypedDict, total=False):
     mock: bool
     publish: bool
     topic: str                   # optional forced topic ("" if none)
+    mode: str                    # "guided" | "express" | "auto" (script gate)
     run_id: str
     workdir: str                 # per-run working directory
 
@@ -52,6 +53,13 @@ class PipelineState(TypedDict, total=False):
     report_path: str
     published: bool
 
+    # --- script gate + self-check ---
+    gate_revision: int           # how many times the script was sent back
+    gate_base_topic: str         # the brief without any rewrite note attached
+    gate_reason: str             # why the run stopped
+    self_check: dict             # Full auto's measurements of the finished file
+    auto_filed: bool             # True when Full auto filed it itself
+
     # --- cross-cutting bookkeeping ---
     stage: str                   # current stage name
     events: list                 # bottleneck feed entries
@@ -62,7 +70,7 @@ class PipelineState(TypedDict, total=False):
 
 def new_run_state(channel: str, channel_cfg: dict, lane: str, *,
                   mock: bool = False, publish: bool = False, topic: str = "",
-                  run_id: str | None = None) -> PipelineState:
+                  run_id: str | None = None, mode: str = "express") -> PipelineState:
     run_id = run_id or f"{now_id()}_{lane}"
     workdir = ensure_dir(OUTPUT_DIR / channel / "_work" / run_id)
     st: PipelineState = {
@@ -72,6 +80,7 @@ def new_run_state(channel: str, channel_cfg: dict, lane: str, *,
         "mock": mock,
         "publish": publish,
         "topic": topic or "",
+        "mode": (mode or "express").lower(),
         "run_id": run_id,
         "workdir": str(workdir),
         "audio_paths": [],

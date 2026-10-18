@@ -77,6 +77,10 @@ def main(argv=None) -> int:
     p.add_argument("--seconds", type=float, default=None,
                    help="target length in seconds (e.g. 45); the AI plans and "
                         "revises the story to actually fit it")
+    p.add_argument("--mode", default="express", choices=["guided", "express", "auto"],
+                   help="guided: stop and show the script before rendering | "
+                        "express: stop only if the writer had to compromise | "
+                        "auto: never stop")
     p.add_argument("--run-id", default=None, help="resume an existing run id")
     p.add_argument("--list", action="store_true", help="list channels and exit")
     p.add_argument("--dry-run", action="store_true",
@@ -106,7 +110,7 @@ def main(argv=None) -> int:
 
     state = run_one(channel, args.lane, mock=args.mock, publish=args.publish,
                     topic=args.topic, run_id=args.run_id, voice=args.voice,
-                    seconds=args.seconds)
+                    seconds=args.seconds, mode=args.mode)
 
     final = state.get("final_video_path")
     print()

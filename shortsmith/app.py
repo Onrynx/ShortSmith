@@ -99,8 +99,26 @@ def main(argv: list[str] | None = None) -> int:
 
     url, _httpd = serve(background=True)
 
+    # Bring the AI engine up with the app rather than leaving it resident all
+    # day. The UI shows real progress against this while it happens.
+    from .boot import shutdown as stop_services, start as start_services
+    start_services()
+
+    # Closing the window runs the normal path, but a crash or a force-quit
+    # would otherwise leave a multi-gigabyte model resident forever. atexit
+    # covers ordinary exits; the signal handlers cover being asked to stop.
+    import atexit
+    import signal
+    atexit.register(stop_services)
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        try:
+            signal.signal(sig, lambda *_: (stop_services(), sys.exit(0)))
+        except (ValueError, OSError, AttributeError):
+            pass        # not available on this platform/thread
+
     if not browser_only and _open_window(url):
-        return 0                       # window closed = app closed
+        stop_services()                # window closed = app closed
+        return 0
 
     # Fallback path: open the default browser and stay alive to serve it.
     webbrowser.open(url)
@@ -110,6 +128,8 @@ def main(argv: list[str] | None = None) -> int:
         threading.Event().wait()
     except KeyboardInterrupt:
         pass
+    finally:
+        stop_services()
     return 0
 
 

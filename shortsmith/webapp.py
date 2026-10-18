@@ -63,6 +63,10 @@ def render_state() -> dict:
         phase = "idle"
     elif stage == "failed":
         phase = "failed"
+    elif stage == "awaiting":
+        # Stopped on purpose between writing and rendering — not idle, not
+        # working, and the screen has to say something different for it.
+        phase = "awaiting"
     elif done:
         phase = "done"
     else:
@@ -96,6 +100,7 @@ def pending_items() -> list[dict]:
             "seconds": round(m.get("runtime_sec") or 0),
             "scenes": len(m.get("scenes") or []),
             "structure": (m.get("plan") or {}).get("structure") if isinstance(m.get("plan"), dict) else None,
+            "check": m.get("self_check"),
         })
     return out
 
@@ -110,8 +115,23 @@ def approved_items() -> list[dict]:
             "seconds": round(m.get("runtime_sec") or 0),
             "scenes": len(m.get("scenes") or []),
             "when": (m.get("approved_at") or m.get("created") or "")[:10],
+            "check": m.get("self_check"),
         })
     return out
+
+
+def _queue_state() -> dict:
+    from .queue import state as qs
+    return qs()
+
+
+def _gate_state() -> dict | None:
+    """The script waiting to be read, if a run has stopped for one."""
+    from .gate import waiting
+    try:
+        return waiting()
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def app_state() -> dict:
@@ -129,6 +149,8 @@ def app_state() -> dict:
         "default_channel": default_channel(),
         "busy": control.render_in_progress(),
         "approved": approved_items(),
+        "queue": _queue_state(),
+        "gate": _gate_state(),
     }
 
 
@@ -368,12 +390,36 @@ class _Handler(BaseHTTPRequestHandler):
             if not wav:
                 return self._json({"error": "voice preview unavailable"}, 503)
             return self._file(wav)
+        if p == "/api/updates":
+            from .updates import check
+            return self._json(check(force="force" in (q or {})))
+        if p == "/api/queue":
+            from .queue import state as queue_state
+            return self._json(queue_state())
+        if p == "/api/boot":
+            from .boot import state as boot_state
+            return self._json(boot_state())
         if p == "/api/pull":
             return self._json(pull_state())
         if p == "/api/machine":
             return self._json(machine_info())
         if p == "/api/events":
             return self._json({"events": control.events(20)})
+        if p.startswith("/api/meta/"):
+            iid = unquote(p.rsplit("/", 1)[-1])
+            item = control.get_item(iid) or {}
+            meta = item.get("metadata")
+            if not meta:
+                # Older videos predate per-video metadata; derive what we can
+                # from the record rather than showing an empty panel.
+                from .metadata import hashtags_from
+                tags = item.get("tags") or []
+                meta = {"titles": [item.get("title") or ""],
+                        "title": item.get("title") or "",
+                        "description": item.get("description") or "",
+                        "hashtags": item.get("hashtags") or hashtags_from(tags),
+                        "tags": tags, "caption": "", "source": "legacy"}
+            return self._json(meta)
         if p.startswith("/api/script/"):
             iid = unquote(p.rsplit("/", 1)[-1])
             item = control.get_pending(iid) or control.find_item(iid, "approved") or {}
@@ -399,20 +445,47 @@ class _Handler(BaseHTTPRequestHandler):
         body = self._body()
 
         if p == "/api/make":
-            if control.render_in_progress():
+            count = body.get("count") or 1
+            try:
+                count = max(1, min(10, int(count)))
+            except (TypeError, ValueError):
+                count = 1
+            if control.render_in_progress() and count == 1:
                 return self._json({"error": "a render is already running"}, 409)
             brief = str(body.get("brief") or "").strip()
             secs = body.get("seconds")
             voice = body.get("voice") if body.get("voice") in ("adam", "squeaky") else "adam"
+            mode = body.get("mode") if body.get("mode") in ("guided", "express", "auto") else "express"
             channel = body.get("channel") or default_channel()
             try:
                 secs = float(secs) if secs else None
             except (TypeError, ValueError):
                 secs = None
+            # Anything but a single immediate render goes through the queue,
+            # which also gives each variation its own angle on the brief.
+            if count > 1 or control.render_in_progress():
+                from .queue import add as queue_add
+                r = queue_add(brief, secs, voice, channel, count, mode)
+                return self._json(r, 200 if r.get("ok") else 400)
             r = control.run_now(channel, control.RENDER_SLOT, False,
-                                voice=voice, topic=brief, seconds=secs)
+                                voice=voice, topic=brief, seconds=secs, mode=mode)
             return self._json(r, 200 if r.get("ok") else 400)
 
+        if p == "/api/gate":
+            # go / rewrite / drop for the script a run is waiting on.
+            from .gate import decide
+            r = decide(str(body.get("run_id") or ""),
+                       str(body.get("action") or ""),
+                       str(body.get("note") or ""))
+            return self._json(r, 200 if r.get("ok") else 400)
+
+        if p == "/api/queue/cancel":
+            from .queue import cancel as queue_cancel
+            jid = body.get("id")
+            return self._json(queue_cancel(int(jid) if jid else None))
+        if p == "/api/queue/clear":
+            from .queue import clear_finished
+            return self._json(clear_finished())
         if p == "/api/cancel":
             return self._json(control.cancel_render())
         if p == "/api/approve":
@@ -446,6 +519,29 @@ class _Handler(BaseHTTPRequestHandler):
             if not model:
                 return self._json({"error": "no model given"}, 400)
             return self._json(start_pull(model))
+
+        if p == "/api/update":
+            from .updates import apply_update
+            return self._json(apply_update())
+
+        if p == "/api/meta":
+            # With a "meta" body, save an edit (choosing one of the title
+            # options). Without one, write the metadata again from scratch.
+            iid = str(body.get("id") or "")
+            item = control.get_item(iid)
+            if not item:
+                return self._json({"error": "not found"}, 404)
+            if isinstance(body.get("meta"), dict):
+                control.save_metadata(iid, body["meta"])
+                return self._json(body["meta"])
+            from .llm import select_model
+            from .metadata import build as build_meta
+            meta = build_meta({"title": item.get("title"),
+                               "tags": item.get("tags"),
+                               "scenes": item.get("scenes")},
+                              select_model(False))
+            control.save_metadata(iid, meta)
+            return self._json(meta)
 
         if p == "/api/rescan":
             from .hardware import rescan
