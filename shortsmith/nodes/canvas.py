@@ -3,7 +3,7 @@
 The chain, in order, with each step falling through to the next:
 
     background  your gameplay clips in assets/backgrounds (the normal path)
-    ai_image    free AI imagery of the subject, when there are no clips
+    motion      a generated moving background, when there are no clips
     motion      generated moving colour — never fails, needs nothing
     gradient    a still card, only if even ffmpeg is broken
 
@@ -18,7 +18,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from ..config import format_spec
-from ..providers import (AIImageProvider, BackgroundProvider, MotionProvider,
+from ..providers import (BackgroundProvider, MotionProvider,
                          gradient_card)
 from ..utils import retry
 from .common import add_fallback, progress
@@ -47,16 +47,17 @@ def node_canvas(state: dict) -> dict:
     motion = MotionProvider(cfg, width=spec["width"], height=spec["height"])
     background = BackgroundProvider(cfg)
     bg_avail = background.available()
-    ai_img = AIImageProvider(cfg, width=spec["width"], height=spec["height"])
-    ai_avail = (not mock) and ai_img.available()
-
     if not bg_avail:
+        # This used to fall through to an online image generator, which meant a
+        # fresh install with an empty backgrounds folder quietly posted every
+        # scene description to a third-party service — while the app said
+        # nothing leaves this computer. The honest fallback is the local motion
+        # floor plus a message telling you what to add.
         add_fallback(state, "canvas",
-                     "no gameplay clips in assets/backgrounds/ — drop a few mp4s "
-                     "there for the gameplay look")
+                     "no clips in assets/backgrounds/ — using the plain moving "
+                     "background. Add clips under Backgrounds for the gameplay look.")
 
-    chain = ([background] if bg_avail else []) + \
-            ([ai_img] if ai_avail else []) + [motion]
+    chain = ([background] if bg_avail else []) + [motion]
 
     progress(state, "canvas",
              f"building visuals for {len(scenes)} scenes via "

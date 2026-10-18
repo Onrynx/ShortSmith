@@ -218,6 +218,24 @@ tr.dis{opacity:.42}
 .titleopt:last-child{border:0}
 .qrow{display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid #1e232b;font-size:13px}
 .qrow:last-child{border:0}
+
+/* ---- backgrounds ---- */
+#drop{border:2px dashed var(--line);border-radius:12px;padding:30px 20px;text-align:center;
+  transition:border-color .15s,background .15s;cursor:pointer;margin-top:16px}
+#drop:hover,#drop.over{border-color:var(--accent);background:rgba(255,122,61,.07)}
+#drop .big{font-size:15px;font-weight:650;color:var(--txt)}
+#drop .sub2{font-size:12.5px;color:var(--dim);margin-top:6px}
+.clip{display:flex;gap:14px;align-items:center;padding:12px;border-bottom:1px solid #1e232b}
+.clip:last-child{border:0}
+.clip .shot{width:74px;height:42px;border-radius:6px;object-fit:cover;background:#000;
+  border:1px solid var(--line);flex-shrink:0}
+.clip .nm2{flex:1;min-width:0}
+.clip .nm2 b{font-size:13.5px;font-weight:600;color:var(--txt);display:block;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.clip .nm2 span{font-size:11.5px;color:var(--faint)}
+.bar2{height:6px;border-radius:3px;background:var(--panel2);overflow:hidden;margin-top:10px}
+.bar2 i{display:block;height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));
+  width:0;transition:width .2s}
 .gate{border:1.5px solid var(--accent);background:linear-gradient(180deg,#1b1711,#141720)}
 .gate .facts{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 4px}
 .gate .fact{font-size:11px;padding:3px 9px;border-radius:999px;background:var(--panel2);
@@ -322,6 +340,7 @@ tr.dis{opacity:.42}
     <div class="navb" data-s="progress"><span class="ic">&#9681;</span> In progress</div>
     <div class="navb" data-s="review"><span class="ic">&#9654;</span> Review <span class="cnt" id="cnt">0</span></div>
     <div class="navb" data-s="library"><span class="ic">&#9636;</span> Library <span class="cnt" id="lcnt">0</span></div>
+    <div class="navb" data-s="clips"><span class="ic">&#9635;</span> Backgrounds <span class="cnt" id="ccnt">0</span></div>
     <div class="navb" data-s="updates"><span class="ic">&#8635;</span> Updates <span class="cnt" id="ucnt" style="display:none">1</span></div>
     <div class="navb" data-s="machine"><span class="ic">&#9881;</span> Settings</div>
     <div class="sp"></div>
@@ -455,6 +474,28 @@ tr.dis{opacity:.42}
         <p class="muted" style="margin-top:14px">Click to select &middot; double-click to open &middot; the ⋮ menu has more.</p>
       </div>
 
+      <!-- BACKGROUNDS -->
+      <div class="scr" id="clips">
+        <h1>Backgrounds<span class="sub" id="cSub">&nbsp;</span></h1>
+        <p class="muted">The gameplay footage that plays behind every video.
+          Nothing is downloaded for you &mdash; these are your own files, and they
+          stay on this computer.</p>
+
+        <div id="drop">
+          <div class="big">Drop clips here, or click to choose</div>
+          <div class="sub2">mp4, mkv, webm, mov or m4v &middot; 5 minutes or longer works best</div>
+          <input type="file" id="cFile" accept="video/mp4,video/x-matroska,video/webm,video/quicktime,.mp4,.mkv,.webm,.mov,.m4v" multiple style="display:none">
+        </div>
+        <div id="cProg" style="display:none">
+          <div class="muted" id="cProgText">Copying&hellip;</div>
+          <div class="bar2"><i id="cProgBar"></i></div>
+        </div>
+
+        <h2>In use</h2>
+        <div class="card" style="padding:4px 10px"><div id="cList"></div></div>
+        <p class="muted" id="cFoot" style="margin-top:12px">&nbsp;</p>
+      </div>
+
       <!-- UPDATES -->
       <div class="scr" id="updates">
         <h1>Updates<span class="sub" id="uSub">&nbsp;</span></h1>
@@ -494,6 +535,7 @@ function go(id){
   $('.scroll').scrollTop = 0;
   if(id==='machine') loadMachine();
   if(id==='updates') loadUpdates();
+  if(id==='clips') loadClips();
 }
 document.querySelectorAll('.navb').forEach(n=> n.onclick=()=>go(n.dataset.s));
 function pickIn(container, el, set){
@@ -521,7 +563,31 @@ async function api(path, body){
        body:JSON.stringify(body)}
     : {headers};
   const r = await fetch(path, opt);
+  // The token belongs to one run of the app. A page left open while Shortsmith
+  // restarts keeps polling with the old one and gets refused every time, which
+  // looks exactly like the app having quietly broken. Say what happened.
+  if(r.status === 403) staleSession();
   return r.json();
+}
+
+let STALE = false, POLL = null;
+function staleSession(){
+  if(STALE) return;
+  STALE = true;
+  if(POLL) clearInterval(POLL);
+  const box = document.createElement('div');
+  box.id = 'stale';
+  box.innerHTML = '<div class="sheetbox" style="width:min(460px,92vw);left:50%;top:50%;'
+    + 'right:auto;bottom:auto;transform:translate(-50%,-50%);border:1px solid var(--line);'
+    + 'border-radius:14px;height:auto;padding:26px">'
+    + '<h2 class="t">Shortsmith restarted</h2>'
+    + '<div class="muted" style="margin-top:6px">This window belongs to the previous '
+    + 'session, so it can no longer talk to the app. Reload to reconnect — nothing '
+    + 'has been lost.</div>'
+    + '<div class="row" style="margin-top:18px">'
+    + '<button class="btn" onclick="location.reload()">Reload</button></div></div>';
+  box.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:95';
+  document.body.appendChild(box);
 }
 
 async function makeVideo(){
@@ -745,13 +811,35 @@ function renderProgress(r){
 
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
+// Ids are filenames. Normal ones are slugs, but a record copied from another
+// machine can carry characters Windows forbids and Linux allows — a quote or a
+// backslash — and these land inside a JS string literal inside an HTML
+// attribute. Two contexts, so two escapes: make it a safe JS string first,
+// then a safe attribute. esc() alone is not enough; it never touches
+// backslashes, and a trailing one would escape the closing quote.
+function jsq(s){
+  const BS = String.fromCharCode(92);          // a single backslash
+  const out = [];
+  for(const ch of String(s==null?'':s)){
+    const code = ch.charCodeAt(0);
+    // Line terminators end a JS string literal outright; drop them.
+    if(code === 10 || code === 13 || code === 0x2028 || code === 0x2029) continue;
+    // A backslash or a quote is escaped FOR JAVASCRIPT before esc() escapes
+    // the result for HTML. The other order leaves a trailing backslash free
+    // to eat the closing quote.
+    if(ch === BS || ch === '"' || ch === "'") out.push(BS);
+    out.push(ch);
+  }
+  return esc(out.join(''));
+}
+
 const SEL = {review:new Set(), library:new Set()};
 
 function cardHTML(it, pane){
   const on = SEL[pane].has(it.id);
-  return `<div class="card item ${on?'pick':''}" data-id="${it.id}">
+  return `<div class="card item ${on?'pick':''}" data-id="${esc(it.id)}">
     <input type="checkbox" class="sel-ck" ${on?'checked':''}
-           onchange="toggle('${pane}','${it.id}',this.checked)">
+           onchange="toggle('${pane}','${jsq(it.id)}',this.checked)">
     <div class="vrow">
       <video controls preload="none" poster="${signed('/api/thumb/'+encodeURIComponent(it.id))}"
              src="${signed('/api/video/'+encodeURIComponent(it.id))}"></video>
@@ -762,13 +850,13 @@ function cardHTML(it, pane){
         ${it.structure?`<div class="kv"><div class="k">Shape</div><div>${esc(it.structure)}</div></div>`:''}
         ${checkLine(it.check)}
         <div class="row" style="margin-top:12px">
-          ${pane==='review'?`<button class="btn ok sm" onclick="one('approve','${it.id}')">Approve</button>
-          <button class="btn no sm" onclick="one('reject','${it.id}')">Delete</button>`
-          :`<button class="btn no sm" onclick="one('delete','${it.id}')">Delete</button>`}
-          <button class="btn g sm" onclick="showScript('${it.id}',this)">Read script</button>
-          <button class="btn g sm" onclick="reveal('${it.id}')">Open folder</button>
+          ${pane==='review'?`<button class="btn ok sm" onclick="one('approve','${jsq(it.id)}')">Approve</button>
+          <button class="btn no sm" onclick="one('reject','${jsq(it.id)}')">Delete</button>`
+          :`<button class="btn no sm" onclick="one('delete','${jsq(it.id)}')">Delete</button>`}
+          <button class="btn g sm" onclick="showScript('${jsq(it.id)}',this)">Read script</button>
+          <button class="btn g sm" onclick="reveal('${jsq(it.id)}')">Open folder</button>
         </div>
-        <div class="script" id="sc-${it.id}"></div>
+        <div class="script" id="sc-${esc(it.id)}"></div>
       </div></div></div>`;
 }
 
@@ -896,11 +984,11 @@ function fileHTML(it){
   const id = it.id, e = encodeURIComponent(id);
   const t = esc(it.title || 'Untitled');
   return '<div class="file ' + (SEL.library.has(id) ? 'sel' : '') + '"'
-    + ' data-id="' + id + '" title="' + t + '"'
-    + ' onclick="pickFile(event,&quot;' + id + '&quot;)"'
-    + ' ondblclick="openSheet(&quot;' + id + '&quot;)"'
-    + ' oncontextmenu="fileMenu(event,&quot;' + id + '&quot;)">'
-    + '<div class="dots" onclick="fileMenu(event,&quot;' + id + '&quot;)">&#8942;</div>'
+    + ' data-id="' + esc(id) + '" title="' + t + '"'
+    + ' onclick="pickFile(event,&quot;' + jsq(id) + '&quot;)"'
+    + ' ondblclick="openSheet(&quot;' + jsq(id) + '&quot;)"'
+    + ' oncontextmenu="fileMenu(event,&quot;' + jsq(id) + '&quot;)">'
+    + '<div class="dots" onclick="fileMenu(event,&quot;' + jsq(id) + '&quot;)">&#8942;</div>'
     + '<div class="thumb"><img loading="lazy" alt="" src="' + signed('/api/thumb/' + e) + '"></div>'
     + '<div class="nm">' + t + '</div>'
     + '<div class="meta">' + (it.seconds || '?') + 's &middot; '
@@ -963,14 +1051,14 @@ function fileMenu(ev, id){
   const row = (label, call, cls) =>
     '<div class="' + (cls || '') + '" onclick="closeMenu();' + call + '">' + label + '</div>';
   m.innerHTML =
-      row('Open details', 'openSheet(&quot;' + id + '&quot;)')
-    + row('Copy title', 'copyMeta(&quot;' + id + '&quot;,&quot;title&quot;)')
-    + row('Copy description', 'copyMeta(&quot;' + id + '&quot;,&quot;description&quot;)')
-    + row('Copy hashtags', 'copyMeta(&quot;' + id + '&quot;,&quot;hashtags&quot;)')
-    + row('Show in folder', 'reveal(&quot;' + id + '&quot;)')
+      row('Open details', 'openSheet(&quot;' + jsq(id) + '&quot;)')
+    + row('Copy title', 'copyMeta(&quot;' + jsq(id) + '&quot;,&quot;title&quot;)')
+    + row('Copy description', 'copyMeta(&quot;' + jsq(id) + '&quot;,&quot;description&quot;)')
+    + row('Copy hashtags', 'copyMeta(&quot;' + jsq(id) + '&quot;,&quot;hashtags&quot;)')
+    + row('Show in folder', 'reveal(&quot;' + jsq(id) + '&quot;)')
     + (n > 1
         ? row('Delete ' + n + ' videos', 'bulk(&quot;delete&quot;,&quot;library&quot;)', 'danger')
-        : row('Delete', 'one(&quot;delete&quot;,&quot;' + id + '&quot;)', 'danger'));
+        : row('Delete', 'one(&quot;delete&quot;,&quot;' + jsq(id) + '&quot;)', 'danger'));
   document.body.appendChild(m);
   const w = m.offsetWidth, h = m.offsetHeight;
   m.style.left = Math.max(8, Math.min(ev.clientX, window.innerWidth  - w - 10)) + 'px';
@@ -994,11 +1082,11 @@ function openSheet(id){
     + '<video controls preload="metadata" poster="' + signed('/api/thumb/' + e)
     + '" src="' + signed('/api/video/' + e) + '"></video>'
     + '<div class="row" style="margin-top:14px">'
-    + '<button class="btn g sm" onclick="showScript(&quot;' + id + '&quot;,this)">Read script</button>'
-    + '<button class="btn g sm" onclick="reveal(&quot;' + id + '&quot;)">Show in folder</button>'
-    + '<button class="btn g sm" onclick="regenMeta(&quot;' + id + '&quot;,this)">Rewrite metadata</button>'
-    + '<button class="btn no sm" onclick="one(&quot;delete&quot;,&quot;' + id + '&quot;)">Delete</button>'
-    + '</div><div class="script" id="sc-' + id + '"></div>'
+    + '<button class="btn g sm" onclick="showScript(&quot;' + jsq(id) + '&quot;,this)">Read script</button>'
+    + '<button class="btn g sm" onclick="reveal(&quot;' + jsq(id) + '&quot;)">Show in folder</button>'
+    + '<button class="btn g sm" onclick="regenMeta(&quot;' + jsq(id) + '&quot;,this)">Rewrite metadata</button>'
+    + '<button class="btn no sm" onclick="one(&quot;delete&quot;,&quot;' + jsq(id) + '&quot;)">Delete</button>'
+    + '</div><div class="script" id="sc-' + esc(id) + '"></div>'
     + (it.check ? '<div class="metafield"><div class="lbl">Self-check</div>'
         + '<div class="val">' + (it.check.checks || []).map(c =>
             (c.ok ? '[ok] ' : '[failed] ') + esc(c.name) + ' — ' + esc(c.detail)
@@ -1115,6 +1203,105 @@ async function regenMeta(id, btn){
   notify('Metadata rewritten', 'Five fresh title options.', 'good');
   LASTSIG.library = null;
   refresh();
+}
+
+/* ------------------------------------------------------------------ *
+ * Backgrounds.
+ *
+ * These clips were always just a folder on disk that the README told
+ * you about: nothing in the app showed what was in it, and an empty
+ * one changed how videos looked without saying so. Now you can see
+ * them, add them and remove them here.
+ *
+ * Uploads are sent as raw bytes with the filename in a header rather
+ * than as multipart form data. A clip is routinely gigabytes, and raw
+ * bytes stream straight to disk on the other side instead of being
+ * assembled in memory first.
+ * ------------------------------------------------------------------ */
+let CLIPS = {clips: []};
+
+async function loadClips(){
+  const c = await api('/api/clips');
+  CLIPS = c;
+  setCount($('#ccnt'), c.count || 0);
+  $('#cSub').textContent = c.count
+    ? c.count + (c.count === 1 ? ' clip' : ' clips') + ' · ' + c.total_gb + ' GB'
+    : '';
+  const host = $('#cList');
+  if(!(c.clips || []).length){
+    host.innerHTML = '<div class="empty">No clips yet. Videos will use a plain '
+      + 'moving background until you add some.</div>';
+  } else {
+    host.innerHTML = c.clips.map(cl => {
+      const len = cl.minutes ? cl.minutes + ' min' : 'length unknown';
+      return '<div class="clip">'
+        + (cl.thumb
+            ? '<img class="shot" alt="" src="' + signed('/api/clipthumb/' + encodeURIComponent(cl.name)) + '">'
+            : '<div class="shot"></div>')
+        + '<div class="nm2"><b>' + esc(cl.name) + '</b>'
+        + '<span>' + len + ' · ' + cl.size_mb + ' MB</span></div>'
+        + '<button class="btn no sm" onclick="removeClip(&quot;' + jsq(cl.name) + '&quot;)">Remove</button>'
+        + '</div>';
+    }).join('');
+  }
+  $('#cFoot').innerHTML = c.count
+    ? (c.enough
+        ? 'Looks good. Scenes take consecutive windows of one clip, so a long clip reads as one unbroken run.'
+        : '<span class="warn">These are short.</span> Under two minutes in total means '
+          + 'the same few seconds get reused and the background visibly loops.')
+      + ' &middot; ' + esc(c.folder) + ' &middot; ' + c.free_gb + ' GB free on this drive'
+    : esc(c.folder);
+}
+
+async function uploadClips(files){
+  const list = [...files];
+  if(!list.length) return;
+  const box = $('#cProg'), text = $('#cProgText'), bar = $('#cProgBar');
+  box.style.display = 'block';
+  let done = 0;
+  for(const f of list){
+    const mb = Math.round(f.size / 1048576);
+    text.textContent = 'Copying ' + f.name + ' (' + mb + ' MB) — ' + (done+1) + ' of ' + list.length;
+    bar.style.width = '0%';
+    const r = await sendClip(f, pct => { bar.style.width = pct + '%'; });
+    if(r && r.ok){
+      notify('Added', r.name + ' · ' + r.minutes + ' min', 'good');
+    } else {
+      notify('Could not add ' + f.name, (r && r.error) || 'The copy failed.', 'bad');
+    }
+    done++;
+  }
+  box.style.display = 'none';
+  loadClips();
+}
+
+// XMLHttpRequest rather than fetch: it reports upload progress, and a 2 GB
+// copy with no progress bar looks exactly like a hung app.
+function sendClip(file, onProgress){
+  return new Promise(resolve => {
+    const x = new XMLHttpRequest();
+    x.open('POST', '/api/clips/upload');
+    x.setRequestHeader('X-Shortsmith-Token', TOKEN);
+    x.setRequestHeader('X-Clip-Name', encodeURIComponent(file.name));
+    x.setRequestHeader('Content-Type', 'application/octet-stream');
+    x.upload.onprogress = e => {
+      if(e.lengthComputable) onProgress(Math.round(e.loaded / e.total * 100));
+    };
+    x.onload = () => {
+      try { resolve(JSON.parse(x.responseText)); }
+      catch(err){ resolve({ok:false, error:'Unexpected reply from the app.'}); }
+    };
+    x.onerror = () => resolve({ok:false, error:'The copy was interrupted.'});
+    x.send(file);
+  });
+}
+
+async function removeClip(name){
+  if(!confirm('Remove ' + name + ' from the backgrounds folder?\n\nThe file is deleted.')) return;
+  const r = await api('/api/clips/delete', {name: name});
+  if(r.error) return notify('Could not remove it', r.error, 'bad');
+  notify('Removed', name, 'good');
+  loadClips();
 }
 
 function setCount(el, n){
@@ -1343,6 +1530,21 @@ async function refresh(){
 $('#rAll').onchange = e => selectAll('review', e.target.checked, LAST.review);
 $('#lAll').onchange = e => selectAll('library', e.target.checked, LAST.library);
 
+// Backgrounds: click to choose, or drag files anywhere onto the panel.
+$('#drop').onclick = () => $('#cFile').click();
+$('#cFile').onchange = e => { uploadClips(e.target.files); e.target.value = ''; };
+['dragenter','dragover'].forEach(ev =>
+  $('#drop').addEventListener(ev, e => { e.preventDefault(); $('#drop').classList.add('over'); }));
+['dragleave','drop'].forEach(ev =>
+  $('#drop').addEventListener(ev, e => { e.preventDefault(); $('#drop').classList.remove('over'); }));
+$('#drop').addEventListener('drop', e => {
+  if(e.dataTransfer && e.dataTransfer.files) uploadClips(e.dataTransfer.files);
+});
+// Dropping a file anywhere else would otherwise make the webview navigate to
+// it, replacing the app with a video player and no way back.
+window.addEventListener('dragover', e => e.preventDefault());
+window.addEventListener('drop', e => e.preventDefault());
+
 // Clicking the empty space around the files drops the selection, and Escape
 // backs out of whatever is open — menu first, then the drawer, then the
 // selection, so one key never closes two things at once.
@@ -1485,7 +1687,7 @@ resetSnake();
 
 pollBoot();
 loadUpdates();
-refresh(); setInterval(refresh, 3000);
+refresh(); POLL = setInterval(refresh, 3000);
 </script>
 </body>
 </html>

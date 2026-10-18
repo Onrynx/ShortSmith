@@ -12,8 +12,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from ..utils import (STATE_DIR, append_jsonl, env, http_post_json, log,
-                     read_jsonl, utcnow_iso)
+from ..utils import (STATE_DIR, append_jsonl, log, read_jsonl, utcnow_iso)
 
 EVENTS_FILE = STATE_DIR / "events.jsonl"
 

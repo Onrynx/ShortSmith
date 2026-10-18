@@ -36,7 +36,35 @@
 - Video playback moved into the details drawer, so the list refreshing can
   never interrupt something you are watching.
 
+**New**
+- A Backgrounds section. The gameplay clips behind every video were always just
+  a folder the README told you about: nothing showed what was in it, and an
+  empty one changed how videos looked without saying why. Now you can see every
+  clip with a frame from it, its length and its size, drag new ones in or click
+  to choose, and remove the ones you are done with. Uploads stream straight to
+  disk, so a 2 GB clip copies with a progress bar instead of being held in
+  memory, and a file that is not really a video is refused rather than stored.
+
 **Security**
+- Shortsmith no longer sends anything anywhere. Two paths remained: an online
+  image generator that was ON by default and received every scene description
+  whenever the backgrounds folder was empty, and a Gemini fallback that sent
+  the brief and every draft to Google whenever Ollama happened to be down and
+  an API key was present. Both are gone. The only traffic left is to Ollama on
+  this machine, the update check, and the one-time voice-model download.
+- Only one render can start at a time. The check and the launch were two steps
+  with seconds between them, so two clicks could put two renders on the GPU.
+- The queue has a ceiling of 20. "At most ten per click" still let ten clicks
+  stack a hundred renders.
+- Video ids are escaped for JavaScript as well as for HTML before they go into
+  a click handler. They are filenames, and a record copied from another machine
+  can carry a quote or a backslash that the HTML escaper never touched.
+- Dependencies ship with a hash-pinned lockfile: `pip install --require-hashes
+  -r requirements-lock.txt`. A version pin says which release; a hash says
+  which bytes.
+- A window left open while the app restarts now says so and offers to reload,
+  instead of silently failing every request forever.
+
 - Every identifier that becomes a filename is validated before it is joined,
   and every resulting path is checked to still be inside the folder it was
   meant for. A percent-encoded slash used to survive the route's own split and

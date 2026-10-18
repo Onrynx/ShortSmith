@@ -608,6 +608,14 @@ class _Handler(BaseHTTPRequestHandler):
             return self._json(pull_state())
         if p == "/api/machine":
             return self._json(machine_info())
+        if p == "/api/clips":
+            from .clips import free_space_gb, listing
+            data = listing()
+            data["free_gb"] = free_space_gb()
+            return self._json(data)
+        if p.startswith("/api/clipthumb/"):
+            from .clips import thumb_path
+            return self._file(thumb_path(unquote(p.rsplit("/", 1)[-1])))
         if p == "/api/events":
             return self._json({"events": control.events(20)})
         if p.startswith("/api/meta/"):
@@ -658,6 +666,30 @@ class _Handler(BaseHTTPRequestHandler):
         p = urlparse(self.path).path
         if not self._allowed(p):
             return self._json({"error": "forbidden"}, 403)
+
+        if p == "/api/clips/upload":
+            # Raw bytes, not multipart: a background clip is routinely
+            # gigabytes and this is handled BEFORE _body(), which would
+            # otherwise try to read the whole thing into memory and refuse it
+            # for being over the JSON limit.
+            from .clips import MAX_CLIP_BYTES, save_stream
+            try:
+                declared = int(self.headers.get("Content-Length") or 0)
+            except (TypeError, ValueError):
+                return self._json({"error": "length required"}, 411)
+            if declared <= 0:
+                return self._json({"error": "length required"}, 411)
+            if declared > MAX_CLIP_BYTES:
+                return self._json({"error": "that file is too large"}, 413)
+            name = unquote(self.headers.get("X-Clip-Name") or "")
+            # A long upload must not be killed by the idle read timeout.
+            try:
+                self.connection.settimeout(1800)
+            except OSError:
+                pass
+            r = save_stream(name, self.rfile, declared)
+            return self._json(r, 200 if r.get("ok") else 400)
+
         body = self._body()
         if isinstance(body, tuple):
             message, code = body
@@ -773,6 +805,11 @@ class _Handler(BaseHTTPRequestHandler):
                               select_model(False))
             control.save_metadata(iid, meta)
             return self._json(meta)
+
+        if p == "/api/clips/delete":
+            from .clips import remove
+            r = remove(str(body.get("name") or ""))
+            return self._json(r, 200 if r.get("ok") else 400)
 
         if p == "/api/rescan":
             from .hardware import rescan

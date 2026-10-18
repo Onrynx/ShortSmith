@@ -34,6 +34,11 @@ ANGLES = [
     "start on the smallest concrete object in the story and widen out",
 ]
 
+# A ceiling on the whole queue, not just on one request. "At most 10 per
+# click" still let ten clicks stack a hundred renders — about a day of GPU
+# time — with no way to have meant it.
+MAX_QUEUED = 20
+
 _jobs: list = []
 _lock = threading.Lock()
 _runner: list = []
@@ -53,6 +58,14 @@ def add(brief: str, seconds, voice: str, channel: str, count: int = 1,
     count = max(1, min(10, int(count or 1)))
     made = []
     with _lock:
+        pending = sum(1 for j in _jobs if j["state"] in ("waiting", "running"))
+        room = MAX_QUEUED - pending
+        if room <= 0:
+            return {"ok": False, "error": (
+                f"the queue is full ({pending} still to render). Let some "
+                f"finish, or clear it from In progress.")}
+        if count > room:
+            count = room
         for i in range(count):
             # One video gets the brief untouched; the rest get an angle, so a
             # single request still behaves exactly as it always did.
@@ -62,7 +75,7 @@ def add(brief: str, seconds, voice: str, channel: str, count: int = 1,
             made.append(job["id"])
     _ensure_runner()
     log("info", f"queued {count} video(s)")
-    return {"ok": True, "queued": made}
+    return {"ok": True, "queued": made, "count": len(made)}
 
 
 def _brief_with_angle(job: dict) -> str:

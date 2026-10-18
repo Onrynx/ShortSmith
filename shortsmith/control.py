@@ -7,6 +7,8 @@ from __future__ import annotations
 import os
 import signal
 import subprocess
+import threading
+import time
 import sys
 from pathlib import Path
 
@@ -230,6 +232,20 @@ def _spawn(cmd: list[str], tag: str) -> dict:
     return {"ok": True, "pid": proc.pid, "log": logfile.name}
 
 
+# Deciding "is a render running?" and starting one has to be a single step.
+# render_in_progress() reads a status file the CHILD writes, so between the
+# check and the child's first write there are several seconds in which the
+# answer is still "no" — long enough for two clicks, let alone two threads, to
+# both get through and fight over the GPU.
+_launch_lock = threading.Lock()
+_launching = {"at": 0.0}
+_LAUNCH_GRACE = 25.0        # seconds a spawn is treated as in-progress
+
+
+def _recently_launched() -> bool:
+    return (time.time() - _launching["at"]) < _LAUNCH_GRACE
+
+
 def run_now(channel: str, lane: str = RENDER_SLOT, mock: bool = False,
             voice: str | None = None, topic: str = "",
             seconds: float | None = None, mode: str = "express",
@@ -249,7 +265,14 @@ def run_now(channel: str, lane: str = RENDER_SLOT, mock: bool = False,
         cmd += ["--mode", mode]
     if run_id:
         cmd += ["--run-id", run_id]
-    res = _spawn(cmd, f"{channel}_{lane}")
+    if lane == RENDER_SLOT:
+        with _launch_lock:
+            if render_in_progress() or _recently_launched():
+                return {"ok": False, "error": "a render is already running"}
+            _launching["at"] = time.time()
+            res = _spawn(cmd, f"{channel}_{lane}")
+    else:
+        res = _spawn(cmd, f"{channel}_{lane}")
     if lane == RENDER_SLOT and res.get("ok"):
         try:
             _PIDFILE.write_text(str(res["pid"]))

@@ -1,12 +1,16 @@
-"""LLM backend selection + access. All free, default LOCAL (Ollama).
+"""LLM backend selection + access. Local only — there is nowhere else to go.
 
 Priority (non-mock):
   1. Ollama at OLLAMA_BASE_URL if reachable. Model chosen by free RAM:
        >= 16 GB free -> prefer a 14B, else a 3B-class model.
      The desired tag is reconciled against *installed* models so it works out of
      the box (e.g. qwen3:14b requested but qwen2.5:14b installed -> use that).
-  2. Gemini (gemini/gemini-2.5-flash) if GEMINI_API_KEY is set.
-  3. Mock (canned) — never requires a paid service.
+  2. Mock (canned), with a message saying Ollama is not answering.
+
+There is deliberately no hosted fallback. An earlier version dropped through to
+Gemini whenever Ollama was down and an API key happened to be present, which
+meant the brief and every draft went to Google because of a line in a config
+file — while the app told the user nothing leaves this computer.
 
 --mock forces the mock backend with zero network calls.
 """
@@ -63,12 +67,13 @@ def select_model(mock: bool = False) -> dict:
         return {"backend": "ollama", "model": want, "base_url": base,
                 "reason": f"Ollama up ({size_note}); no models installed, will try {want}"}
 
-    if env("GEMINI_API_KEY"):
-        return {"backend": "gemini", "model": env("GEMINI_MODEL", "gemini-2.5-flash"),
-                "base_url": "", "reason": "Ollama unreachable; GEMINI_API_KEY set -> gemini-2.5-flash"}
-
+    # There is no hosted fallback. A cloud model would mean the brief, the plan
+    # and every draft leaving this machine the moment Ollama happened to be
+    # down — a failure mode nobody asked for, triggered by an API key sitting
+    # in a config file. If the local engine is not answering, say so.
     return {"backend": "mock", "model": "mock", "base_url": "",
-            "reason": "Ollama unreachable and no GEMINI_API_KEY -> canned mock generator"}
+            "reason": "Ollama is not reachable — start it, or open Settings to "
+                      "install a model"}
 
 
 # --------------------------------------------------------------------------- #
@@ -108,20 +113,4 @@ def complete(system: str, user: str, model_info: dict,
         if isinstance(data, dict):
             return (data.get("message", {}) or {}).get("content", "") or ""
         return str(data)
-    if backend == "gemini":
-        key = env("GEMINI_API_KEY")
-        model = model_info["model"]
-        url = (f"https://generativelanguage.googleapis.com/v1beta/models/"
-               f"{model}:generateContent?key={key}")
-        prompt = f"{system}\n\n{user}"
-        body = {
-            "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {"temperature": temperature,
-                                 **({"responseMimeType": "application/json"} if json_mode else {})},
-        }
-        data = http_post_json(url, body, timeout=timeout)
-        try:
-            return data["candidates"][0]["content"]["parts"][0]["text"]
-        except Exception as exc:
-            raise RuntimeError(f"unexpected Gemini response: {exc}: {str(data)[:300]}")
     raise RuntimeError(f"backend '{backend}' cannot complete()")
