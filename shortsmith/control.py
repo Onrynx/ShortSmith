@@ -178,6 +178,56 @@ def delete_item(item_id: str, where: str = "pending") -> dict:
     return {"ok": True, "deleted": deleted}
 
 
+# --------------------------------------------------------------------------- #
+# Housekeeping
+# --------------------------------------------------------------------------- #
+# A finished video is exactly four files. Anything else sharing its name is
+# left over from a feature that no longer exists — the Discord bot used to
+# build a compressed ".preview.mp4" beside every video to fit a 10 MB upload
+# cap, and those copies stayed behind when it was removed. Rather than name
+# that one case, keep a list of what a video IS and sweep the rest.
+ITEM_SUFFIXES = (".mp4", ".jpg", ".json", ".report.txt")
+
+
+def _extras_for(jp: Path) -> list[Path]:
+    """Files sharing this item's name that are not part of a finished video."""
+    item_id = jp.stem
+    keep = {f"{item_id}{suf}" for suf in ITEM_SUFFIXES}
+    out = []
+    for p in jp.parent.iterdir():
+        if not p.is_file() or p.name in keep:
+            continue
+        if p.name.startswith(item_id + ".") and inside(p, jp.parent):
+            out.append(p)
+    return out
+
+
+def tidy(dry_run: bool = False) -> dict:
+    """Remove stale companions of finished videos. Returns what it found."""
+    removed, freed = [], 0
+    for where in ("pending", "approved"):
+        for jp in OUTPUT_DIR.glob(f"*/{where}/*.json"):
+            for extra in _extras_for(jp):
+                try:
+                    size = extra.stat().st_size
+                except OSError:
+                    continue
+                if dry_run:
+                    removed.append(extra.name)
+                    freed += size
+                    continue
+                try:
+                    extra.unlink()
+                    removed.append(extra.name)
+                    freed += size
+                except OSError:
+                    pass
+    if removed and not dry_run:
+        log("info", f"tidied {len(removed)} stale file(s), {freed / 1024 ** 2:.0f} MB")
+    return {"ok": True, "removed": removed, "count": len(removed),
+            "freed_mb": round(freed / 1024 ** 2)}
+
+
 def history(limit: int = 20) -> list[dict]:
     items = []
     for ch_dir in OUTPUT_DIR.glob("*/approved"):

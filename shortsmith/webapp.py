@@ -795,8 +795,12 @@ class _Handler(BaseHTTPRequestHandler):
             if not item:
                 return self._json({"error": "not found"}, 404)
             if isinstance(body.get("meta"), dict):
-                control.save_metadata(iid, body["meta"])
-                return self._json(body["meta"])
+                from .metadata import sanitize
+                meta = sanitize(body["meta"])
+                if not meta:
+                    return self._json({"error": "that is not metadata"}, 400)
+                control.save_metadata(iid, meta)
+                return self._json(meta)
             from .llm import select_model
             from .metadata import build as build_meta
             meta = build_meta({"title": item.get("title"),
@@ -863,6 +867,16 @@ class _Server(ThreadingHTTPServer):
 
 def serve(port: int | None = None, background: bool = False):
     """Start the local server. Returns (url, httpd)."""
+    # Sweep stale companions of finished videos once at startup. Cheap (a
+    # directory listing), and it means a leftover from a removed feature is
+    # gone the next time the app opens rather than sitting there for months.
+    try:
+        r = control.tidy()
+        if r.get("count"):
+            log("info", f"startup tidy: removed {r['count']} stale file(s), "
+                        f"{r['freed_mb']} MB")
+    except Exception as exc:  # noqa: BLE001
+        log("warn", f"startup tidy skipped: {exc}")
     port = port or _free_port()
     httpd = _Server((HOST, port), _Handler)
     url = f"http://{HOST}:{port}/"

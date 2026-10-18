@@ -404,11 +404,33 @@ def ffmpeg_path() -> str:
         if cand and _is_real_ffmpeg(cand):
             if candidates.index(cand) > 0:
                 log("info", f"using ffmpeg at {cand} (earlier PATH entries were not ffmpeg)")
+            _warn_if_writable(cand)
             _FFMPEG_CACHE.append(cand)
             return cand
     fallback = shutil.which("ffmpeg") or "ffmpeg"
     _FFMPEG_CACHE.append(fallback)
     return fallback
+
+
+def _warn_if_writable(path: str) -> None:
+    """Say so when the chosen binary sits somewhere anyone could replace it.
+
+    We run this executable hundreds of times per video. Resolving it by PATH
+    order is normal, but a PATH entry inside the user's own profile is a
+    directory any process running as them can drop a file into — and then it
+    is our ffmpeg. That is not something to fix silently by refusing to run;
+    it is something to say out loud once, so it shows up in the log next to
+    whatever went wrong.
+    """
+    try:
+        folder = Path(path).resolve().parent
+        home = Path.home().resolve()
+        if folder == home or home in folder.parents:
+            log("warn", f"ffmpeg is being run from {folder}, which is inside your "
+                        f"user folder. Set FFMPEG_BIN to pin a specific binary "
+                        f"if that is not what you expect.")
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _which_all(name: str) -> list:

@@ -216,6 +216,49 @@ def check(force: bool = False) -> dict:
     return out
 
 
+def _remote_is_expected() -> tuple[bool, str]:
+    """Is the branch we are about to pull actually tracking OUR repository?"""
+    try:
+        upstream = _git("rev-parse", "--abbrev-ref", "@{u}").stdout.strip()
+        if not upstream or "/" not in upstream:
+            return False, ("This branch is not tracking a remote, so there is "
+                           "nothing to update from.")
+        remote = upstream.split("/", 1)[0]
+        url = _git("remote", "get-url", remote).stdout.strip()
+    except Exception as exc:  # noqa: BLE001
+        return False, f"Could not read the git remote ({exc})."
+    # Accept https and ssh spellings of the same repository, nothing else.
+    wanted = REPO.lower()
+    normal = url.lower().removesuffix(".git").replace(":", "/")
+    if not normal.endswith("/" + wanted):
+        return False, (f"This copy is set to pull from {url}, which is not "
+                       f"{PAGE}. Updating was refused. Fix the git remote if "
+                       f"that is unexpected.")
+    return True, url
+
+
+def _signature_state() -> str:
+    """Whether the commit we just moved to carries a valid signature.
+
+    Most repositories do not sign, so an unsigned commit is reported rather
+    than treated as a failure — but the difference is worth recording, because
+    "verified" and "we did not check" should never read the same.
+    """
+    try:
+        r = _git("verify-commit", "HEAD", timeout=20)
+    except Exception:  # noqa: BLE001
+        return "signature not checked"
+    if r.returncode == 0:
+        return "signature verified"
+    blob = ((r.stderr or "") + (r.stdout or "")).strip().lower()
+    # git says NOTHING at all when a commit simply carries no signature — it
+    # just exits non-zero. Reporting that as a failed check would read as an
+    # alarm every single update on a repository that does not sign.
+    if not blob or "no signature" in blob or "not signed" in blob:
+        return "commit is unsigned"
+    return "signature could NOT be verified"
+
+
 def apply_update() -> dict:
     """Pull the newest code. Only possible on a git checkout."""
     global _cache_at
@@ -230,6 +273,15 @@ def apply_update() -> dict:
             return {"ok": False,
                     "error": "You have local changes here. Commit or discard "
                              "them first so an update cannot overwrite them."}
+
+        # Pull executes whatever the remote hands back, so check WHICH remote
+        # before doing it. `git pull` follows .git/config, and a config that
+        # has been pointed somewhere else is the one way this button could
+        # install code from a repository you never chose.
+        ok, detail = _remote_is_expected()
+        if not ok:
+            return {"ok": False, "error": detail}
+
         pull = _git("pull", "--ff-only", timeout=90)
         if pull.returncode != 0:
             return {"ok": False, "error": (pull.stderr or pull.stdout).strip()[:300]}
@@ -238,9 +290,10 @@ def apply_update() -> dict:
         _cache.clear()
         _cache_at = 0.0
         new_version = installed_version()
-        log("info", f"updated from GitHub (now v{new_version})")
+        signed = _signature_state()
+        log("info", f"updated from GitHub (now v{new_version}, {signed})")
         return {"ok": True, "output": pull.stdout.strip()[:400],
-                "version": new_version, "restart": True}
+                "version": new_version, "signature": signed, "restart": True}
     except Exception as exc:  # noqa: BLE001
         return {"ok": False, "error": str(exc)}
 

@@ -570,6 +570,13 @@ async function api(path, body){
   return r.json();
 }
 
+// CSS.escape exists everywhere the app runs, but fall back rather than throw.
+function cssq(v){
+  const t = String(v==null?'':v);
+  return (window.CSS && CSS.escape) ? CSS.escape(t)
+                                    : t.replace(/[^A-Za-z0-9_-]/g, '');
+}
+
 let STALE = false, POLL = null;
 function staleSession(){
   if(STALE) return;
@@ -874,7 +881,10 @@ function checkLine(c){
 
 function toggle(pane, id, on){
   on ? SEL[pane].add(id) : SEL[pane].delete(id);
-  const card = document.querySelector(`#${pane==='review'?'rList':'lList'} .card[data-id="${id}"]`);
+  // CSS.escape, not string concatenation: an id is a filename, and a quote in
+  // one turns the attribute selector into a syntax error that throws.
+  const host = pane==='review' ? '#rList' : '#lList';
+  const card = document.querySelector(host + ' .card[data-id="' + cssq(id) + '"]');
   if(card) card.classList.toggle('pick', on);
   syncBar(pane);
 }

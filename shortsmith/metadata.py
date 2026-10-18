@@ -107,6 +107,41 @@ def _fallback(script: dict) -> dict:
     }
 
 
+# What a metadata record is allowed to contain. Anything else a caller sends
+# is dropped rather than persisted: this is the one endpoint that writes
+# caller-supplied structure to disk, and "store whatever arrives" is how a
+# record stops being a record.
+_STR_FIELDS = {"title": 95, "description": 5000, "hashtags": 300,
+               "caption": 200, "source": 40}
+MAX_TITLES, MAX_TAGS = 10, 25
+
+
+def sanitize(raw) -> dict:
+    """Coerce an incoming metadata dict into the shape the app understands."""
+    if not isinstance(raw, dict):
+        return {}
+    out: dict = {}
+    for key, limit in _STR_FIELDS.items():
+        value = raw.get(key)
+        if isinstance(value, (str, int, float)):
+            text = str(value).strip()
+            if text:
+                out[key] = text[:limit]
+    titles = raw.get("titles")
+    if isinstance(titles, list):
+        clean = [str(t).strip()[:95] for t in titles
+                 if isinstance(t, (str, int, float)) and str(t).strip()]
+        if clean:
+            out["titles"] = clean[:MAX_TITLES]
+    tags = raw.get("tags")
+    if isinstance(tags, list):
+        clean = [str(t).strip().lower()[:60] for t in tags
+                 if isinstance(t, (str, int, float)) and str(t).strip()]
+        if clean:
+            out["tags"] = clean[:MAX_TAGS]
+    return out
+
+
 def build(script: dict, model_info: dict | None = None,
           plan: dict | None = None, timeout: float = 420) -> dict:
     """Generate posting metadata from the FINISHED script."""

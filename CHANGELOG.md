@@ -45,7 +45,23 @@
   disk, so a 2 GB clip copies with a progress bar instead of being held in
   memory, and a file that is not really a video is refused rather than stored.
 
+**Fixed**
+- Approved videos carried a duplicate. Every one had a second, compressed
+  `.preview.mp4` beside it — built to fit Discord's 10 MB upload cap by a
+  feature that has since been removed, and never cleaned up. A finished video
+  is four files: the mp4, its thumbnail, its record and its report. Anything
+  else sharing the name is swept at startup, so a leftover from a removed
+  feature cannot sit there for months again.
+
 **Security**
+- Metadata sent to the app is checked against the shape a record is allowed to
+  have, instead of being stored as it arrives.
+- The update button checks WHICH repository it is about to pull from before
+  pulling, and reports whether the commit it moved to was signed. A git config
+  pointed somewhere else was the one way that button could have installed code
+  from a repository you never chose.
+- The app says so, once, when the ffmpeg it found lives in a folder your own
+  account can write to.
 - Shortsmith no longer sends anything anywhere. Two paths remained: an online
   image generator that was ON by default and received every scene description
   whenever the backgrounds folder was empty, and a Gemini fallback that sent
