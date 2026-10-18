@@ -30,6 +30,7 @@ class PipelineState(TypedDict, total=False):
     script: dict                 # validated script JSON
     hero_budget: list            # [lo, hi] for this lane
     script_source: str           # "crew" | "single_shot" | "mock"
+    fact_check: dict             # explainers only: claims checked and corrected
 
     # --- voice stage ---
     audio_paths: list            # wav per scene

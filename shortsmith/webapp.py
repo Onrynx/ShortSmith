@@ -125,6 +125,14 @@ def _queue_state() -> dict:
     return qs()
 
 
+def _resume_state() -> dict | None:
+    """A render that stopped early and could be carried on."""
+    try:
+        return control.resumable()
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def _gate_state() -> dict | None:
     """The script waiting to be read, if a run has stopped for one."""
     from .gate import waiting
@@ -151,6 +159,7 @@ def app_state() -> dict:
         "approved": approved_items(),
         "queue": _queue_state(),
         "gate": _gate_state(),
+        "resume": _resume_state(),
     }
 
 
@@ -469,6 +478,13 @@ class _Handler(BaseHTTPRequestHandler):
                 return self._json(r, 200 if r.get("ok") else 400)
             r = control.run_now(channel, control.RENDER_SLOT, False,
                                 voice=voice, topic=brief, seconds=secs, mode=mode)
+            return self._json(r, 200 if r.get("ok") else 400)
+
+        if p == "/api/resume":
+            r = control.resume_render(str(body.get("run_id") or ""))
+            return self._json(r, 200 if r.get("ok") else 400)
+        if p == "/api/discard":
+            r = control.discard_resumable(str(body.get("run_id") or ""))
             return self._json(r, 200 if r.get("ok") else 400)
 
         if p == "/api/gate":

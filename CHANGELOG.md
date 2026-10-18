@@ -18,6 +18,14 @@
   description, hashtags, keywords and a caption, generated from that video's
   own script and stored on that video's record. Copy any field, pick a title,
   or have it written again.
+- Carry on from where it stopped. A render that crashes keeps its checkpoint,
+  so the app offers to resume it — the written script and the recorded
+  narration are reused instead of being paid for twice.
+- Explainers get fact-checked. Claims are pulled out of the finished script and
+  put to the model one at a time, twice, and only where both passes agree that
+  something is wrong is the line corrected. Anything it could not settle is
+  shown to you rather than quietly changed. Simplifications are left alone, and
+  a myth the script is about to debunk is not treated as a claim.
 - The Library is a grid of files now. Click to select, double-click to open
   details, ⋮ for the rest. Shift and Ctrl select ranges, Delete and Enter do
   what you expect, and deleting always asks first.
@@ -27,6 +35,10 @@
   still waits for you in Review.
 - Video playback moved into the details drawer, so the list refreshing can
   never interrupt something you are watching.
+
+**Fixed**
+- A status update with an unusual lane name could raise and take a whole render
+  down on Windows.
 
 ## 2.0.0
 

@@ -224,7 +224,8 @@ def _spawn(cmd: list[str], tag: str) -> dict:
 
 def run_now(channel: str, lane: str = RENDER_SLOT, mock: bool = False,
             voice: str | None = None, topic: str = "",
-            seconds: float | None = None, mode: str = "express") -> dict:
+            seconds: float | None = None, mode: str = "express",
+            run_id: str = "") -> dict:
     if channel not in (list_channels() or []):
         return {"ok": False, "error": f"unknown channel {channel}"}
     cmd = [sys.executable, str(ROOT / "run.py"), "--channel", channel, "--lane", lane]
@@ -238,6 +239,8 @@ def run_now(channel: str, lane: str = RENDER_SLOT, mock: bool = False,
         cmd += ["--seconds", str(float(seconds))]
     if mode in ("guided", "express", "auto"):
         cmd += ["--mode", mode]
+    if run_id:
+        cmd += ["--run-id", run_id]
     res = _spawn(cmd, f"{channel}_{lane}")
     if lane == RENDER_SLOT and res.get("ok"):
         try:
@@ -245,6 +248,100 @@ def run_now(channel: str, lane: str = RENDER_SLOT, mock: bool = False,
         except Exception:
             pass
     return res
+
+
+# --------------------------------------------------------------------------- #
+# Picking up a render that died
+# --------------------------------------------------------------------------- #
+# Every stage writes a checkpoint into the run's working directory, and a run
+# that finishes has that directory deleted. So any checkpoint still on disk is,
+# by definition, a render that stopped early — and the stages it already
+# finished are the expensive ones. Starting over would re-write the script and
+# re-record every line of narration for nothing.
+_STAGE_WORDS = {
+    "script": "the story", "approve": "your approval", "voice": "the narration",
+    "canvas": "the visuals", "cutter": "the edit", "herald": "the finishing",
+}
+_ALL_STAGES = ["script", "approve", "voice", "canvas", "cutter", "herald", "file"]
+
+
+def _checkpoints() -> list[dict]:
+    """Every unfinished run on disk, newest first."""
+    found = []
+    for ck in OUTPUT_DIR.glob("*/_work/*/checkpoint.json"):
+        data = read_json(ck, None)
+        if not isinstance(data, dict):
+            continue
+        st = data.get("state") or {}
+        done = [s for s in _ALL_STAGES if s in (data.get("completed") or [])]
+        if not done or not st.get("run_id"):
+            continue
+        try:
+            when = ck.stat().st_mtime
+        except OSError:
+            continue
+        nxt = next((x for x in _ALL_STAGES if x not in done), None)
+        found.append({
+            "run_id": st["run_id"],
+            "channel": st.get("channel") or ck.parents[2].name,
+            "title": (st.get("script") or {}).get("title") or st.get("topic") or "Untitled",
+            "topic": st.get("topic") or "",
+            "voice": st.get("voice_style") or "adam",
+            "seconds": st.get("requested_seconds"),
+            "mode": st.get("mode") or "express",
+            "done": done,
+            "done_words": [_STAGE_WORDS.get(d, d) for d in done
+                           if d not in ("approve", "file")],
+            "next": nxt,
+            "next_word": _STAGE_WORDS.get(nxt, nxt or "the rest"),
+            "when": when,
+            "dir": str(ck.parent),
+        })
+    return sorted(found, key=lambda r: r["when"], reverse=True)
+
+
+def resumable() -> dict | None:
+    """The newest render that could be picked up, if any."""
+    if render_in_progress():
+        return None
+    found = _checkpoints()
+    return found[0] if found else None
+
+
+def resume_render(run_id: str = "") -> dict:
+    """Start a stopped render again. Finished stages are skipped, not redone."""
+    if render_in_progress():
+        return {"ok": False, "error": "a render is already running"}
+    found = _checkpoints()
+    item = next((r for r in found if r["run_id"] == run_id), None) if run_id else            (found[0] if found else None)
+    if not item:
+        return {"ok": False, "error": "there is nothing to carry on from"}
+    # The saved state carries the mode and the script; the topic has to be
+    # handed back in because run_lite deliberately re-reads it from the new
+    # invocation (so a resume can never silently change what was asked for).
+    return run_now(item["channel"], RENDER_SLOT, False, voice=item["voice"],
+                   topic=item["topic"], seconds=item["seconds"],
+                   mode=item["mode"], run_id=item["run_id"])
+
+
+def discard_resumable(run_id: str = "") -> dict:
+    """Throw away a stopped render's working files."""
+    import shutil
+    found = _checkpoints()
+    targets = [r for r in found if not run_id or r["run_id"] == run_id]
+    if not targets:
+        return {"ok": False, "error": "there is nothing to discard"}
+    freed = 0
+    for t in targets:
+        d = Path(t["dir"])
+        if d.name != t["run_id"] or "_work" not in d.parts:
+            continue        # refuse anything that is not scratch
+        try:
+            freed += sum(f.stat().st_size for f in d.rglob("*") if f.is_file())
+            shutil.rmtree(d, ignore_errors=True)
+        except OSError:
+            pass
+    return {"ok": True, "discarded": len(targets), "freed_mb": round(freed / 1024 ** 2)}
 
 
 def render_in_progress() -> bool:

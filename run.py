@@ -121,7 +121,7 @@ def main(argv=None) -> int:
         print(f"   thumb : {state.get('thumbnail_path')}")
         if state.get("fallbacks"):
             print(f"   fallbacks fired: {len(state['fallbacks'])} (see report / feed)")
-        print("\n   Review & approve it in Discord (pending/ -> approved/).")
+        print("\n   Open Shortsmith and approve it under Review.")
         return 0
     if state.get("deferred"):
         print("⏳ QUEUED — clips submitted to Wan2GP; re-run to assemble.")

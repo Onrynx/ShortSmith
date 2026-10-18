@@ -433,9 +433,16 @@ def ffprobe_duration(path: Path | str) -> float:
 # --------------------------------------------------------------------------- #
 # Status files (read by the Discord bot for live per-lane progress)
 # --------------------------------------------------------------------------- #
+_SAFE_LANE = re.compile(r"[^A-Za-z0-9_.-]")
+
+
 def write_status(lane: str, data: dict) -> None:
+    # A lane name becomes a filename. progress() defaults it to "?", which is
+    # not a legal character on Windows — writing it raises OSError and takes
+    # the whole render down over a status update nobody reads.
+    safe = _SAFE_LANE.sub("_", str(lane or "render")) or "render"
     data = {**data, "updated": utcnow_iso()}
-    write_json(STATUS_DIR / f"{lane}.json", data)
+    write_json(STATUS_DIR / f"{safe}.json", data)
 
 
 def read_status(lane: str) -> dict:

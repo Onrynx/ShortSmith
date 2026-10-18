@@ -148,6 +148,7 @@ def _summary(state: dict) -> dict:
         "target": round(target),
         "revision": int(state.get("gate_revision") or 0),
         "why": state.get("gate_reason") or "",
+        "facts": state.get("fact_check") or None,
         "scenes": [{"purpose": s.get("purpose", ""), "narration": s.get("narration", "")}
                    for s in scenes],
         "asked_at": time.time(),

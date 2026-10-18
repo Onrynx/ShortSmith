@@ -412,6 +412,7 @@ tr.dis{opacity:.42}
       <!-- PROGRESS -->
       <div class="scr" id="progress">
         <h1 id="pTitle">Nothing is rendering<span class="sub" id="pSub">Start one from Make.</span></h1>
+        <div id="pResume" style="display:none"></div>
         <div id="pGate" style="display:none"></div>
         <div id="pQueue" style="display:none"></div>
         <div id="pBody" style="display:none">
@@ -542,6 +543,71 @@ function stepBar(step){
 // it stops for. Showing the whole script matters: a hook that misread the
 // brief is obvious in two lines, and catching it here saves the thirteen
 // minutes the rest of the pipeline would spend on it.
+// A render that died halfway still has its script written and its narration
+// recorded — both of which cost real minutes. Starting over throws that away,
+// so offer to carry on instead, and say what is already done.
+function renderResume(r){
+  const box = $('#pResume');
+  if(!r || !r.run_id){ box.style.display = 'none'; return; }
+  box.style.display = 'block';
+  const have = (r.done_words || []);
+  box.innerHTML = '<div class="card" style="margin-bottom:18px;border-color:var(--info)">'
+    + '<b>A video stopped before it finished</b>'
+    + '<div class="muted" style="margin-top:4px">' + esc(r.title) + '</div>'
+    + '<div class="muted" style="margin-top:8px">'
+    + (have.length ? esc(have.join(', ')) + ' already done — carrying on skips '
+                     + 'straight to ' + esc(r.next_word || 'the rest') + '.'
+                   : 'Nothing finished yet, so this one starts over.')
+    + '</div>'
+    + '<div class="row" style="margin-top:14px">'
+    + '<button class="btn ok sm" onclick="resumeRun()">Carry on from here</button>'
+    + '<button class="btn g sm" onclick="discardRun()">Throw it away</button>'
+    + '</div></div>';
+}
+
+async function resumeRun(){
+  const r = (LASTSTATE && LASTSTATE.resume) || null;
+  if(!r) return;
+  const res = await api('/api/resume', {run_id: r.run_id});
+  if(res.error) return notify('Could not carry on', res.error, 'bad');
+  notify('Picking up where it stopped', 'Skipping what was already done.', 'good');
+  $('#pResume').style.display = 'none';
+  refresh();
+}
+
+async function discardRun(){
+  const r = (LASTSTATE && LASTSTATE.resume) || null;
+  if(!r) return;
+  if(!confirm('Throw away the unfinished video and its working files?')) return;
+  const res = await api('/api/discard', {run_id: r.run_id});
+  if(res.error) return notify('Could not discard', res.error, 'bad');
+  notify('Thrown away', (res.freed_mb || 0) + ' MB of working files removed.', 'good');
+  $('#pResume').style.display = 'none';
+  refresh();
+}
+
+// Explainers get their claims checked against the model twice, one claim at a
+// time. Corrections are already in the script below; what is worth your eyes
+// is the list of things it could not settle — those are where it is guessing.
+function factsHTML(f){
+  if(!f || !f.ran || !(f.claims || []).length) return '';
+  const unsure = f.unsure || [], fixed = f.corrected || 0;
+  let h = '<div class="metafield"><div class="lbl">Fact-check</div><div class="val">'
+    + f.claims.length + ' claim' + (f.claims.length === 1 ? '' : 's') + ' checked'
+    + (fixed ? ' &middot; ' + fixed + ' line' + (fixed === 1 ? '' : 's') + ' corrected' : '')
+    + (unsure.length ? ' &middot; ' + unsure.length + ' it could not settle' : '');
+  if(unsure.length) h += unsure.map(u =>
+      String.fromCharCode(10) + String.fromCharCode(10)
+      + 'UNSURE: ' + esc(u.claim)
+      + (u.why ? String.fromCharCode(10) + '  ' + esc(u.why) : '')).join('');
+  const applied = (f.wrong || []).filter(w => w.applied);
+  if(applied.length) h += applied.map(w =>
+      String.fromCharCode(10) + String.fromCharCode(10)
+      + 'CORRECTED: ' + esc(w.claim)
+      + String.fromCharCode(10) + '  now: ' + esc(w.correction)).join('');
+  return h + '</div></div>';
+}
+
 let GATE_RUN = null;
 
 function renderGate(g){
@@ -568,6 +634,7 @@ function renderGate(g){
     + (g.kind ? fact('kind', g.kind) : '')
     + (g.revision ? fact('rewrite', '#' + g.revision) : '')
     + '</div>'
+    + factsHTML(g.facts)
     + '<div class="read">' + (g.scenes || []).map((sc, i) =>
         '<div class="scene"><div class="sn">' + (i+1) + '</div><div>'
         + (sc.purpose ? '<span class="tag">' + esc(sc.purpose) + '</span>' : '')
@@ -639,8 +706,9 @@ function renderProgress(r){
     $('#pBody').style.display='none'; return;
   }
   if(r.phase==='failed'){
-    $('#pTitle').childNodes[0].nodeValue='That render failed';
-    $('#pSub').textContent=r.message||''; $('#steps').innerHTML=''; $('#pLive').innerHTML=''; return;
+    $('#pTitle').childNodes[0].nodeValue='That render stopped';
+    $('#pSub').textContent=r.message||'';
+    $('#pBody').style.display='none'; return;
   }
   if(r.phase==='done'){
     $('#pTitle').childNodes[0].nodeValue='Finished';
@@ -1214,6 +1282,7 @@ async function refresh(){
   $('#makeHint').textContent = BUSY ? 'A render is already running.' : 'Takes about 12–15 minutes.';
   renderProgress(r);
   renderGate(s.gate);
+  renderResume(s.resume);
   renderQueue(s.queue);
   announce(s);
   renderReview(s.pending || []);

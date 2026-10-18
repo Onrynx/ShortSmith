@@ -3,7 +3,7 @@
 Pipeline: script -> voice -> canvas -> cutter -> herald. Stories are written by a
 local model via Ollama; narration by Kokoro; visuals over gameplay backgrounds;
 captions synced with faster-whisper; assembled by FFmpeg; reviewed and approved by
-you in Discord.
+you in the app.
 
 Design principle baked into every module: **degrade, never die.** The core depends
 only on the Python stdlib + Pillow + numpy + FFmpeg + Ollama. Every heavier piece
