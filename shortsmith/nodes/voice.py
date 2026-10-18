@@ -1,10 +1,12 @@
-"""Stage 2 — voice. Famous voices first, always-works fallback.
+"""Stage 2 — voice. Synthesised here, on this machine, every time.
 
-Engine order (auto): ElevenLabs (the famous AI narrator voices — needs a free
-ELEVENLABS_API_KEY) -> TikTok TTS (free, if a working endpoint is set) -> Kokoro
-(free, local, unlimited) -> speech-paced placeholder tone. An engine that errors
-(e.g. ElevenLabs quota) is dropped for the rest of the run; the pipeline never
-fails at the voice stage.
+Kokoro runs locally and unmetered, and if it fails the run falls through to a
+speech-paced silent track rather than stopping: the pipeline never dies at the
+voice stage.
+
+V1 preferred two hosted engines when an API key was present, which meant the
+narration — the entire script — was uploaded to a third party because of a line
+in a config file. They are gone. Narration text does not leave this computer.
 """
 from __future__ import annotations
 
@@ -23,6 +25,18 @@ KOKORO_ONNX_URL = env("KOKORO_ONNX_URL",
     "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx")
 KOKORO_VOICES_URL = env("KOKORO_VOICES_URL",
     "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin")
+# The exact artifacts this app was built and tested against. An ONNX file is
+# a computation graph that onnxruntime will load and run, so "it came over
+# HTTPS from the right host" is not enough on its own — the host can re-tag a
+# release, and the URLs above are overridable from .env. A mismatch refuses the
+# file rather than loading it.
+#
+# These digests were taken from the copies this installation already had, so
+# they pin the app to what it has been using. They are not a publisher
+# signature and do not prove the upstream author's intent.
+KOKORO_ONNX_SHA256 = "7d5df8ecf7d4b1878015a32686053fd0eebe2bc377234608764cc0ef3636a6c5"
+KOKORO_VOICES_SHA256 = "bca610b8308e8d99f32e6fe4197e7ec01679264efed0cac9140fe9c29f1fbf7d"
+
 MODEL_PATH = MODELS_DIR / "kokoro-v1.0.onnx"
 VOICES_PATH = MODELS_DIR / "voices-v1.0.bin"
 
@@ -36,50 +50,43 @@ def _mp3_to_wav(mp3: Path, wav: Path) -> bool:
 
 
 # --------------------------------------------------------------------------- #
-# ElevenLabs — the famous voices (free tier with a key)
+# Narration is synthesised on this machine, full stop.
+#
+# V1 could call out to ElevenLabs or a TikTok TTS endpoint, which meant the
+# narration text — the whole script — was POSTed to a third party the moment an
+# API key appeared in .env. The app tells the user "nothing leaves this
+# computer", and a config file was able to make that untrue without changing
+# anything on screen. Both engines are gone rather than gated: an off switch
+# someone can flip by editing a file is not a promise.
 # --------------------------------------------------------------------------- #
-def synth_elevenlabs(text: str, voice_id: str, out_wav: Path) -> None:
-    key = env("ELEVENLABS_API_KEY")
-    if not key:
-        raise RuntimeError("no ELEVENLABS_API_KEY")
-    model = env("ELEVENLABS_MODEL", "eleven_multilingual_v2")
-    url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
-    body = json.dumps({"text": text, "model_id": model,
-                       "voice_settings": {"stability": 0.45, "similarity_boost": 0.8,
-                                          "style": 0.35}}).encode()
-    req = urllib.request.Request(url, data=body, headers={
-        "xi-api-key": key, "Content-Type": "application/json", "Accept": "audio/mpeg"})
-    with urllib.request.urlopen(req, timeout=90) as r:
-        mp3 = out_wav.with_suffix(".mp3")
-        mp3.write_bytes(r.read())
-    if not _mp3_to_wav(mp3, out_wav):
-        raise RuntimeError("elevenlabs mp3->wav failed")
-
-
-# --------------------------------------------------------------------------- #
-# TikTok TTS — free, needs a reachable endpoint (TIKTOK_TTS_URL)
-# --------------------------------------------------------------------------- #
-def synth_tiktok(text: str, voice: str, out_wav: Path) -> None:
-    endpoint = env("TIKTOK_TTS_URL")
-    if not endpoint:
-        raise RuntimeError("no TIKTOK_TTS_URL")
-    body = json.dumps({"text": text[:290], "voice": voice}).encode()
-    req = urllib.request.Request(endpoint, data=body,
-                                 headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=45) as r:
-        data = json.loads(r.read())
-    b64 = data.get("data") or data.get("audio") or data.get("v_str")
-    if not b64:
-        raise RuntimeError(f"tiktok tts: no audio ({str(data)[:120]})")
-    mp3 = out_wav.with_suffix(".mp3")
-    mp3.write_bytes(base64.b64decode(b64))
-    if not _mp3_to_wav(mp3, out_wav):
-        raise RuntimeError("tiktok mp3->wav failed")
 
 
 # --------------------------------------------------------------------------- #
 # Kokoro — free, local, unlimited
 # --------------------------------------------------------------------------- #
+def _expected(url: str, digest: str) -> str | None:
+    """The digest to enforce, unless the URL was pointed somewhere else.
+
+    Overriding KOKORO_ONNX_URL is a legitimate thing to do (a mirror, an
+    air-gapped copy), and a digest for a different file would just make that
+    impossible. So the pin applies to the artifact we know, and a custom URL
+    is checked against SHORTSMITH_KOKORO_SHA256 if the user supplies one.
+    """
+    from ..utils import env as _env
+    default_onnx = ("https://github.com/thewh1teagle/kokoro-onnx/releases/"
+                    "download/model-files-v1.0/kokoro-v1.0.onnx")
+    default_voices = ("https://github.com/thewh1teagle/kokoro-onnx/releases/"
+                      "download/model-files-v1.0/voices-v1.0.bin")
+    if url in (default_onnx, default_voices):
+        return digest
+    override = (_env("SHORTSMITH_KOKORO_SHA256", "") or "").strip()
+    if override:
+        return override
+    log("warn", f"{url} is not the pinned download and no checksum was given; "
+                "it will be accepted unverified")
+    return None
+
+
 def _ensure_kokoro():
     global _KOKORO
     if _KOKORO is not None:
@@ -91,9 +98,13 @@ def _ensure_kokoro():
     try:
         if not MODEL_PATH.exists():
             log("info", "downloading Kokoro model (~310MB) ...")
-            http_download(KOKORO_ONNX_URL, MODEL_PATH, timeout=1800)
+            http_download(KOKORO_ONNX_URL, MODEL_PATH, timeout=1800,
+                          expect_sha256=_expected(KOKORO_ONNX_URL, KOKORO_ONNX_SHA256),
+                          max_bytes=600 * 1024 ** 2)
         if not VOICES_PATH.exists():
-            http_download(KOKORO_VOICES_URL, VOICES_PATH, timeout=600)
+            http_download(KOKORO_VOICES_URL, VOICES_PATH, timeout=600,
+                          expect_sha256=_expected(KOKORO_VOICES_URL, KOKORO_VOICES_SHA256),
+                          max_bytes=200 * 1024 ** 2)
         _KOKORO = Kokoro(str(MODEL_PATH), str(VOICES_PATH))
         return _KOKORO
     except Exception as exc:  # noqa: BLE001
@@ -177,15 +188,9 @@ def _engine_chain(cfg: dict, mock: bool) -> list[tuple]:
     """Ordered [(name, synth_fn, voice_id)] the run will try, best first."""
     if mock:
         return [("kokoro", synth_kokoro, cfg.get("voice", "am_adam"))]
-    want = (env("VOICE_ENGINE", "auto") or "auto").lower()
-    chain = []
-    if want in ("auto", "elevenlabs") and env("ELEVENLABS_API_KEY"):
-        chain.append(("elevenlabs", synth_elevenlabs,
-                      cfg.get("voice_11", "pNInz6obpgDQGcFmaJgB")))
-    if want in ("auto", "tiktok") and env("TIKTOK_TTS_URL"):
-        chain.append(("tiktok", synth_tiktok, cfg.get("voice_tiktok", "en_us_002")))
-    chain.append(("kokoro", synth_kokoro, cfg.get("voice", "am_adam")))
-    return chain
+    # One engine, on this machine. The list shape is kept because the caller
+    # walks it and falls through to a silent placeholder if synthesis fails.
+    return [("kokoro", synth_kokoro, cfg.get("voice", "am_adam"))]
 
 
 def node_voice(state: dict) -> dict:

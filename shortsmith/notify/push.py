@@ -24,21 +24,15 @@ _COLOR = {"red": 0xF85149, "yellow": 0xE3B341, "green": 0x3FB950}
 
 def _send_discord(severity: str, lane: str, channel: str, stage: str,
                   message: str) -> None:
-    url = env("DISCORD_WEBHOOK_URL")
-    if not url:
-        return
-    payload = {
-        "username": "Shortsmith",
-        "embeds": [{
-            "title": f"{ICON[severity]} {channel} · {lane} · {stage}",
-            "description": message[:2000],
-            "color": _COLOR.get(severity, 0x8B949E),
-        }],
-    }
-    try:
-        http_post_json(url, payload, timeout=10)
-    except Exception as exc:  # noqa: BLE001
-        log("warn", f"discord webhook failed: {exc}")
+    """Does nothing. Kept so the call site reads the same.
+
+    This used to POST every red/yellow/green event — story titles, error text,
+    file paths — to whatever URL sat in DISCORD_WEBHOOK_URL. The app has no
+    Discord interface any more, and a webhook that fires because of a line in
+    .env is exactly the kind of quiet outbound traffic a local-only tool should
+    not have. Events go to the feed and the Updates screen instead.
+    """
+    return
 
 
 def notify(severity: str, lane: str, channel: str, stage: str, message: str,

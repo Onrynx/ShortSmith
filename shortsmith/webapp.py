@@ -77,6 +77,17 @@ _STAGE_TEXT = {
 SESSION_TOKEN = secrets.token_urlsafe(24)
 _LOOPBACK = {"127.0.0.1", "localhost", "::1", "0:0:0:0:0:0:0:1"}
 MAX_BODY = 1 << 20          # 1 MB; no legitimate call is anywhere near this
+# A thread per connection with no ceiling is a denial of service waiting for a
+# bored script: sockets are cheap to open and each one costs us a thread and a
+# stack. The cap is generous for one page (which keeps a handful of range
+# requests in flight) and small enough that nothing can pile up unbounded.
+MAX_CONNECTIONS = 48
+# A connection that opens and then says nothing holds its thread forever
+# without this. Reading a request is fast; keeping the socket alive between
+# requests is what the longer idle window is for.
+READ_TIMEOUT = 20.0
+IDLE_TIMEOUT = 75.0
+_inflight = threading.BoundedSemaphore(MAX_CONNECTIONS)
 
 
 def _host_is_loopback(value: str) -> bool:
@@ -325,8 +336,52 @@ class _Handler(BaseHTTPRequestHandler):
     # here sends an accurate Content-Length, which 1.1 requires.
     protocol_version = "HTTP/1.1"
 
+    # BaseHTTPRequestHandler applies this to the socket before reading.
+    timeout = READ_TIMEOUT
+
     def log_message(self, fmt, *args):      # noqa: A003 - quiet by default
         pass
+
+    def setup(self):        # noqa: D102
+        super().setup()
+        try:
+            self.connection.settimeout(READ_TIMEOUT)
+        except OSError:
+            pass
+
+    def handle(self):       # noqa: D102
+        """One connection, counted against the ceiling.
+
+        BoundedSemaphore rather than a plain one: releasing more than we
+        acquired would silently raise the ceiling, and that is exactly the bug
+        you never notice until the day it matters.
+        """
+        if not _inflight.acquire(blocking=False):
+            try:
+                self.close_connection = True
+                self.send_response(503)
+                self.send_header("Retry-After", "1")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+            except OSError:
+                pass
+            return
+        try:
+            super().handle()
+        finally:
+            _inflight.release()
+
+    def handle_one_request(self):   # noqa: D102
+        # A socket that connects and then says nothing gets the short timeout;
+        # only once it has actually made a request does it earn the longer
+        # keep-alive window that a <video> element needs between range reads.
+        try:
+            self.connection.settimeout(
+                IDLE_TIMEOUT if getattr(self, "_served", False) else READ_TIMEOUT)
+        except OSError:
+            pass
+        super().handle_one_request()
+        self._served = True
 
     # ---- helpers ---- #
     def _json(self, obj, code: int = 200) -> None:
@@ -341,14 +396,38 @@ class _Handler(BaseHTTPRequestHandler):
         except OSError:
             pass            # client went away mid-reply; nothing to do
 
-    def _body(self) -> dict:
+    def _body(self):
+        """The request body as a dict, or an (error, code) pair to return.
+
+        Returning {} for anything unparseable meant a malformed request ran the
+        route with empty arguments instead of being refused, and a JSON array
+        reached `body.get(...)` and raised — a 500 where the honest answer was
+        "that is not a request this endpoint takes".
+        """
+        raw_len = self.headers.get("Content-Length")
         try:
-            n = int(self.headers.get("Content-Length") or 0)
-            if n < 0 or n > MAX_BODY:
-                return {}
-            return json.loads(self.rfile.read(n) or b"{}")
-        except Exception:  # noqa: BLE001
+            n = int(raw_len or 0)
+        except (TypeError, ValueError):
+            return ("length required", 411)
+        if n < 0:
+            return ("length required", 411)
+        if n > MAX_BODY:
+            return (f"body too large (limit {MAX_BODY} bytes)", 413)
+        if n == 0:
             return {}
+        try:
+            raw = self.rfile.read(n)
+        except OSError:
+            return ("could not read the body", 400)
+        if len(raw) != n:
+            return ("body shorter than Content-Length", 400)
+        try:
+            parsed = json.loads(raw)
+        except ValueError:
+            return ("body is not valid JSON", 400)
+        if not isinstance(parsed, dict):
+            return ("body must be a JSON object", 400)
+        return parsed
 
     def _caller_ok(self) -> bool:
         """Loopback Host, and an Origin/Referer that is ours or absent."""
@@ -438,6 +517,15 @@ class _Handler(BaseHTTPRequestHandler):
                 partial = True
             except ValueError:
                 partial = False
+            # An unsatisfiable range has its own status code; without this a
+            # start past the end produced a zero-length 206 whose Content-Range
+            # claimed otherwise, which browsers are entitled to find confusing.
+            if partial and (start < 0 or start >= size or end < start):
+                self.send_response(416)
+                self.send_header("Content-Range", f"bytes */{size}")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
         length = max(0, end - start + 1)
         self.send_response(206 if partial else 200)
         self.send_header("Content-Type", ctype)
@@ -524,7 +612,12 @@ class _Handler(BaseHTTPRequestHandler):
             return self._json({"events": control.events(20)})
         if p.startswith("/api/meta/"):
             iid = unquote(p.rsplit("/", 1)[-1])
-            item = control.get_item(iid) or {}
+            item = control.get_item(iid)
+            if not item:
+                # An id that names nothing — including one refused as unsafe —
+                # is a 404, not an empty success. Returning blank metadata made
+                # a rejected request look like a video with no title.
+                return self._json({"error": "not found"}, 404)
             meta = item.get("metadata")
             if not meta:
                 # Older videos predate per-video metadata; derive what we can
@@ -539,7 +632,9 @@ class _Handler(BaseHTTPRequestHandler):
             return self._json(meta)
         if p.startswith("/api/script/"):
             iid = unquote(p.rsplit("/", 1)[-1])
-            item = control.get_pending(iid) or control.find_item(iid, "approved") or {}
+            item = control.get_pending(iid) or control.find_item(iid, "approved")
+            if not item:
+                return self._json({"error": "not found"}, 404)
             return self._json({
                 "title": item.get("title"),
                 "scenes": [{"narration": sc.get("narration"),
@@ -564,6 +659,9 @@ class _Handler(BaseHTTPRequestHandler):
         if not self._allowed(p):
             return self._json({"error": "forbidden"}, 403)
         body = self._body()
+        if isinstance(body, tuple):
+            message, code = body
+            return self._json({"error": message}, code)
 
         if p == "/api/make":
             count = body.get("count") or 1
@@ -711,11 +809,25 @@ def _free_port(preferred: int = DEFAULT_PORT) -> int:
     return preferred
 
 
+class _Server(ThreadingHTTPServer):
+    """ThreadingHTTPServer that will not share its port.
+
+    HTTPServer sets allow_reuse_address, which on Windows means SO_REUSEADDR —
+    and there that permits a SECOND process to bind the same address and port,
+    with no defined rule about which one gets a given connection. On Linux the
+    same flag only allows rebinding a socket in TIME_WAIT, which is what we
+    actually want, so the behaviour is split by platform rather than disabled
+    everywhere.
+    """
+    allow_reuse_address = os.name != "nt"
+    daemon_threads = True
+    request_queue_size = 32
+
+
 def serve(port: int | None = None, background: bool = False):
     """Start the local server. Returns (url, httpd)."""
     port = port or _free_port()
-    httpd = ThreadingHTTPServer((HOST, port), _Handler)
-    httpd.daemon_threads = True
+    httpd = _Server((HOST, port), _Handler)
     url = f"http://{HOST}:{port}/"
     log("info", f"Shortsmith app listening on {url} (this machine only)")
     if background:

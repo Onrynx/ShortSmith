@@ -13,10 +13,11 @@ from pathlib import Path
 from .config import list_channels, load_channel
 from .llm import select_model
 from .notify import recent_events
+from .safety import inside, safe_id
 from .state import approved_dir
 from .utils import (CREATE_NEW_PROCESS_GROUP, CREATE_NO_WINDOW, OUTPUT_DIR, ROOT,
-                    STATE_DIR, ensure_dir, env, read_json, read_status, utcnow_iso,
-                    write_json, write_status)
+                    STATE_DIR, ensure_dir, env, log, read_json, read_status,
+                    utcnow_iso, write_json, write_status)
 
 # The single, neutral slot every on-demand render writes its status into.
 # (There is no "night"/"day" any more — Shortsmith is on-demand only.)
@@ -58,9 +59,15 @@ def list_pending() -> list[dict]:
 
 
 def find_item(item_id: str, where: str = "pending") -> dict | None:
+    # The id arrives from an HTTP path and is about to become a filename.
+    # "../../x" is a valid Python string and Path.exists() walks it happily,
+    # so it is refused here rather than resolved later.
+    ident = safe_id(item_id)
+    if ident is None or where not in ("pending", "approved"):
+        return None
     for ch_dir in OUTPUT_DIR.glob(f"*/{where}"):
-        jp = ch_dir / f"{item_id}.json"
-        if jp.exists():
+        jp = ch_dir / f"{ident}.json"
+        if jp.exists() and inside(jp, ch_dir):
             return _item_from_json(jp)
     return None
 
@@ -118,7 +125,11 @@ def save_metadata(item_id: str, meta: dict) -> dict:
         m = find_item(item_id, where)
         if not m:
             continue
-        jp = Path(m["_dir"]) / f"{item_id}.json"
+        # find_item already refused anything unsafe; rebuild from the checked
+        # form rather than the raw argument so the two can never drift.
+        jp = Path(m["_dir"]) / f"{m['id']}.json"
+        if not inside(jp, m["_dir"]):
+            return {"ok": False, "error": "not found"}
         data = read_json(jp, {}) or {}
         data["metadata"] = meta
         if meta.get("title"):
@@ -132,6 +143,18 @@ def save_metadata(item_id: str, meta: dict) -> dict:
         write_json(jp, data)
         return {"ok": True}
     return {"ok": False, "error": "not found"}
+
+
+def _item_files(m: dict, item_id: str) -> list:
+    """Every file belonging to one item, and nothing else.
+
+    glob(f"{item_id}.*") would treat a bracket in an id as a character class;
+    matching on the stem keeps the selection literal.
+    """
+    folder = Path(m["_dir"])
+    return [p for p in folder.iterdir()
+            if p.is_file() and p.name.startswith(item_id + ".")
+            and inside(p, folder)]
 
 
 def delete_item(item_id: str, where: str = "pending") -> dict:
@@ -162,42 +185,21 @@ def history(limit: int = 20) -> list[dict]:
     return items[:limit]
 
 
-DISCORD_LIMIT = int(9.5 * 1024 * 1024)  # safe under a non-boosted server's ~10MB cap
-
-
-def discord_preview(item_id: str, max_bytes: int = DISCORD_LIMIT) -> Path | None:
-    """A video file guaranteed to fit Discord's upload cap.
-
-    Returns the master if already small; otherwise builds (and caches) a
-    progressively smaller preview until one fits. The full-quality master is never
-    touched — previews are only for reviewing in chat."""
-    from .utils import run_ffmpeg
-    v = media_path(item_id, "video")
-    if not v:
-        return None
-    if v.stat().st_size <= max_bytes:
-        return v
-    prev = v.with_name(f"{item_id}.preview.mp4")
-    if prev.exists() and 0 < prev.stat().st_size <= max_bytes:
-        return prev
-    # step down resolution/quality until it fits (540p is fine for review)
-    for height, crf in ((960, 30), (720, 32), (540, 34), (480, 36)):
-        ok, _ = run_ffmpeg(["-i", str(v), "-vf", f"scale=-2:{height}",
-                            "-c:v", "libx264", "-preset", "veryfast", "-crf", str(crf),
-                            "-c:a", "aac", "-b:a", "80k", "-movflags", "+faststart",
-                            str(prev)], cwd=v.parent, timeout=600)
-        if ok and prev.exists() and 0 < prev.stat().st_size <= max_bytes:
-            return prev
-    return None  # caller falls back to thumbnail + path
-
-
 def media_path(item_id: str, kind: str) -> Path | None:
     for where in ("pending", "approved"):
         m = find_item(item_id, where)
-        if m:
-            name = m.get("video") if kind == "video" else m.get("thumbnail")
-            if name and (Path(m["_dir"]) / name).exists():
-                return Path(m["_dir"]) / name
+        if not m:
+            continue
+        name = m.get("video") if kind == "video" else m.get("thumbnail")
+        # The filename comes out of a JSON record on disk. The app writes
+        # those, but a record is still a file anyone could edit, and whatever
+        # this returns gets streamed to the browser — so it has to be a plain
+        # name that lands inside the item's own folder.
+        if not safe_id(name):
+            continue
+        candidate = Path(m["_dir"]) / str(name)
+        if candidate.exists() and inside(candidate, m["_dir"]):
+            return candidate
     return None
 
 
@@ -216,10 +218,16 @@ def _spawn(cmd: list[str], tag: str) -> dict:
     # DETACHED_PROCESS leaves children console-less, making each one pop its own.
     kwargs = ({"creationflags": CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP}
               if os.name == "nt" else {"start_new_session": True})
-    fh = open(logfile, "w", encoding="utf-8")
-    proc = subprocess.Popen(cmd, cwd=str(ROOT), stdout=fh, stderr=subprocess.STDOUT,
-                            stdin=subprocess.DEVNULL, **kwargs)
-    return {"ok": True, "pid": proc.pid, "log": str(logfile), "cmd": " ".join(cmd)}
+    # The child inherits the handle, so the parent closes its own copy rather
+    # than holding one open per render for the lifetime of the app.
+    with open(logfile, "w", encoding="utf-8") as fh:
+        proc = subprocess.Popen(cmd, cwd=str(ROOT), stdout=fh,
+                                stderr=subprocess.STDOUT,
+                                stdin=subprocess.DEVNULL, **kwargs)
+    # The command line carries the user's brief and absolute paths; it belongs
+    # in the log, not in an HTTP response.
+    log("info", f"started {logfile.name} (pid {proc.pid})")
+    return {"ok": True, "pid": proc.pid, "log": logfile.name}
 
 
 def run_now(channel: str, lane: str = RENDER_SLOT, mock: bool = False,
@@ -353,6 +361,36 @@ def render_in_progress() -> bool:
     return not (st.get("pct") == 100.0 or "pending/" in str(st.get("message") or ""))
 
 
+def _is_our_render(pid: int) -> bool:
+    """Is this pid still the render we started, or has the OS reused it?
+
+    render.pid outlives a crash, and the operating system hands that number to
+    somebody else soon enough. Without this check, pressing Cancel after a
+    failed render can terminate whatever inherited the number — and on Windows
+    `taskkill /T` takes its children with it. boot.py already guards its
+    Ollama pid the same way; this is the other half.
+    """
+    try:
+        import psutil  # type: ignore
+    except ImportError:
+        # Without psutil we cannot tell, and killing the wrong process is
+        # worse than leaving a dead render's pid file behind.
+        log("warn", "psutil is not installed; refusing to kill by pid alone")
+        return False
+    try:
+        proc = psutil.Process(pid)
+        if not proc.is_running():
+            return False
+        name = (proc.name() or "").lower()
+        if "python" not in name:
+            return False
+        cmdline = " ".join(proc.cmdline() or []).lower()
+    except Exception:  # noqa: BLE001  (gone, or not ours to inspect)
+        return False
+    # Our renders are always `python <ROOT>/run.py ...`.
+    return "run.py" in cmdline and str(ROOT).lower() in cmdline
+
+
 def cancel_render() -> dict:
     """Stop the in-progress on-demand render (and its ffmpeg children), if any."""
     # A run paused at the script gate is waiting on a file, not on the CPU.
@@ -374,7 +412,7 @@ def cancel_render() -> dict:
     except Exception:
         pid = None
     killed = False
-    if pid:
+    if pid and _is_our_render(pid):
         try:
             if os.name == "nt":
                 subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"],
@@ -384,6 +422,8 @@ def cancel_render() -> dict:
             killed = True
         except Exception:
             killed = False
+    elif pid:
+        log("warn", f"pid {pid} is not our render any more; not killing it")
     try:
         write_status(RENDER_SLOT, {"stage": "cancelled", "message": "cancelled by user",
                                    "pct": None})

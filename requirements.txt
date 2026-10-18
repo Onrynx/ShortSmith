@@ -1,26 +1,35 @@
-# Shortsmith — core AI pipeline dependencies.
+# Shortsmith — core pipeline dependencies.
+#
+# Versions are PINNED, not floated. `>=` meant every install resolved to
+# whatever happened to be newest that day: two people following the same README
+# got different software, a regression upstream arrived without anyone choosing
+# it, and a compromised release would have been picked up automatically. For a
+# tool whose whole pitch is "download it and press one button", that is not a
+# reasonable default.
+#
+# To move a pin: change it here deliberately, run a render end to end, and
+# commit the change with the rest of the work.
 #
 # NONE of these are needed for MOCK mode: the mock pipeline runs on the Python
 # stdlib + numpy + Pillow + FFmpeg alone and still emits a real vertical .mp4.
-# Install these to unlock the real AI voice (Kokoro) and synced word captions.
 
 # already-common (listed for completeness / fresh envs)
-numpy>=1.26
-Pillow>=10.0
-PyYAML>=6.0
-psutil>=5.9
+numpy==2.4.6
+Pillow==12.2.0
+PyYAML==6.0.3
+psutil==7.2.2
 
 # Story generation needs no extra packages: the planner + writer talk to your
 # local Ollama over plain HTTP. (LangGraph-style orchestration is built in; to
 # use the real LangGraph runner instead: pip install langgraph )
 
-# voice (Kokoro TTS, open weights, commercial-safe)
-kokoro-onnx>=0.3.0
-onnxruntime>=1.17
+# voice (Kokoro TTS, open weights, commercial-safe, runs on this machine)
+kokoro-onnx==0.5.0
+onnxruntime==1.27.0
 
 # word-level burned captions (optional but recommended for long-form)
-faster-whisper>=1.0
+faster-whisper==1.2.1
 
 # desktop app window (uses the OS webview — ~1 MB, not a bundled browser).
 # Without it Shortsmith still runs, just in your normal browser.
-pywebview>=4.4
+pywebview==6.2.1

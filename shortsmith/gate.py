@@ -31,6 +31,7 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
+from .safety import inside, safe_id
 from .utils import STATE_DIR, ensure_dir, log, read_json, write_json
 
 GATE_DIR = ensure_dir(STATE_DIR / "gate")
@@ -41,16 +42,32 @@ MAX_WAIT = 12 * 3600
 MODES = ("guided", "express", "auto")
 
 
-def _req_path(run_id: str) -> Path:
-    return GATE_DIR / f"{run_id}.json"
+def _req_path(run_id: str) -> Path | None:
+    """The request file for a run, or None if the id cannot be trusted.
+
+    This id arrives in a POST body and from JSON on disk, and it is about to
+    become a filename that gets WRITTEN. Callers treat None as "no such run",
+    which is the right answer for an id that names nothing reachable.
+    """
+    ident = safe_id(run_id)
+    if ident is None:
+        return None
+    p = GATE_DIR / f"{ident}.json"
+    return p if inside(p, GATE_DIR) else None
 
 
-def _ans_path(run_id: str) -> Path:
-    return GATE_DIR / f"{run_id}.answer.json"
+def _ans_path(run_id: str) -> Path | None:
+    ident = safe_id(run_id)
+    if ident is None:
+        return None
+    p = GATE_DIR / f"{ident}.answer.json"
+    return p if inside(p, GATE_DIR) else None
 
 
 def _clear(run_id: str) -> None:
     for p in (_req_path(run_id), _ans_path(run_id)):
+        if p is None:
+            continue
         try:
             p.unlink()
         except OSError:
@@ -88,12 +105,13 @@ def decide(run_id: str, action: str, note: str = "") -> dict:
     action = str(action or "").lower()
     if action not in ("go", "rewrite", "drop"):
         return {"ok": False, "error": "unknown action"}
-    if not _req_path(run_id).exists():
+    req, ans = _req_path(run_id), _ans_path(run_id)
+    if req is None or ans is None or not req.exists():
         return {"ok": False, "error": "that script is no longer waiting"}
     if action == "rewrite" and not str(note or "").strip():
         return {"ok": False, "error": "a rewrite needs a note saying what to change"}
-    write_json(_ans_path(run_id), {"action": action, "note": str(note or "")[:1200],
-                                   "at": time.time()})
+    write_json(ans, {"action": action, "note": str(note or "")[:1200],
+                     "at": time.time()})
     return {"ok": True, "action": action}
 
 
@@ -159,6 +177,12 @@ def _wait_for_answer(run_id: str) -> dict:
     """Poll for a decision. Returns an answer, or 'go' once the wait runs out."""
     deadline = time.time() + MAX_WAIT
     ans_path, req_path = _ans_path(run_id), _req_path(run_id)
+    if ans_path is None or req_path is None:
+        # The run id cannot name a file safely, so nothing can ever answer it.
+        # Carrying on is the safe failure: the render proceeds rather than
+        # blocking forever on a question nobody can be asked.
+        log("warn", f"run id {run_id!r} cannot be used as a filename; not stopping")
+        return {"action": "go", "note": "", "unanswerable": True}
     while time.time() < deadline:
         if ans_path.exists():
             ans = read_json(ans_path, None)
@@ -205,9 +229,14 @@ def node_gate(state: dict) -> dict:
     # here and handed back.
     out: dict = {}
 
+    req = _req_path(run_id)
+    if req is None:
+        log("warn", f"run id {run_id!r} cannot be used as a filename; not stopping")
+        return out
+
     while True:
         state["gate_reason"] = reason
-        write_json(_req_path(run_id), _summary(state))
+        write_json(req, _summary(state))
         progress(state, "awaiting", f"Waiting for you to read the script — {reason}",
                  extra={"gate": True, "title": (state.get("script") or {}).get("title")})
         log("info", f"script for {run_id} is waiting to be read")

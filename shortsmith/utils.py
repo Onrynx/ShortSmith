@@ -6,6 +6,7 @@ All HTTP goes through urllib so the pipeline needs no `requests` dependency.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -240,16 +241,57 @@ def http_post_json(url: str, payload: dict, headers: dict | None = None,
             return body
 
 
+def sha256_of(path: Path | str, chunk: int = 1 << 20) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for block in iter(lambda: fh.read(chunk), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
 def http_download(url: str, dest: Path | str, headers: dict | None = None,
-                  timeout: float = 120.0) -> Path:
+                  timeout: float = 120.0, expect_sha256: str | None = None,
+                  max_bytes: int | None = None) -> Path:
+    """Fetch a file, optionally refusing to keep one that is not what we expect.
+
+    Model weights are executed as a computation graph after this returns, so
+    "it downloaded" is not the same as "it is the file we meant". TLS proves we
+    talked to the right host; it says nothing about the artifact having been
+    replaced or re-tagged at that host. The digest does.
+
+    Downloads land on a .part file and are only moved into place once they
+    pass, so a failed or tampered fetch cannot leave something loadable behind.
+    """
     dest = Path(dest)
     dest.parent.mkdir(parents=True, exist_ok=True)
+    part = dest.with_suffix(dest.suffix + ".part")
     req = urllib.request.Request(url, headers=headers or {"User-Agent": "Shortsmith/1.0"})
-    with urllib.request.urlopen(req, timeout=timeout) as resp, open(dest, "wb") as out:
-        shutil.copyfileobj(resp, out)
-    if dest.stat().st_size == 0:
-        raise IOError(f"downloaded empty file from {url}")
-    return dest
+    try:
+        written = 0
+        with urllib.request.urlopen(req, timeout=timeout) as resp, open(part, "wb") as out:
+            while True:
+                block = resp.read(1 << 20)
+                if not block:
+                    break
+                written += len(block)
+                if max_bytes and written > max_bytes:
+                    raise IOError(f"{url} is larger than the {max_bytes} byte limit")
+                out.write(block)
+        if written == 0:
+            raise IOError(f"downloaded empty file from {url}")
+        if expect_sha256:
+            got = sha256_of(part)
+            if got.lower() != expect_sha256.lower():
+                raise IOError(
+                    f"checksum mismatch for {url} — expected {expect_sha256}, "
+                    f"got {got}. The file was NOT kept.")
+        part.replace(dest)
+        return dest
+    finally:
+        try:
+            part.unlink()
+        except OSError:
+            pass
 
 
 def host_reachable(url: str, timeout: float = 3.0) -> bool:

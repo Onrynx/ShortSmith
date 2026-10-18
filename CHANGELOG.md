@@ -37,6 +37,39 @@
   never interrupt something you are watching.
 
 **Security**
+- Every identifier that becomes a filename is validated before it is joined,
+  and every resulting path is checked to still be inside the folder it was
+  meant for. A percent-encoded slash used to survive the route's own split and
+  turn back into a separator afterwards, which let a request read JSON records
+  outside the output folder and let a gate decision write a file outside its
+  own directory.
+- Cancelling a render checks the process is still the render before killing
+  it. A crashed render leaves its pid file behind, the operating system hands
+  that number to something else soon enough, and the old code would have
+  terminated whatever inherited it — with its children, on Windows.
+- Requests must carry a JSON object. Malformed JSON used to run the route with
+  empty arguments, and a JSON array raised a 500 instead of being refused.
+- Connections get a read timeout and the server a ceiling on how many it will
+  hold at once, so a socket that opens and says nothing no longer keeps a
+  thread for as long as it likes. Oversized bodies are refused with 413 and
+  unsatisfiable ranges with 416.
+- On Windows the listening socket no longer sets SO_REUSEADDR, which there
+  lets a second process bind the same port.
+- Narration is synthesised on this machine only. The hosted ElevenLabs and
+  TikTok engines are gone: an API key in a config file used to send the whole
+  script to a third party with nothing on screen to say so.
+- Nothing uploads itself. The YouTube path is gone, including the environment
+  variable that made it upload PUBLICLY.
+- Stage events no longer POST to a Discord webhook.
+- The Discord bot, its language agent and the login-autostart installer are
+  removed. Nothing in the app reached them, and between them they were a
+  hidden startup entry, an outbound connection and the only reason a live bot
+  token needed to exist.
+- Kokoro's voice weights are checked against a pinned SHA-256 before they are
+  loaded, and land on a temporary file until they pass.
+- Dependencies are pinned to exact versions instead of floating on `>=`.
+- `.env.example` no longer asks for credentials belonging to removed features.
+
 - The local server now refuses anything that is not the app's own page. It
   checks that the request came to a loopback address, that any Origin is ours,
   and that it carries a per-run token that only the page we served knows.

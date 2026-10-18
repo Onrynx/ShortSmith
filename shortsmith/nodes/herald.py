@@ -147,70 +147,18 @@ def build_hashtags(tags: list[str], is_shorts: bool = True, limit: int = 5) -> s
 
 
 def publish_mode(state: dict) -> str:
-    """Resolve upload behaviour: 'off' | 'private' | 'public'.
+    """Always "off". Shortsmith does not upload.
 
-    AUTO_PUBLISH=public is the ONLY way videos go public automatically, and it is
-    opt-in by you. Everything else uploads PRIVATE at most, and the default keeps
-    the human approval gate (nothing is uploaded until you approve/--publish)."""
-    ap = (env("AUTO_PUBLISH", "off") or "off").lower()
-    if ap in ("private", "public"):
-        return ap
-    if state.get("publish") or env_bool("PUBLISH", False):
-        return "private"
+    V1 could push the finished video straight to YouTube — PRIVATE with
+    PUBLISH=true, and PUBLIC with AUTO_PUBLISH=public — from environment
+    variables alone, with nothing on screen to say so. Uploading is now
+    something you do yourself, deliberately, from the Library. The function
+    stays so the record keeps its "publish_mode" field and old videos still
+    read back.
+    """
     return "off"
 
 
-# --------------------------------------------------------------------------- #
-# Optional YouTube upload (default PRIVATE; public only on explicit opt-in)
-# --------------------------------------------------------------------------- #
-def _upload_youtube(state, video: Path, thumb: str | None, title, description, tags,
-                    privacy: str = "private") -> str | None:
-    secrets = env("YOUTUBE_CLIENT_SECRETS")
-    token = env("YOUTUBE_TOKEN_JSON")
-    if not secrets or not token or not Path(token).exists():
-        add_fallback(state, "herald", "publish requested but YouTube creds missing; kept in pending/")
-        return None
-    if privacy == "public":
-        add_fallback(state, "herald", "AUTO_PUBLISH=public — uploading PUBLIC (fully autonomous)")
-    try:
-        from google.oauth2.credentials import Credentials  # type: ignore
-        from googleapiclient.discovery import build  # type: ignore
-        from googleapiclient.http import MediaFileUpload  # type: ignore
-
-        creds = Credentials.from_authorized_user_file(token, ["https://www.googleapis.com/auth/youtube.upload"])
-        yt = build("youtube", "v3", credentials=creds)
-        body = {
-            "snippet": {"title": title[:100], "description": description,
-                        "tags": tags, "categoryId": "27"},
-            # Default PRIVATE; 'public' only when you explicitly set AUTO_PUBLISH=public.
-            "status": {"privacyStatus": privacy if privacy in ("private", "public", "unlisted") else "private",
-                       "selfDeclaredMadeForKids": False},
-        }
-        # Self-declared "altered or synthetic content" disclosure (best-effort;
-        # field name may vary by API version — safe to ignore if rejected).
-        try:
-            body["status"]["containsSyntheticMedia"] = True
-        except Exception:
-            pass
-        req = yt.videos().insert(part="snippet,status", body=body,
-                                 media_body=MediaFileUpload(str(video), resumable=True))
-        resp = req.execute()
-        vid = resp.get("id")
-        if thumb and vid:
-            try:
-                yt.thumbnails().set(videoId=vid, media_body=MediaFileUpload(thumb)).execute()
-            except Exception:
-                pass
-        mark_done(state, "herald", f"uploaded {privacy.upper()} to YouTube: {vid}")
-        return vid
-    except Exception as exc:  # noqa: BLE001
-        add_error(state, "herald", f"YouTube upload failed ({exc}); kept in pending/")
-        return None
-
-
-# --------------------------------------------------------------------------- #
-# Node
-# --------------------------------------------------------------------------- #
 def node_herald(state: dict) -> dict:
     workdir = Path(state["workdir"])
     script = state["script"]
@@ -270,12 +218,9 @@ def node_herald(state: dict) -> dict:
     # metadata sidecar the Discord bot reads for !review
     from ..utils import write_json
     runtime = round(sum(state.get("durations", [])), 1)
-    # Upload behaviour resolved by publish_mode() (off|private|public). Default 'off'
-    # => stays in pending/ for human approval. _upload_youtube no-ops without creds.
+    # Finished videos wait in pending/ for you. There is no upload path.
     mode = publish_mode(state)
     published_id = None
-    if mode != "off":
-        published_id = _upload_youtube(state, final_video, thumb, title, description, tags, privacy=mode)
 
     write_json(meta_path, {
         "run_id": state.get("run_id"),
