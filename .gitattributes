@@ -1,0 +1,12 @@
+# Keep every file byte-identical between the working copy, what git stores,
+# and what raw.githubusercontent.com serves.
+#
+# This is not a style preference. The updater verifies each downloaded file
+# against a SHA-256 recorded in manifest.json, and that manifest is generated
+# by hashing the working copy. With git converting line endings on checkout,
+# the working copy was CRLF while GitHub served LF — different bytes, so every
+# text file failed its checksum and no install could ever update itself.
+#
+# "-text" tells git to leave line endings exactly as they are, in both
+# directions, so the three copies can never drift apart again.
+* -text

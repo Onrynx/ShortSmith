@@ -1,17 +1,21 @@
 {
- "count": 55,
+ "count": 56,
  "files": {
+  ".gitattributes": {
+   "sha256": "cfcf5770f1995d4e20262aa16888e8b6b6f5a5f26539edf9840848ae79f79f42",
+   "size": 652
+  },
   "CHANGELOG.md": {
-   "sha256": "94a582805f27296ecb72f688485bf0b49975be08ee6a25e99da6ceaafa514ed9",
-   "size": 12338
+   "sha256": "7f42ace399e019b8e959dde2379cfbc9d9ac8eb7adb446c48fa51a7a9540ae75",
+   "size": 12131
   },
   "COMPLIANCE.md": {
-   "sha256": "242b461009f4181632f2a93385ab964b342df9b7932208230250cf528e994181",
-   "size": 3618
+   "sha256": "bdc0e01c813fb017a96064964e42adac19be6eaeca6f946398fdb51e77eda258",
+   "size": 3577
   },
   "README.md": {
-   "sha256": "0e0c1b6c4a1455d88ae278eb37992a1a6182128c31e7561175e375802136ea26",
-   "size": 11102
+   "sha256": "755f5663226cfee3ccc78ecffaf5b7cc666b9a7f2bf0493601bdced54194d4c1",
+   "size": 10833
   },
   "app/icon.icns": {
    "sha256": "76cad7283bcb0fdc20c74d5840eed6672842d591c0f063efe175a1fa288bdc09",
@@ -26,136 +30,136 @@
    "size": 9844
   },
   "app/index.html": {
-   "sha256": "7366361d9bceda687d44dff487c8faa04db3d7f6819213e9363407fc08a03f14",
-   "size": 86816
+   "sha256": "a0330a589f2dedbc543551eeca409532e999500f474c79f218c561b59e69e0cf",
+   "size": 85050
   },
   "assets/backgrounds/README.txt": {
    "sha256": "ae9bb9c87ed8d708966ebf792429a2d98f35826f5b308824e9ca841f3eb79af2",
    "size": 990
   },
   "config/gaming_lore.yaml": {
-   "sha256": "9c885bcb23bfca3cb1213ae9501c3947787b1a97b8d191a3bb16d0432f3abd84",
-   "size": 1382
+   "sha256": "ed4ecfeb692c206acb9b6f43b109265d41f4b5a47bfcafc45d94512b65e0440a",
+   "size": 1356
   },
   "config/gossip_stories.yaml": {
-   "sha256": "54beecc491dd289e3c0d8e28b9435e03a0e4145e0a69ea3d2d20b43b5c559f9a",
-   "size": 1355
+   "sha256": "276c65dc56de1ac5a73543c3073814bac310bbedbdfb5dd751963d4942aa683e",
+   "size": 1331
   },
   "run.py": {
-   "sha256": "4422a400db0bb475f425fa861fb95c98d4ae8aa4258ef1420790fb949033b82f",
-   "size": 6023
+   "sha256": "54d42f8fe9688234ddc8e3ffa7bca6f0fdf27384c75b0de9d73dcab8d0574a8a",
+   "size": 5889
   },
   "shortsmith/__init__.py": {
-   "sha256": "2e4c723ea007980ed8a5624cb25b4e374af571e0b3e6de87b5853d4ef532607a",
-   "size": 925
+   "sha256": "4eeb0346c45576ae277d1bfc5726bc690fe5ab60eebbbb7cb970a5897d227222",
+   "size": 906
   },
   "shortsmith/app.py": {
-   "sha256": "28ae0e8c13c28f2d619b55c2c4814bf6c091ef4ac525e3e1008c0522ac5fcf52",
-   "size": 4930
+   "sha256": "25b80ca314c84cb443a67b24297e8aa378661ccbf282c3ba1f494cdbcf2aed4a",
+   "size": 4793
   },
   "shortsmith/boot.py": {
-   "sha256": "d74d2a7deb997b258bc3abfb41462e51469869c9aec60cdf52e1ce05ea8553fe",
-   "size": 10803
+   "sha256": "ccd45b98d4f20d9f69095e3042afe417594e9bde0bec80d0df1a878160fe82f1",
+   "size": 10518
   },
   "shortsmith/clips.py": {
-   "sha256": "3124d66206a90439b9e493eca2e02a8a4c9bb31089a9e7d0adab6c7ec9f054d3",
-   "size": 10581
+   "sha256": "4f61bd804e9bcd3f41e6709a53010ecdc1570430d5d9fc500e6bffba4bb3a9b0",
+   "size": 10315
   },
   "shortsmith/config.py": {
-   "sha256": "6d5f044b9f00551e3c1ab223f7b38460203b2a02b8376b777555af74819de839",
-   "size": 8692
+   "sha256": "c533b35c7f2534eef05eb7982dc67c217d8b30fdf078dea2d56ad394f1c9e950",
+   "size": 8447
   },
   "shortsmith/continuity.py": {
-   "sha256": "65bde122f5fcb276dae28893fb8cf85d3390772fc57950417d47c0f0300d51d1",
-   "size": 11196
+   "sha256": "4d6b595e84a175cbde70dbf4be071dc0d41d409be825f9ec2f77a3c91a688606",
+   "size": 10954
   },
   "shortsmith/control.py": {
-   "sha256": "ebb1cf9924f70e319a792339432ee5fe6afeb3e1decb053d9243c622544ee78a",
-   "size": 20135
+   "sha256": "477ed4134710f1131a417dc5ecf9a2f972f4ae036169aa2c01c11882707fb2c5",
+   "size": 19622
   },
   "shortsmith/crews/__init__.py": {
    "sha256": "36c06d0ac873cce77be2aec67ee9ef8125a3e83f51475bac28e8b111950109ad",
    "size": 64
   },
   "shortsmith/crews/story_crew.py": {
-   "sha256": "8a84e2a7cbbdf14f18fd5a223c52ff4a0ac016ec618819af2486a64ce15f3f04",
-   "size": 39167
+   "sha256": "39b4aa3ce6768982e8dd02c1f710e3369145a2f500d8cc1ba65df2b0518ffdb4",
+   "size": 38414
   },
   "shortsmith/factcheck.py": {
-   "sha256": "4c4b41e91bbd3bf6cb0cd29e5e5f2af4b3bc8cc3db365633922096ac863941e7",
-   "size": 11057
+   "sha256": "a4f98267a5d9ff7292032aea8690325c5ca6c693ec480ebecf1da12320badbc9",
+   "size": 10802
   },
   "shortsmith/gate.py": {
-   "sha256": "d3353639013557d3c8e326384b137af52e5415a52a438ebec13b2fdef11887d7",
-   "size": 11899
+   "sha256": "180dc63a7ae2a8ab22c67b70125a84a1497a80e0c12a220fee9f879776401813",
+   "size": 11617
   },
   "shortsmith/graph.py": {
-   "sha256": "f464d1ca67e85a722cd7537765a6a9eb6f4c2da33f00886984002660ff1dfeaf",
-   "size": 9463
+   "sha256": "7d4d536a2d2a7ea647cb42680f29bd91d9b65b89172aeba5a5ae6453a5266fb3",
+   "size": 9228
   },
   "shortsmith/hardware.py": {
-   "sha256": "3aedb69294346a8dba15f8abf4b9dc92e925fdeed8a0347732b07b58ff8b9b27",
-   "size": 10620
+   "sha256": "163dda71afc5d2ede91670d8374d219326732107f30d4403173d186e9063bbc6",
+   "size": 10357
   },
   "shortsmith/llm.py": {
-   "sha256": "7f1b0ab03995ef0e18cd946b83bde5152dae12944ab4ed6b53ebb8c0e764f05a",
-   "size": 6019
+   "sha256": "df22579a98dd705746c7dd753343fab0d902f6f1cf0fbd6f71b50a3ddc42a9bd",
+   "size": 5903
   },
   "shortsmith/metadata.py": {
-   "sha256": "f70686c71274c4b373aea66f02edc8c1f1f21ab3d0d786ec6b4420a1278b581c",
-   "size": 7942
+   "sha256": "3b0f167093ff5a2e55fdbacac392d6c10189fabf3ce6a175bc856a0140d10498",
+   "size": 7739
   },
   "shortsmith/model_profiles.py": {
-   "sha256": "b7cdbe9bc9cea06bcf3a57d758b9aa1ed1996779473aa299d97cd85b62dadd2c",
-   "size": 11499
+   "sha256": "863ba9d863e089b3c4fd7f484650f1f585572da5d5a99e071d0072eefacb6953",
+   "size": 11229
   },
   "shortsmith/network.py": {
-   "sha256": "2d5bc260f073b317236cfa7780950be854dd2edef95a66523c71b8bd2dcb3870",
-   "size": 9779
+   "sha256": "5e2bef0f1526d31aeae1cf6e89a4f2761a079b51e8bd2149a41d144437667ff9",
+   "size": 9542
   },
   "shortsmith/nodes/__init__.py": {
    "sha256": "f2b15def8f1b1ca15c82d186a972bef6a9d1b481d94414595478df73330165f4",
    "size": 328
   },
   "shortsmith/nodes/canvas.py": {
-   "sha256": "dbe73c4c0723220eab0e8eac81f6258cffbaec941bc26d3b181e4e2ce52bf7a9",
-   "size": 4046
+   "sha256": "91d15994ee5e2ae094bc5503d7bfd1226563dd2f2efeece8706a7a88192dea87",
+   "size": 3951
   },
   "shortsmith/nodes/common.py": {
-   "sha256": "924df704f08ac1afaea72bab5b986f7bcf9739899d6aa25cad154c03b8a46006",
-   "size": 1776
+   "sha256": "8a6a63ebdc5e5e64f498f9693fea15c43ca15a237f1861bc9af48f6ab22f8cd3",
+   "size": 1730
   },
   "shortsmith/nodes/cutter.py": {
-   "sha256": "3c0643592ac495604f39d5ddf39e586cc38a772a35e2d60e5d281af2e3a05824",
-   "size": 21093
+   "sha256": "8745b5393810ab1474037fab3b83c67e4cea185a924ca6af742771535bf0212d",
+   "size": 20612
   },
   "shortsmith/nodes/herald.py": {
-   "sha256": "20cfdfb64e8cb882a22a15f1c2b71716422b99fd0f58b43e20dce91a22fcdaec",
-   "size": 10823
+   "sha256": "6670f09de205278664c35180a17999eff7bd534823921e402880de03546e1b22",
+   "size": 10555
   },
   "shortsmith/nodes/script.py": {
-   "sha256": "a693f9f0164ef5dce34e3a7ffa1038f4441c0d62ab7d3a6b548a162d7134ba22",
-   "size": 8817
+   "sha256": "dd905cc4847449bd54374846ce52bf8b517f46663182156e8fe00bfda9ab8b3c",
+   "size": 8626
   },
   "shortsmith/nodes/voice.py": {
-   "sha256": "c32d5feb6051885b7e1dc2f4f025d92d743d6a457d5a8a13ce719ba9633028af",
-   "size": 13886
+   "sha256": "de9df596b52db883100b821d26d7868f997254b55fa79110f43b0c1bfdad7626",
+   "size": 13597
   },
   "shortsmith/notify/__init__.py": {
    "sha256": "15585441e9507354b29198fb58bcc120291f589bbb41f804088fa82e79f90e61",
    "size": 285
   },
   "shortsmith/notify/push.py": {
-   "sha256": "7d471a2aaf9bbd658b3da7befac108468f4a32c6350e28d66dd777ac9a98055c",
-   "size": 2372
+   "sha256": "6aaaa4ee8af84a9bacb46caa6d7ef91fd1516a689d1a6ef81ecf0de59e727ab7",
+   "size": 2319
   },
   "shortsmith/notify/reports.py": {
-   "sha256": "0b447977d23171e68cc034816815194fd090a41608d9d2f9a309568a9ff65718",
-   "size": 4939
+   "sha256": "d0d70eac9577410ad7babe85c78ca8e974307b19dd9f4554a5dffc5f412a8945",
+   "size": 4816
   },
   "shortsmith/providers/__init__.py": {
-   "sha256": "e09743d85c555706d8362aeadfd4831e196154aea71595496ee3d015abb074c8",
-   "size": 804
+   "sha256": "b38ae9cd9ed41a76b333faf2b7201b1e1b80548ee080fee2d6dc61e69fc14978",
+   "size": 786
   },
   "shortsmith/providers/background.py": {
    "sha256": "6721253c5e3622d37c34b4c991c70410743d93a97b614461b31ea7e318ee34fe",
@@ -166,12 +170,12 @@
    "size": 3482
   },
   "shortsmith/providers/motion.py": {
-   "sha256": "d741f72ff0c74652c861a863b52c3ba6f425e3bf92ac41e8473d93425aedfa3c",
-   "size": 3568
+   "sha256": "eb4faa86d79ce3492048443cdb88a2a6f4b45341f1e4c1390696c70830fac8bd",
+   "size": 3488
   },
   "shortsmith/queue.py": {
-   "sha256": "ef10e73e89133c12fee56021c500dcd25bf642492b1c435acafe96c31896ec74",
-   "size": 6417
+   "sha256": "6a78a9ff5b26bee02e8c120d2e70190403740d1932c28eebe2b9faff0c59816e",
+   "size": 6254
   },
   "shortsmith/safety.py": {
    "sha256": "1acab0ec2395448524151476c961c1edef584a310d71aea43f3a7a6b2f7fe4a9",
@@ -182,47 +186,47 @@
    "size": 8381
   },
   "shortsmith/selfcheck.py": {
-   "sha256": "177ba9e48564aba4aaffdab95bead6a84e57a1646dbdde479f29bd712a81fd98",
-   "size": 8298
+   "sha256": "1e5985003ca229c243d2cb398f5cb5798bcf39f78487405b31bb9dfbe65ee458",
+   "size": 8104
   },
   "shortsmith/setup_models.py": {
    "sha256": "512d8efa846f0e6841d19095867f09ca0a0d3e90539a8fa7cc49443bd6577608",
    "size": 8501
   },
   "shortsmith/state.py": {
-   "sha256": "d73ffad0d625338648a8536f01bf361e12bc351d3941b5a8efb30d3d300991b8",
-   "size": 4070
+   "sha256": "7b4de77d4d25b098dcb7f849642a869e94944de33f33cc8efef745dc5df378ab",
+   "size": 3959
   },
   "shortsmith/story_doctrine.py": {
-   "sha256": "c049c985fec43affa953843c64de8fee6e50f8a811bd684c6bf7d138e17496d0",
-   "size": 9238
+   "sha256": "9ac829211fed0b80b648a51a055833ba043eebd602565620d2e1e060b4b4550b",
+   "size": 9058
   },
   "shortsmith/story_memory.py": {
-   "sha256": "bb6f021910c27570681f0084f3ac910970eecb024fb404ea8a6484830f8eb1db",
-   "size": 6461
+   "sha256": "5cb7eba5d19b6e501385873b3cfeaf5e6d460a15626f702b9cecbf6c8ebdb043",
+   "size": 6321
   },
   "shortsmith/story_planner.py": {
-   "sha256": "701243915d470821a37b541299734ba381e2c2f1578d71a74bcb709adde4493e",
-   "size": 22391
+   "sha256": "34218cccd579c0f9f2d5929dd6d7f2a211b1d7d94e9c6316be430e70d7bee37c",
+   "size": 21968
   },
   "shortsmith/timing.py": {
-   "sha256": "45abffe85992fe9f328b875fc79945dfc994847bc6a4fa256ea7320f3d918712",
-   "size": 12441
+   "sha256": "630f8af9e4007ba9851f26d66926beffe8b2b440d029631084beab26f78ed044",
+   "size": 12174
   },
   "shortsmith/updates.py": {
-   "sha256": "3238757fefecbf5e8e212fb64df39f2c3f842555a1a4267afca437543f420a08",
-   "size": 18163
+   "sha256": "9f5e7125894bb37d6fa89116aa4ec81015fda0d02800afad2751b56340bf7593",
+   "size": 17716
   },
   "shortsmith/utils.py": {
-   "sha256": "b85ada1b731c2e6e817aaf89ab79dda32517cc2836ea88afbf9f4a2017d31e2a",
-   "size": 19635
+   "sha256": "ccbb19f352db30f6005feb8893b69fea250486c6885c45d1715f955a75c3ded7",
+   "size": 19122
   },
   "shortsmith/webapp.py": {
-   "sha256": "76dec59391dbba575e71b478beb19eda605c6c2c31929cb06d185f279b952a09",
-   "size": 44314
+   "sha256": "3597c0500cd9a5cc21ee6f41c79db5a4b3edebe09e285af2c2c4eef8e707b717",
+   "size": 43312
   }
  },
  "manifest_version": 1,
- "total_bytes": 643953,
+ "total_bytes": 632733,
  "version": "2.3.0"
 }
