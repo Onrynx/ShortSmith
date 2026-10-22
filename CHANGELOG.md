@@ -3,6 +3,13 @@
 ## 2.3.0
 
 **New**
+- Everything a render needs is fetched in one step. Picking a writer model now
+  also brings the narration voice and the caption timer, behind a single
+  progress bar that ends with "everything is ready". They used to arrive
+  separately, the first time a render happened to reach their stage, so a first
+  video stalled twice for downloads nobody had mentioned — and those two
+  bypassed the mobile-data warning entirely, because it only counted the one
+  you picked. The warning now quotes the real total.
 - One download, nothing to install. Shortsmith now ships with its own copy of
   Python and every library it needs, so the five-step setup — install Python,
   remember to tick Add to PATH, run a setup script — is gone. Unzip it,
@@ -17,6 +24,10 @@
   the download is staged so a failure halfway cannot leave a half-updated
   install, and nothing you own is in a manifest to begin with. This works for
   every install now, not only ones cloned with git.
+- `scripts/release.py` cuts a release in one command, in the order that
+  matters: checks, version, changelog, manifest, push, build, publish. The
+  manifest has to be regenerated after the last edit and before the push, and
+  getting that wrong fails quietly for everyone.
 - Shortsmith notices how you are online. On Wi-Fi or a cable, model downloads
   start straight away. On mobile data, a phone hotspot, while roaming, or near
   a data cap, it says which it is and how big the download is, and waits for
@@ -122,6 +133,11 @@ enough, and any website you visited could drive it.
 - `.env.example` no longer asks for credentials belonging to removed features.
 
 **Fixed**
+- Updates could never have worked. Git was converting line endings on checkout,
+  so the manifest recorded hashes of CRLF files while the updater downloaded
+  the LF versions GitHub serves — every text file failed its checksum. A
+  `.gitattributes` now pins line endings so the working copy, the repository
+  and what GitHub serves are the same bytes.
 - Approved videos carried a duplicate. Every one had a second, compressed
   `.preview.mp4` beside it — built to fit Discord's 10 MB upload cap by a
   feature since removed, and never cleaned up. A finished video is four files:

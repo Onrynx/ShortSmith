@@ -6,8 +6,8 @@
    "size": 652
   },
   "CHANGELOG.md": {
-   "sha256": "7f42ace399e019b8e959dde2379cfbc9d9ac8eb7adb446c48fa51a7a9540ae75",
-   "size": 12131
+   "sha256": "507945f0f0764fc65a7940857751f2cd24d8c4cf4704c82434d5543b05427c82",
+   "size": 13492
   },
   "COMPLIANCE.md": {
    "sha256": "bdc0e01c813fb017a96064964e42adac19be6eaeca6f946398fdb51e77eda258",
@@ -227,6 +227,6 @@
   }
  },
  "manifest_version": 1,
- "total_bytes": 632733,
+ "total_bytes": 634094,
  "version": "2.3.0"
 }

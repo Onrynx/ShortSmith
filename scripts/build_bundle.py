@@ -239,27 +239,11 @@ def _app_files_and_launchers(out: Path) -> Path:
         "More detail is in README.md. Source: github.com/Onrynx/ShortSmith\r\n",
         encoding="utf-8", newline="")
 
-    # The repo README opens by telling you to download Shortsmith, which is
-    # absurd advice for somebody reading it from inside the download. Swap
-    # that section for one that starts where they actually are.
-    readme = out / "README.md"
-    if readme.exists():
-        text = readme.read_text(encoding="utf-8")
-        start = text.find("## Get it")
-        end = text.find("## Add gameplay clips")
-        if 0 <= start < end:
-            text = text[:start] + (
-                "## You already have it\n\n"
-                "You are reading this from inside the download, so there is\n"
-                "nothing left to fetch. See **! START HERE.txt** in this folder for\n"
-                "the two things to do next, or in short:\n\n"
-                "1. Install Ollama from [ollama.com/download](https://ollama.com/download)\n"
-                "2. Double-click **Shortsmith** in this folder\n\n"
-                "The first time it opens, it checks what your computer can run and\n"
-                "lets you pick a writer model. Only the one you pick is downloaded.\n\n"
-            ) + text[end:]
-            readme.write_text(text, encoding="utf-8")
-            log("README rewritten for someone who already has the files")
+    # The README is NOT rewritten here any more. Shipping a modified copy
+    # meant the bundle could never match manifest.json — which describes the
+    # repo's version — so every fresh install re-downloaded it on its first
+    # update check for no reason. "! START HERE.txt" carries the first-run
+    # guidance instead, and the bundle now matches the manifest byte for byte.
 
     log("wrote launchers and first-run notes")
     return out
