@@ -1,5 +1,5 @@
 {
- "count": 54,
+ "count": 55,
  "files": {
   "CHANGELOG.md": {
    "sha256": "94a582805f27296ecb72f688485bf0b49975be08ee6a25e99da6ceaafa514ed9",
@@ -26,8 +26,8 @@
    "size": 9844
   },
   "app/index.html": {
-   "sha256": "6fa9ee88709ceca44ee4551b5b6451dfb0e4bf5b298b2b127e85d9a6dcae2d84",
-   "size": 85868
+   "sha256": "7366361d9bceda687d44dff487c8faa04db3d7f6819213e9363407fc08a03f14",
+   "size": 86816
   },
   "assets/backgrounds/README.txt": {
    "sha256": "ae9bb9c87ed8d708966ebf792429a2d98f35826f5b308824e9ca841f3eb79af2",
@@ -185,6 +185,10 @@
    "sha256": "177ba9e48564aba4aaffdab95bead6a84e57a1646dbdde479f29bd712a81fd98",
    "size": 8298
   },
+  "shortsmith/setup_models.py": {
+   "sha256": "512d8efa846f0e6841d19095867f09ca0a0d3e90539a8fa7cc49443bd6577608",
+   "size": 8501
+  },
   "shortsmith/state.py": {
    "sha256": "d73ffad0d625338648a8536f01bf361e12bc351d3941b5a8efb30d3d300991b8",
    "size": 4070
@@ -214,11 +218,11 @@
    "size": 19635
   },
   "shortsmith/webapp.py": {
-   "sha256": "e4674efda5f8d4bba3ecc498189b750a149fbfe79bca008ed4095e9ac035430c",
-   "size": 44113
+   "sha256": "76dec59391dbba575e71b478beb19eda605c6c2c31929cb06d185f279b952a09",
+   "size": 44314
   }
  },
  "manifest_version": 1,
- "total_bytes": 634303,
+ "total_bytes": 643953,
  "version": "2.3.0"
 }

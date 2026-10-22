@@ -658,7 +658,10 @@ class _Handler(BaseHTTPRequestHandler):
             from .boot import state as boot_state
             return self._json(boot_state())
         if p == "/api/pull":
-            return self._json(pull_state())
+            from .setup_models import ready, state as setup_state
+            data = setup_state()
+            data["have"] = ready()
+            return self._json(data)
         if p == "/api/machine":
             return self._json(machine_info())
         if p == "/api/connection":
@@ -867,16 +870,17 @@ class _Handler(BaseHTTPRequestHandler):
             entry = next((e for e in CATALOG if e["tag"] == model), None)
             if entry is None:
                 return self._json({"error": "unknown model"}, 400)
-            # A metered connection needs an explicit yes. The page asks first
-            # and sends confirm=true; anything else gets the question back
-            # rather than a silent multi-gigabyte download.
+            # The warning covers everything that will be fetched, not only the
+            # part the user picked. The voice and caption models used to go out
+            # over a metered connection without being counted or mentioned.
             from .network import describe
-            conn = describe(float(entry.get("download_gb") or 0))
+            from .setup_models import start as start_setup, total_gb
+            conn = describe(total_gb(model))
             if conn.get("warn") and not body.get("confirm"):
                 return self._json({"ok": False, "needs_confirm": True,
                                    "message": conn["message"],
                                    "connection": conn}, 409)
-            return self._json(start_pull(model))
+            return self._json(start_setup(model))
 
         if p == "/api/update":
             from .updates import apply_update

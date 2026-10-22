@@ -1518,35 +1518,58 @@ async function pullModel(tag){
     r = await api('/api/pull', {model: tag, confirm: true});
   }
   if(!r || r.error){ notify('Download not started', (r && r.error) || 'Unknown problem', 'bad'); return; }
-  notify('Downloading ' + tag, 'You can keep using the app meanwhile.');
+  notify('Getting everything ready',
+         'The writer model, the voice and the caption timer. This happens once.');
   pollPull();
 }
+// One bar for all three downloads. A render needs a writer, a voice and
+// something to time the captions; fetching only the first and discovering the
+// other two mid-render is how this used to work, and it looked like the app
+// stalling twice for no stated reason.
 function paintPull(p){
   const host = $('#pullBox');
   if(!host) return;
   if(!p || p.status==='idle'){ host.style.display='none'; return; }
   host.style.display='block';
+
   if(p.status==='failed'){
-    host.innerHTML = `<b class="bad">Download failed</b><div class="muted">${esc(p.error||'')}</div>`;
+    host.innerHTML = '<b class="bad">Download stopped</b>'
+      + '<div class="muted">' + esc(p.error || '') + '</div>'
+      + '<div class="muted" style="margin-top:8px">Nothing is half-installed — '
+      + 'press Download again to pick up where it left off.</div>';
     return;
   }
+
   if(p.status==='done'){
-    if(!paintPull._told){ paintPull._told = true; notify('Model ready', esc(p.model) + ' is installed.', 'good'); }
-    host.innerHTML = `<b class="ok">${esc(p.model)} is ready.</b>
-      <div class="muted">Set OLLAMA_MODEL in .env to use it, or keep the recommended one.</div>`;
+    if(!paintPull._told){
+      paintPull._told = true;
+      notify('Ready to make videos', 'The writer, the voice and the caption '
+             + 'timing are all installed.', 'good');
+    }
+    host.innerHTML = '<b class="ok">Everything is ready.</b>'
+      + '<div class="muted">' + esc(p.model || '') + ', the narration voice and '
+      + 'the caption timer are all on this computer. Renders work offline from '
+      + 'here — press Make.</div>';
     return;
   }
-  host.innerHTML = `<b>Downloading ${esc(p.model)}</b>
-    <div class="muted">${p.done_gb} of ${p.total_gb} GB — ${p.percent}% · ${esc(p.status)}</div>
-    <div class="pbar"><i style="width:${p.percent}%"></i></div>
-    <div class="muted">You can leave this running and use the rest of the app.</div>`;
+
+  const step = p.step || 1;
+  const bytes = (p.stage === 'writer' && p.total_gb)
+      ? p.done_gb + ' of ' + p.total_gb + ' GB · ' : '';
+  host.innerHTML = '<b>Getting everything ready</b>'
+    + '<div class="muted">Step ' + step + ' of 3 — ' + esc(p.label || '') + '</div>'
+    + '<div class="pbar"><i style="width:' + (p.overall || 0) + '%"></i></div>'
+    + '<div class="muted">' + bytes + Math.round(p.overall || 0) + '% overall</div>'
+    + '<div class="muted" style="margin-top:8px">Leave this running — you can use '
+    + 'the rest of the app meanwhile. This happens once.</div>';
 }
+
 async function pollPull(){
   const p = await api('/api/pull');
   paintPull(p);
-  if(p.status==='downloading'||p.status==='pulling manifest') setTimeout(pollPull, 1500);
-  else if(p.status==='done') loadMachine();
-  else if(p.status!=='idle') setTimeout(pollPull, 2500);
+  if(p.status === 'running') setTimeout(pollPull, 1500);
+  else if(p.status === 'done') loadMachine();
+  else if(p.status !== 'idle') setTimeout(pollPull, 2500);
 }
 
 let LASTSTATE = {};
