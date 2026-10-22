@@ -11,8 +11,14 @@ no cloud. Nothing you make is uploaded anywhere until you decide to post it.
 
 ## Get it
 
-**[Download Shortsmith](https://onrynx.github.io/ShortSmith/)** — the page picks
-the right file for your computer.
+### [⬇ Download for Windows](https://github.com/Onrynx/ShortSmith/releases/latest/download/Shortsmith-Windows.zip)
+
+[macOS](https://github.com/Onrynx/ShortSmith/releases/latest/download/Shortsmith-macOS.zip)
+ · [Linux](https://github.com/Onrynx/ShortSmith/releases/latest/download/Shortsmith-Linux.tar.gz)
+ · [all versions](https://github.com/Onrynx/ShortSmith/releases)
+
+Those links always give you the newest release — they are not tied to a version
+number, so they keep working after every update.
 
 Then, once:
 
