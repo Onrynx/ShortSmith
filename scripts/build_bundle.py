@@ -76,7 +76,19 @@ def shipped_files() -> list[str]:
 # --------------------------------------------------------------------------- #
 # Windows
 # --------------------------------------------------------------------------- #
-def build_windows(out: Path, arch: str) -> Path:
+def build_windows(out: Path, arch: str, refresh_only: bool = False) -> Path:
+    """Assemble the bundle. refresh_only reuses an existing runtime.
+
+    The runtime is the slow part — a download and a few hundred megabytes of
+    pip. It does not change when the app's own code does, so re-running the
+    whole thing to pick up a one-line edit is wasted time.
+    """
+    if refresh_only:
+        if not (out / "runtime" / "python.exe").exists():
+            raise SystemExit("no runtime to refresh — run without --refresh first")
+        log("reusing the existing runtime")
+        return _app_files_and_launchers(out)
+
     url = EMBED_URL.get(("Windows", arch))
     if not url:
         raise SystemExit(f"no embeddable Python published for Windows/{arch}")
@@ -127,6 +139,10 @@ def build_windows(out: Path, arch: str) -> Path:
     for cache_dir in runtime.rglob("__pycache__"):
         shutil.rmtree(cache_dir, ignore_errors=True)
 
+    return _app_files_and_launchers(out)
+
+
+def _app_files_and_launchers(out: Path) -> Path:
     # The app itself, as plain source — minus the things only someone working
     # ON Shortsmith needs. Unzipping and finding four launchers and a pile of
     # build scripts is exactly the confusion this bundle exists to remove.
@@ -151,15 +167,101 @@ def build_windows(out: Path, arch: str) -> Path:
         '.GetParentFolderName(WScript.ScriptFullName)\r\n'
         's.CurrentDirectory = p\r\n'
         's.Run """" & p & "\\runtime\\pythonw.exe"" -m shortsmith.app", 0, False\r\n',
-        encoding="utf-8")
+        encoding="utf-8", newline="")
     (out / "Shortsmith (show errors).bat").write_text(
         "@echo off\r\n"
         "cd /d \"%~dp0\"\r\n"
         "runtime\\python.exe -m shortsmith.app\r\n"
         "echo.\r\n"
         "echo Shortsmith closed. Anything above this line is the reason.\r\n"
-        "pause\r\n", encoding="utf-8")
-    log("wrote launchers")
+        "pause\r\n", encoding="utf-8", newline="")
+    # Someone who just unzipped this has no idea which of these files to touch.
+    # A plain .txt opens in Notepad on a double-click and needs no reader. The
+    # "!" is not decoration: Explorer sorts it above every letter, so this sits
+    # at the top of the folder instead of below Shortsmith.vbs where "ST" would
+    # otherwise put it.
+    (out / "! START HERE.txt").write_text(
+        "SHORTSMITH\r\n"
+        "==========\r\n"
+        "\r\n"
+        "Two things, then you are done.\r\n"
+        "\r\n"
+        "\r\n"
+        "1. INSTALL OLLAMA  (once, about 2 minutes)\r\n"
+        "\r\n"
+        "   Go to:  https://ollama.com/download\r\n"
+        "\r\n"
+        "   Download it, run the installer, done. That is the engine that\r\n"
+        "   writes the stories. Shortsmith starts it when you open the app\r\n"
+        "   and stops it when you close it, so it is not running all day.\r\n"
+        "\r\n"
+        "\r\n"
+        "2. OPEN SHORTSMITH\r\n"
+        "\r\n"
+        "   Double-click the file in this folder called:  Shortsmith\r\n"
+        "\r\n"
+        "   Windows may say it does not recognise the app, because this\r\n"
+        "   download is not signed by a registered company. Click\r\n"
+        "   More info, then Run anyway.\r\n"
+        "\r\n"
+        "\r\n"
+        "THE FIRST TIME IT OPENS\r\n"
+        "\r\n"
+        "   It checks what your computer can handle and shows you a list of\r\n"
+        "   writer models. Pick one and press Download. Only the one you\r\n"
+        "   pick is fetched. Anything too big for your machine is greyed\r\n"
+        "   out with the reason.\r\n"
+        "\r\n"
+        "   Then open the Backgrounds tab and drop in a few gameplay clips\r\n"
+        "   (Minecraft parkour, Subway Surfers, anything). Those play behind\r\n"
+        "   your videos. Without them you still get videos, just over a plain\r\n"
+        "   moving background.\r\n"
+        "\r\n"
+        "   Then press Make.\r\n"
+        "\r\n"
+        "\r\n"
+        "IF NOTHING HAPPENS WHEN YOU DOUBLE-CLICK\r\n"
+        "\r\n"
+        "   Double-click  Shortsmith (show errors)  instead. It opens the\r\n"
+        "   same app but leaves the reason on screen.\r\n"
+        "\r\n"
+        "\r\n"
+        "WHAT THIS DOES NOT DO\r\n"
+        "\r\n"
+        "   It does not upload anything. It does not have an account, an API\r\n"
+        "   key or a subscription. It talks to Ollama on your own machine,\r\n"
+        "   checks GitHub for updates, and downloads the model you choose.\r\n"
+        "   That is the whole of its network use.\r\n"
+        "\r\n"
+        "   Posting a video to YouTube is something you do yourself.\r\n"
+        "\r\n"
+        "\r\n"
+        "More detail is in README.md. Source: github.com/Onrynx/ShortSmith\r\n",
+        encoding="utf-8", newline="")
+
+    # The repo README opens by telling you to download Shortsmith, which is
+    # absurd advice for somebody reading it from inside the download. Swap
+    # that section for one that starts where they actually are.
+    readme = out / "README.md"
+    if readme.exists():
+        text = readme.read_text(encoding="utf-8")
+        start = text.find("## Get it")
+        end = text.find("## Add gameplay clips")
+        if 0 <= start < end:
+            text = text[:start] + (
+                "## You already have it\n\n"
+                "You are reading this from inside the download, so there is\n"
+                "nothing left to fetch. See **! START HERE.txt** in this folder for\n"
+                "the two things to do next, or in short:\n\n"
+                "1. Install Ollama from [ollama.com/download](https://ollama.com/download)\n"
+                "2. Double-click **Shortsmith** in this folder\n\n"
+                "The first time it opens, it checks what your computer can run and\n"
+                "lets you pick a writer model. Only the one you pick is downloaded.\n\n"
+            ) + text[end:]
+            readme.write_text(text, encoding="utf-8")
+            log("README rewritten for someone who already has the files")
+
+    log("wrote launchers and first-run notes")
     return out
 
 
@@ -181,6 +283,8 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="Build a self-contained Shortsmith")
     ap.add_argument("--zip", action="store_true", help="also produce a .zip")
     ap.add_argument("--out", default="", help="output folder (default build/Shortsmith)")
+    ap.add_argument("--refresh", action="store_true",
+                    help="reuse the existing runtime; only refresh the app files")
     args = ap.parse_args()
 
     system, arch = platform.system(), platform.machine()
@@ -189,7 +293,7 @@ def main() -> int:
     print(f"Building Shortsmith for {system}/{arch}")
 
     if system == "Windows":
-        build_windows(out, arch)
+        build_windows(out, arch, refresh_only=args.refresh)
     else:
         raise SystemExit(
             f"This builder currently produces Windows bundles only. On {system} "
