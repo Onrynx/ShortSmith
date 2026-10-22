@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shortsmith</title>
+<meta name="description" content="A YouTube Shorts factory that runs entirely on your own computer.">
+<style>
+  :root{
+    --bg:#0e1116; --panel:#151a21; --panel2:#1b212a; --line:#242b35;
+    --txt:#e6edf3; --dim:#9aa6b2; --faint:#6b7784;
+    --accent:#ff7a3d; --accent2:#ffb224; --ok:#3fb950;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{background:var(--bg);color:var(--txt);
+    font:15px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased}
+  .wrap{max-width:760px;margin:0 auto;padding:64px 16px 90px}
+  h1{font-size:40px;line-height:1.1;letter-spacing:-.8px;margin:0 0 10px;font-weight:750}
+  h1 span{color:var(--accent)}
+  .tag{font-size:17px;color:var(--dim);margin:0 0 36px;max-width:50ch}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:26px}
+  .btn{display:inline-flex;align-items:center;gap:10px;background:var(--accent);
+    color:#140a04;border:0;border-radius:11px;padding:15px 26px;font-size:16.5px;
+    font-weight:700;text-decoration:none;cursor:pointer;transition:filter .15s}
+  .btn:hover{filter:brightness(1.08)}
+  .btn.ghost{background:var(--panel2);color:var(--txt);border:1px solid var(--line);
+    font-size:14px;font-weight:600;padding:11px 18px}
+  .meta{font-size:13px;color:var(--faint);margin-top:12px}
+  .others{margin-top:20px;display:flex;flex-wrap:wrap;gap:9px}
+  h2{font-size:13px;text-transform:uppercase;letter-spacing:.9px;color:var(--faint);
+    margin:44px 0 14px;font-weight:650}
+  ol{padding-left:22px;margin:0}
+  ol li{margin-bottom:14px}
+  ol li b{color:var(--txt)}
+  .note{background:var(--panel2);border-left:3px solid var(--accent2);
+    border-radius:0 9px 9px 0;padding:13px 16px;font-size:14px;color:var(--dim);margin-top:18px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin-top:6px}
+  .f{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px}
+  .f b{display:block;font-size:14px;margin-bottom:5px}
+  .f span{font-size:13.5px;color:var(--dim)}
+  a{color:var(--accent2)}
+  footer{margin-top:56px;padding-top:22px;border-top:1px solid var(--line);
+    font-size:13px;color:var(--faint)}
+  @media (max-width:560px){ h1{font-size:31px} .wrap{padding:40px 16px 70px} }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Short<span>smith</span></h1>
+  <p class="tag">A YouTube Shorts factory that runs on your own computer.
+    Nothing is uploaded, nothing is tracked, and there is no account to make.</p>
+
+  <div class="card">
+    <a class="btn" id="dl" href="#">Download Shortsmith</a>
+    <div class="meta" id="meta">Detecting your computer&hellip;</div>
+    <div class="others" id="others"></div>
+  </div>
+
+  <h2>Then two more things, once</h2>
+  <ol>
+    <li><b>Unzip it</b> anywhere you like &mdash; your Desktop is fine &mdash; and
+      double-click <b>Shortsmith</b>.</li>
+    <li><b>Install Ollama</b> from <a href="https://ollama.com/download" rel="noopener">ollama.com/download</a>.
+      That is the engine that writes the stories, and it installs itself like any
+      normal app. Shortsmith starts it when you open it and stops it when you
+      close it.</li>
+  </ol>
+
+  <div class="note">
+    There is no Python to install and nothing to type. The download carries its
+    own copy of everything it needs. Inside the app, you pick which writer model
+    to download &mdash; it checks your memory and free disk first, and only ever
+    fetches the one you chose.
+  </div>
+
+  <h2>What it does</h2>
+  <div class="grid">
+    <div class="f"><b>Writes the story</b><span>Give it an idea, or nothing at all.
+      It plans the shape, writes to it, and fits the length you asked for.</span></div>
+    <div class="f"><b>Narrates and cuts</b><span>A local voice, your own gameplay
+      clips behind it, and captions taken from the script so they are always spelled right.</span></div>
+    <div class="f"><b>Waits for you</b><span>Read the script before it renders, or
+      let it run and review the finished video. Nothing is ever published for you.</span></div>
+    <div class="f"><b>Stays on your machine</b><span>No account, no API key, no
+      telemetry. The only things it fetches are the model you pick and its own updates.</span></div>
+  </div>
+
+  <h2>What it needs</h2>
+  <div class="grid">
+    <div class="f"><b>Windows, macOS or Linux</b><span>64-bit. Apple Silicon works well.</span></div>
+    <div class="f"><b>8 GB of memory</b><span>16 GB or a graphics card gets you the
+      better writer models.</span></div>
+    <div class="f"><b>About 10 GB free</b><span>For the app and one writer model.
+      The app tells you what fits before you download anything.</span></div>
+  </div>
+
+  <footer>
+    Shortsmith keeps a human in the loop on purpose &mdash; see
+    <a href="https://github.com/Onrynx/ShortSmith/blob/main/COMPLIANCE.md" rel="noopener">COMPLIANCE.md</a>.
+    Source on <a href="https://github.com/Onrynx/ShortSmith" rel="noopener">GitHub</a>.
+  </footer>
+</div>
+
+<script>
+// One button, for the computer you are actually on. Everything else is still
+// one click away underneath, because detection is a guess and a wrong guess
+// should never be a dead end.
+(function () {
+  var REPO = 'https://github.com/Onrynx/ShortSmith';
+  var LATEST = REPO + '/releases/latest/download/';
+
+  var BUILDS = {
+    'windows': {label: 'Download for Windows',  file: 'Shortsmith-Windows.zip',      note: 'Windows 10 or 11, 64-bit'},
+    'macos':   {label: 'Download for macOS',    file: 'Shortsmith-macOS.zip',        note: 'macOS 12 or newer'},
+    'linux':   {label: 'Download for Linux',    file: 'Shortsmith-Linux.tar.gz',     note: '64-bit'}
+  };
+
+  function detect() {
+    var d = navigator.userAgentData;
+    var p = (d && d.platform ? d.platform : (navigator.platform || '')) + ' ' +
+            (navigator.userAgent || '');
+    p = p.toLowerCase();
+    // Order matters: "android" contains "linux", and iPads report as Mac.
+    if (p.indexOf('android') >= 0 || p.indexOf('iphone') >= 0 || p.indexOf('ipad') >= 0) return null;
+    if (p.indexOf('win') >= 0) return 'windows';
+    if (p.indexOf('mac') >= 0 || p.indexOf('darwin') >= 0) return 'macos';
+    if (p.indexOf('linux') >= 0 || p.indexOf('x11') >= 0) return 'linux';
+    return null;
+  }
+
+  var found = detect();
+  var dl = document.getElementById('dl');
+  var meta = document.getElementById('meta');
+  var others = document.getElementById('others');
+
+  if (found) {
+    dl.textContent = BUILDS[found].label;
+    dl.href = LATEST + BUILDS[found].file;
+    meta.textContent = BUILDS[found].note + ' · about 130 MB';
+  } else {
+    // A phone, or something we could not place. Say so rather than offering a
+    // build that will not run.
+    dl.textContent = 'Choose your computer';
+    dl.href = REPO + '/releases/latest';
+    meta.textContent = 'Shortsmith runs on a computer, not a phone — it needs ' +
+                       'the machine it renders on.';
+  }
+
+  Object.keys(BUILDS).forEach(function (key) {
+    if (key === found) return;
+    var a = document.createElement('a');
+    a.className = 'btn ghost';
+    a.href = LATEST + BUILDS[key].file;
+    a.textContent = BUILDS[key].label.replace('Download for ', '');
+    others.appendChild(a);
+  });
+})();
+</script>
+</body>
+</html>

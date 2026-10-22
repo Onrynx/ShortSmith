@@ -495,7 +495,7 @@ def ffprobe_duration(path: Path | str) -> float:
 
 
 # --------------------------------------------------------------------------- #
-# Status files (read by the Discord bot for live per-lane progress)
+# Status files (how a running render reports progress to the app)
 # --------------------------------------------------------------------------- #
 _SAFE_LANE = re.compile(r"[^A-Za-z0-9_.-]")
 

@@ -11,62 +11,38 @@ no cloud. Nothing you make is uploaded anywhere until you decide to post it.
 
 ## Get it
 
-### Step 1 — Download Shortsmith
+**[Download Shortsmith](https://onrynx.github.io/ShortSmith/)** — the page picks
+the right file for your computer.
 
-Click the green **Code** button at the top of this page → **Download ZIP**.
-Unzip it anywhere you like (your Desktop is fine).
+Then, once:
 
-### Step 2 — Install Python (once)
+1. **Unzip it** anywhere (your Desktop is fine) and double-click **Shortsmith**.
+2. **Install Ollama** from [ollama.com/download](https://ollama.com/download).
+   That is the engine that writes the stories. It installs itself like any
+   normal app, and Shortsmith starts and stops it for you.
 
-Shortsmith is written in Python, so your computer needs it.
+That is the whole install. **There is no Python to install and nothing to
+type** — the download carries its own copy of everything it needs.
 
-- **Windows** — [python.org/downloads](https://www.python.org/downloads/) → the
-  big yellow **Download Python** button → run the installer →
-  **tick "Add python.exe to PATH"** on the first screen → Install Now.
-- **Mac** — [python.org/downloads](https://www.python.org/downloads/) → Download
-  → open the `.pkg` → click through it.
+> **Windows may warn you** that it does not recognise the app, because the
+> download is not signed by a company Microsoft has on file. Click **More info
+> → Run anyway**. You can read every line of what it runs in this repository.
 
-> Ticking **Add python.exe to PATH** on Windows matters. If you miss it, re-run
-> the installer and choose Modify.
+### Pick a writer model
 
-### Step 3 — Install Ollama (once)
+The first time you open it, Settings shows every model with what it needs and
+what you get. Your computer is checked first — memory, graphics and free disk —
+and anything that will not fit is greyed out with the reason.
 
-This is the AI that writes your stories, running locally.
+**Only the model you choose is downloaded.** If you are on mobile data or a
+phone hotspot, Shortsmith says so and asks before spending gigabytes of it.
 
-Go to [ollama.com/download](https://ollama.com/download), get the installer for
-your computer, run it. On Mac, drag it to Applications and open it once.
-
-### Step 4 — Run the setup file
-
-Open the Shortsmith folder and double-click:
-
-- **Windows** → `setup.bat`
-- **Mac** → `setup.command`
-
-It installs what's needed, builds the app icon, and puts a **Shortsmith**
-shortcut on your Desktop. Leave it until it says it's finished.
-
-### Step 5 — Open Shortsmith
-
-Double-click the **Shortsmith** icon on your Desktop. A window opens — no
-terminal, no commands.
-
-Go to **Settings** the first time. It shows what your computer can handle and
-recommends a writer model. Press **Download** next to the one you want.
-
-**Only the model you pick is downloaded** — nothing else.
-
-| Choice | Download | What you get |
-|---|---|---|
-| Qwen 2.5 14B | 8.4 GB | Best stories — richest plots, most reliable pacing |
-| Qwen 2.5 7B | 4.7 GB | Good. Slightly flatter plots, more rewrite passes |
-| Llama 3.2 3B | 2.0 GB | Light. Weaker continuity, shorter scenes |
-| Qwen 2.5 1.5B | 1.0 GB | Minimum. Basic stories. Old laptops only |
-
-Anything your machine can't run is greyed out with the reason. The download
-shows a progress bar and you can keep using the app while it runs.
-
----
+| | |
+|---|---|
+| **Qwen 2.5 14B** | 8.4 GB — richest stories, best pacing. Wants 16 GB of memory or a decent GPU. |
+| **Qwen 2.5 7B** | 4.7 GB — good, slightly flatter plots. |
+| **Llama 3.2 3B** | 2 GB — light, weaker continuity, simpler stories. |
+| **Qwen 2.5 1.5B** | 1 GB — minimum. Old laptops only. |
 
 ## Add gameplay clips
 
@@ -128,8 +104,8 @@ it keeps working.
 
 ## If something goes wrong
 
-**The window doesn't open.** Double-click `Shortsmith.bat` (Windows) or
-`Shortsmith.command` (Mac) in the folder instead — it opens in your browser,
+**The window doesn't open.** Double-click **Shortsmith (show errors)** in the
+folder instead — it opens in your browser and leaves the reason on screen,
 which works exactly the same.
 
 **"Ollama unreachable".** Ollama isn't running. Open it from your Start menu or
@@ -143,6 +119,14 @@ without a strong graphics card, 12–15 minutes per video is normal. Choosing a
 smaller model in Settings makes it quicker.
 
 ---
+
+## Updates
+
+The **Updates** tab checks whether a newer version has been published and shows
+what changed. Installing one **only fetches the files that actually differ** —
+usually a few kilobytes — rather than downloading a whole fresh copy over the
+old one. Every file is checked against its published checksum before it is kept,
+and your videos, clips, models and settings are not part of an update at all.
 
 ## Turning it off
 
@@ -268,8 +252,10 @@ python -m shortsmith.hardware
 
 prints what the hardware scan sees.
 
-Discord is still supported as an optional remote control
-(`python -m shortsmith.discord_bot`) for driving it from your phone.
+There is no Discord bot any more, and no remote control of any kind.
+Shortsmith runs in its own window on this machine and talks to nothing but
+Ollama on localhost — plus a version check against GitHub, and a one-time
+download of the voice model.
 
 ---
 

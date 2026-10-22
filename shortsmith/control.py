@@ -1,4 +1,4 @@
-"""Interface-agnostic control logic (used by the Discord bot + CLI).
+"""Interface-agnostic control logic (used by the app server + CLI).
 
 Pure functions over the on-disk state the pipeline/scheduler write.
 """

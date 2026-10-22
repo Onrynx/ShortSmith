@@ -515,6 +515,7 @@ tr.dis{opacity:.42}
           Checked once and remembered &mdash; never re-scanned on startup.
           Read locally, sent nowhere.
           <button class="btn g sm" style="margin-left:8px" onclick="rescan()">Re-scan</button>
+          <div id="connLine" style="margin-top:10px;font-size:12.5px">&nbsp;</div>
         </p>
         <h2>Writer model</h2>
         <div class="card" id="pullBox" style="display:none;margin-bottom:12px"></div>
@@ -611,7 +612,34 @@ async function cancelRender(){ await api('/api/cancel', {}); refresh(); }
 async function approve(id){ await api('/api/approve', {id}); refresh(); }
 async function reject(id){ if(confirm('Delete this video permanently?')){ await api('/api/reject',{id}); refresh(); } }
 async function reveal(id){ await api('/api/reveal', {id}); }
-async function rescan(){ await api('/api/rescan', {}); loadMachine(); }
+async function rescan(){
+  const btn = event && event.target;
+  if(btn){ btn.disabled = true; btn.textContent = 'Scanning…'; }
+  await api('/api/rescan', {});
+  await loadMachine();          // re-reads hardware, disk AND connection
+  if(btn){ btn.disabled = false; btn.textContent = 'Re-scan'; }
+  notify('Scanned', 'Hardware, free space and connection re-checked.', 'good');
+}
+
+// A line under the hardware saying how this machine is online. It is here
+// because it changes what the Download buttons below it will do.
+function paintConnection(c){
+  const host = $('#connLine');
+  if(!host) return;
+  if(!c || !c.checked){
+    host.innerHTML = '<span class="muted">Connection: could not tell — downloads '
+      + 'will start without asking.</span>';
+    return;
+  }
+  if(c.warn){
+    host.innerHTML = '<span class="warn">On ' + esc(c.label) + ' &middot; '
+      + esc(c.reason) + '.</span> <span class="muted">Model downloads will ask '
+      + 'before they start.</span>';
+  } else {
+    host.innerHTML = '<span class="ok">On ' + esc(c.label) + '.</span> '
+      + '<span class="muted">Model downloads will start straight away.</span>';
+  }
+}
 
 function stepBar(step){
   let h='';
@@ -1432,6 +1460,7 @@ async function applyUpdate(){
 async function loadMachine(){
   const m = await api('/api/machine');
   $('#mSum').textContent = m.summary || '';
+  paintConnection(m.connection);
   const h = m.hardware||{};
   $('#hw').innerHTML = [
     ['System', (h.os||'?')+' '+(h.arch||''), ''],
@@ -1475,9 +1504,20 @@ async function previewVoice(){
   }
 }
 
+// On Wi-Fi or a cable this just downloads. On a metered connection — mobile
+// data, a phone hotspot, roaming — it asks first, because the person clicking
+// Download is looking at a model name, not at their data plan.
 async function pullModel(tag){
-  const r = await api('/api/pull', {model:tag});
-  if(r.error){ notify('Download not started', r.error, 'bad'); return; }
+  let r = await api('/api/pull', {model: tag});
+  if(r && r.needs_confirm){
+    if(!confirm(r.message + String.fromCharCode(10) + String.fromCharCode(10)
+                + 'Nothing is downloaded unless you say yes.')) {
+      notify('Download cancelled', 'Nothing was downloaded.');
+      return;
+    }
+    r = await api('/api/pull', {model: tag, confirm: true});
+  }
+  if(!r || r.error){ notify('Download not started', (r && r.error) || 'Unknown problem', 'bad'); return; }
   notify('Downloading ' + tag, 'You can keep using the app meanwhile.');
   pollPull();
 }

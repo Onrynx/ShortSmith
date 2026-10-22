@@ -22,7 +22,9 @@ A file that fails any of those is deleted rather than left half-written.
 """
 from __future__ import annotations
 
+import os
 import shutil
+import tempfile
 import time
 from pathlib import Path
 
@@ -165,18 +167,28 @@ def save_stream(raw_name: str, reader, declared: int) -> dict:
     dest = _unique(name)
     if not inside(dest, CLIPS_DIR):
         return {"ok": False, "error": "that name cannot be used"}
-    part = dest.with_suffix(dest.suffix + ".part")
+    if dest.is_symlink():
+        return {"ok": False, "error": "that name cannot be used"}
+
+    # The scratch file gets a random name from mkstemp, which opens with
+    # O_CREAT|O_EXCL: it fails rather than follows if anything is already at
+    # that path. The old code wrote to a fully predictable "<name>.mp4.part",
+    # and a symlink planted there in advance would have been followed — the
+    # upload's bytes landing wherever the link pointed, outside this folder.
+    try:
+        fd, tmp_name = tempfile.mkstemp(prefix=".upload-", suffix=".part",
+                                        dir=str(CLIPS_DIR))
+    except OSError as exc:
+        return {"ok": False, "error": f"could not start the copy ({exc})"}
+    part = Path(tmp_name)
 
     written = 0
     try:
-        with open(part, "wb") as out:
+        with os.fdopen(fd, "wb") as out:
             while True:
-                if declared and written >= declared:
+                if written >= declared:
                     break
-                want = 1 << 20
-                if declared:
-                    want = min(want, declared - written)
-                chunk = reader.read(want)
+                chunk = reader.read(min(1 << 20, declared - written))
                 if not chunk:
                     break
                 written += len(chunk)
@@ -188,6 +200,15 @@ def save_stream(raw_name: str, reader, declared: int) -> dict:
     except Exception as exc:  # noqa: BLE001
         part.unlink(missing_ok=True)
         return {"ok": False, "error": f"the upload did not finish ({exc})"}
+
+    # A short upload is a broken upload. Accepting one left a truncated file
+    # that ffprobe might still open — a video missing its last seconds, which
+    # would surface much later as a render that ends mid-sentence.
+    if written != declared:
+        part.unlink(missing_ok=True)
+        return {"ok": False, "error": (
+            f"the copy was cut short ({written:,} of {declared:,} bytes). "
+            f"Try again.")}
 
     if written < MIN_CLIP_BYTES:
         part.unlink(missing_ok=True)

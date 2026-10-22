@@ -1,5 +1,146 @@
 # Changelog
 
+## 2.3.0
+
+**New**
+- One download, nothing to install. Shortsmith now ships with its own copy of
+  Python and every library it needs, so the five-step setup — install Python,
+  remember to tick Add to PATH, run a setup script — is gone. Unzip it,
+  double-click it. Ollama is still a separate install, because it is a separate
+  program that installs itself properly and may already be there.
+- A download page that picks the file for the computer you are on, with the
+  others one click away underneath in case it guesses wrong.
+- Updates only fetch what changed. A release carries a manifest of every
+  shipped file and its checksum; the app hashes what it has and downloads the
+  difference — usually kilobytes instead of a whole fresh copy over the old
+  one. Every file is verified against its published checksum before it is kept,
+  the download is staged so a failure halfway cannot leave a half-updated
+  install, and nothing you own is in a manifest to begin with. This works for
+  every install now, not only ones cloned with git.
+- Shortsmith notices how you are online. On Wi-Fi or a cable, model downloads
+  start straight away. On mobile data, a phone hotspot, while roaming, or near
+  a data cap, it says which it is and how big the download is, and waits for
+  you to say yes. It asks the operating system about the link — never about
+  what travels over it.
+- Settings shows the connection next to your hardware, and Re-scan now
+  re-checks hardware, free space and connection together.
+
+## 2.2.0
+
+**New**
+- A Backgrounds section. The gameplay clips behind every video were always just
+  a folder the README told you about: nothing showed what was in it, and an
+  empty one changed how videos looked without saying why. Now you can see every
+  clip with a frame from it, its length and its size, drag new ones in or click
+  to choose, and remove the ones you are done with. Uploads stream straight to
+  disk, so a 2 GB clip copies with a progress bar instead of being held in
+  memory, and a file that is not really a video is refused rather than stored.
+
+**Security**
+
+This release is mostly one thing: closing the gap between what the app said
+about itself and what it did. It said nothing leaves this computer, and three
+different paths could still send your work elsewhere. It said localhost was
+enough, and any website you visited could drive it.
+
+- Uploads write to a randomly named scratch file created with O_EXCL, and a
+  short upload is refused rather than kept. The old scratch name was entirely
+  predictable — `<name>.mp4.part` — so a symlink planted there in advance was
+  followed, and the upload's bytes landed wherever it pointed. A transfer that
+  ends early now fails instead of leaving a truncated video that would surface
+  much later as a render ending mid-sentence.
+- A stalled upload no longer holds a connection slot for half an hour. The
+  timeout was per-read, not per-transfer, so a client that promised two
+  gigabytes and went quiet kept a thread until it expired.
+- At capacity the server answers 503 instead of dropping the connection, a
+  token containing non-ASCII gives 403 instead of raising, `"ids": 42` gives
+  400 instead of raising, an Origin on the wrong scheme or port is refused even
+  with a valid token, and `bytes=-3` returns the last three bytes rather than
+  the first four.
+- The local server now refuses anything that is not the app's own page. It
+  checks the request came to a loopback address, that any Origin is ours, and
+  that it carries a per-run token only the page we served knows. Before this, a
+  site you happened to be visiting could reach http://127.0.0.1 from your
+  browser and drive the whole app behind your back — including deleting every
+  video in the Library. A foreign hostname pointed at 127.0.0.1 could read your
+  data back as well.
+- Shortsmith no longer sends anything anywhere. Gone: an online image generator
+  that was ON by default and received every scene description whenever the
+  backgrounds folder was empty; a Gemini fallback that sent the brief and every
+  draft to Google whenever Ollama happened to be down and an API key was
+  present; hosted ElevenLabs and TikTok voices that uploaded the entire script;
+  a YouTube upload path, including the environment variable that made it
+  publish PUBLICLY; and a Discord webhook carrying stage events. The only
+  traffic left is Ollama on this machine, the update check, and the one-time
+  voice-model download.
+- The Discord bot, its language agent and the login-autostart installer are
+  removed. Nothing in the app reached them, and between them they were a hidden
+  startup entry, an outbound connection, and the only reason a live bot token
+  needed to exist.
+- Every identifier that becomes a filename is validated before it is joined,
+  and every resulting path is checked to still be inside the folder it was
+  meant for. A percent-encoded slash used to survive the route's own split and
+  turn back into a separator afterwards, which let a request read records
+  outside the output folder and let a gate decision write a file outside its
+  own directory.
+- Cancelling a render checks the process is still the render before killing it.
+  A crashed render leaves its pid file behind, the operating system hands that
+  number to something else soon enough, and the old code would have terminated
+  whatever inherited it — with its children, on Windows.
+- Only one render can start at a time, decided under a lock. The check and the
+  launch were two steps with seconds between them, so two clicks could put two
+  renders on the GPU.
+- The queue has a ceiling of 20. "At most ten per click" still let ten clicks
+  stack a hundred renders.
+- Requests must carry a JSON object. Malformed JSON used to run the route with
+  empty arguments, and a JSON array raised a 500 instead of being refused.
+- Connections get a read timeout and the server a ceiling on how many it holds
+  at once, so a socket that opens and says nothing no longer keeps a thread for
+  as long as it likes. Oversized bodies are refused with 413, unsatisfiable
+  ranges with 416.
+- Metadata sent to the app is checked against the shape a record is allowed to
+  have, instead of being stored as it arrives.
+- Video ids are escaped for JavaScript as well as for HTML before they reach a
+  click handler. They are filenames, and a record copied from another machine
+  can carry a quote or a backslash the HTML escaper never touched.
+- The update button checks WHICH repository it is about to pull from, and
+  reports whether the commit it moved to was signed. A git config pointed
+  somewhere else was the one way that button could have installed code from a
+  repository you never chose.
+- Dependencies are pinned to exact versions with a hash-pinned lockfile
+  covering the whole tree — 57 packages, every one checked against the advisory
+  database. Install with `pip install --require-hashes -r
+  requirements-lock.txt`.
+- Kokoro's voice weights are checked against a pinned SHA-256 before they are
+  loaded, and land on a temporary file until they pass.
+- On Windows the listening socket no longer sets SO_REUSEADDR, which there lets
+  a second process bind the same port.
+- The app says so, once, when the ffmpeg it found lives in a folder your own
+  account can write to.
+- Model downloads only accept tags from the app's own menu.
+- The changelog is escaped before it is put on the page, instead of after.
+- `.env.example` no longer asks for credentials belonging to removed features.
+
+**Fixed**
+- Approved videos carried a duplicate. Every one had a second, compressed
+  `.preview.mp4` beside it — built to fit Discord's 10 MB upload cap by a
+  feature since removed, and never cleaned up. A finished video is four files:
+  the mp4, its thumbnail, its record and its report. Anything else sharing the
+  name is swept at startup.
+- Cancelling a queued job crashed on a malformed id, returning a 500 instead of
+  a refusal.
+- Update checking told you an update was waiting when there was not. A ZIP
+  install was never compared against anything, so it was told to download the
+  latest forever — including right after doing so. A git copy was compared only
+  against the last ten commits, so one commit of your own made it claim an
+  update existed permanently. It now compares published version numbers, knows
+  the difference between behind, current and ahead, and reads the version from
+  disk so an installed update registers immediately.
+- A window left open while the app restarts says so and offers to reload,
+  instead of silently failing every request forever.
+- A status update with an unusual lane name could raise and take a whole render
+  down on Windows.
+
 ## 2.1.0
 
 **New**
@@ -35,122 +176,6 @@
   still waits for you in Review.
 - Video playback moved into the details drawer, so the list refreshing can
   never interrupt something you are watching.
-
-**New**
-- A Backgrounds section. The gameplay clips behind every video were always just
-  a folder the README told you about: nothing showed what was in it, and an
-  empty one changed how videos looked without saying why. Now you can see every
-  clip with a frame from it, its length and its size, drag new ones in or click
-  to choose, and remove the ones you are done with. Uploads stream straight to
-  disk, so a 2 GB clip copies with a progress bar instead of being held in
-  memory, and a file that is not really a video is refused rather than stored.
-
-**Security**
-- Pillow was pinned at a release carrying 26 published advisories, several of
-  them heap out-of-bounds writes. It was pinned there only because that was
-  what one machine had installed. Now on a release with none, and every pin —
-  57 packages once transitive dependencies are included — is checked against
-  the advisory database.
-- The lockfile covers the whole dependency tree. The previous one listed only
-  the eight direct packages, so `--require-hashes` refused to install at all
-  on a clean machine; it only appeared to work where everything was already
-  present.
-- A malformed job id crashed a request. Cancelling a queued job called int()
-  on whatever arrived, so a string, a list or an object produced a 500 instead
-  of a refusal. Found by fuzzing, which sent 1273 malformed requests across
-  every route and now finds nothing unhandled.
-
-**Fixed**
-- Approved videos carried a duplicate. Every one had a second, compressed
-  `.preview.mp4` beside it — built to fit Discord's 10 MB upload cap by a
-  feature that has since been removed, and never cleaned up. A finished video
-  is four files: the mp4, its thumbnail, its record and its report. Anything
-  else sharing the name is swept at startup, so a leftover from a removed
-  feature cannot sit there for months again.
-
-**Security**
-- Metadata sent to the app is checked against the shape a record is allowed to
-  have, instead of being stored as it arrives.
-- The update button checks WHICH repository it is about to pull from before
-  pulling, and reports whether the commit it moved to was signed. A git config
-  pointed somewhere else was the one way that button could have installed code
-  from a repository you never chose.
-- The app says so, once, when the ffmpeg it found lives in a folder your own
-  account can write to.
-- Shortsmith no longer sends anything anywhere. Two paths remained: an online
-  image generator that was ON by default and received every scene description
-  whenever the backgrounds folder was empty, and a Gemini fallback that sent
-  the brief and every draft to Google whenever Ollama happened to be down and
-  an API key was present. Both are gone. The only traffic left is to Ollama on
-  this machine, the update check, and the one-time voice-model download.
-- Only one render can start at a time. The check and the launch were two steps
-  with seconds between them, so two clicks could put two renders on the GPU.
-- The queue has a ceiling of 20. "At most ten per click" still let ten clicks
-  stack a hundred renders.
-- Video ids are escaped for JavaScript as well as for HTML before they go into
-  a click handler. They are filenames, and a record copied from another machine
-  can carry a quote or a backslash that the HTML escaper never touched.
-- Dependencies ship with a hash-pinned lockfile: `pip install --require-hashes
-  -r requirements-lock.txt`. A version pin says which release; a hash says
-  which bytes.
-- A window left open while the app restarts now says so and offers to reload,
-  instead of silently failing every request forever.
-
-- Every identifier that becomes a filename is validated before it is joined,
-  and every resulting path is checked to still be inside the folder it was
-  meant for. A percent-encoded slash used to survive the route's own split and
-  turn back into a separator afterwards, which let a request read JSON records
-  outside the output folder and let a gate decision write a file outside its
-  own directory.
-- Cancelling a render checks the process is still the render before killing
-  it. A crashed render leaves its pid file behind, the operating system hands
-  that number to something else soon enough, and the old code would have
-  terminated whatever inherited it — with its children, on Windows.
-- Requests must carry a JSON object. Malformed JSON used to run the route with
-  empty arguments, and a JSON array raised a 500 instead of being refused.
-- Connections get a read timeout and the server a ceiling on how many it will
-  hold at once, so a socket that opens and says nothing no longer keeps a
-  thread for as long as it likes. Oversized bodies are refused with 413 and
-  unsatisfiable ranges with 416.
-- On Windows the listening socket no longer sets SO_REUSEADDR, which there
-  lets a second process bind the same port.
-- Narration is synthesised on this machine only. The hosted ElevenLabs and
-  TikTok engines are gone: an API key in a config file used to send the whole
-  script to a third party with nothing on screen to say so.
-- Nothing uploads itself. The YouTube path is gone, including the environment
-  variable that made it upload PUBLICLY.
-- Stage events no longer POST to a Discord webhook.
-- The Discord bot, its language agent and the login-autostart installer are
-  removed. Nothing in the app reached them, and between them they were a
-  hidden startup entry, an outbound connection and the only reason a live bot
-  token needed to exist.
-- Kokoro's voice weights are checked against a pinned SHA-256 before they are
-  loaded, and land on a temporary file until they pass.
-- Dependencies are pinned to exact versions instead of floating on `>=`.
-- `.env.example` no longer asks for credentials belonging to removed features.
-
-- The local server now refuses anything that is not the app's own page. It
-  checks that the request came to a loopback address, that any Origin is ours,
-  and that it carries a per-run token that only the page we served knows.
-  Before this, a website you happened to be visiting could reach
-  http://127.0.0.1 from your browser and drive the whole app behind your back
-  — including deleting every video in the Library. A foreign hostname pointed
-  at 127.0.0.1 could also read your data back.
-- The changelog is escaped before it is put on the page, instead of after.
-- Model downloads only accept tags from the app's own menu.
-- Request bodies are capped, and the folder check that keeps the file server
-  inside app/ no longer compares paths as strings.
-
-**Fixed**
-- Update checking told you an update was waiting when there was not. A ZIP
-  install was never compared against anything, so it was told to download the
-  latest forever — including right after doing so. A git copy was compared
-  only against the last ten commits, so one commit of your own made it claim
-  an update existed permanently. It now compares published version numbers,
-  knows the difference between behind, current and ahead, and reads the
-  version from disk so an installed update registers immediately.
-- A status update with an unusual lane name could raise and take a whole render
-  down on Windows.
 
 ## 2.0.0
 

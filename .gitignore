@@ -6,6 +6,9 @@ __pycache__/
 venv/
 env/
 
+# --- Editor / assistant settings that belong to one machine ---
+.claude/
+
 # --- Secrets / local runtime state ---
 # tokens, push subscriptions, checkpoints, cloud-cap, VAPID pem, run logs
 .env
@@ -22,6 +25,9 @@ output/
 # Gameplay backgrounds are personal downloads, never committed.
 assets/backgrounds/*
 !assets/backgrounds/README.txt
+
+# --- Build output (the bundled runtime; made by scripts/build_bundle.py) ---
+build/
 
 # --- OS / editor ---
 .DS_Store

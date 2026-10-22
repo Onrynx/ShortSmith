@@ -7,10 +7,13 @@ you in the app.
 
 Design principle baked into every module: **degrade, never die.** The core depends
 only on the Python stdlib + Pillow + numpy + FFmpeg + Ollama. Every heavier piece
-(Kokoro/whisper for quality, and the optional LangGraph,
-cloud APIs) is optional and guarded — real when present, graceful fallback when
-absent. That is what lets MOCK mode run end-to-end with zero keys, zero network,
-and zero GPU and still emit a real .mp4.
+(Kokoro and whisper for quality, LangGraph for orchestration) is optional and
+guarded — real when present, graceful fallback when absent. That is what lets
+MOCK mode run end-to-end with zero keys, zero network and zero GPU and still
+emit a real .mp4.
+
+There are no cloud APIs. Earlier versions had several, each reachable from a
+line in a config file; none of them survive.
 """
 
-__version__ = "2.1.0"
+__version__ = "2.3.0"

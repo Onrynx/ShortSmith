@@ -87,6 +87,9 @@ MAX_CONNECTIONS = 48
 # requests is what the longer idle window is for.
 READ_TIMEOUT = 20.0
 IDLE_TIMEOUT = 75.0
+# How long an upload may go without sending a single byte before we give up on
+# it. Generous for a slow disk or a slow link, fatal for an abandoned one.
+UPLOAD_STALL_TIMEOUT = 90.0
 _inflight = threading.BoundedSemaphore(MAX_CONNECTIONS)
 
 
@@ -220,6 +223,15 @@ def installed_models() -> list[str]:
         return []
 
 
+def _connection() -> dict:
+    """How this machine is online, for the download warning. Never fatal."""
+    try:
+        from .network import status
+        return status()
+    except Exception:  # noqa: BLE001
+        return {"kind": "unknown", "warn": False, "label": "your connection"}
+
+
 def machine_info() -> dict:
     """Hardware + model menu. Read from cache; only scans on first ever call."""
     from .hardware import scan, summary
@@ -234,6 +246,7 @@ def machine_info() -> dict:
         "options": catalog_for(hw),
         "base_install_gb": BASE_INSTALL_GB,
         "installed": installed_models(),
+        "connection": _connection(),
         "pull": pull_state(),
     }
 
@@ -357,14 +370,20 @@ class _Handler(BaseHTTPRequestHandler):
         you never notice until the day it matters.
         """
         if not _inflight.acquire(blocking=False):
+            # Raw bytes, not send_response(): nothing has been parsed yet, so
+            # self.request_version does not exist and send_response() raises
+            # on it. The old code threw inside the handler and dropped the
+            # connection instead of answering — which is the one moment a
+            # client most needs a real reply.
             try:
-                self.close_connection = True
-                self.send_response(503)
-                self.send_header("Retry-After", "1")
-                self.send_header("Content-Length", "0")
-                self.end_headers()
-            except OSError:
+                self.wfile.write(b"HTTP/1.1 503 Service Unavailable\r\n"
+                                 b"Retry-After: 1\r\n"
+                                 b"Content-Length: 0\r\n"
+                                 b"Connection: close\r\n\r\n")
+                self.wfile.flush()
+            except (OSError, AttributeError):
                 pass
+            self.close_connection = True
             return
         try:
             super().handle()
@@ -433,6 +452,10 @@ class _Handler(BaseHTTPRequestHandler):
         """Loopback Host, and an Origin/Referer that is ours or absent."""
         if not _host_is_loopback(self.headers.get("Host") or ""):
             return False
+        # Checking only the hostname accepted "http://localhost:1" and any
+        # scheme at all. The page we serve has exactly one origin; compare
+        # against it rather than against a family of them.
+        allowed = self._own_origins()
         for header in ("Origin", "Referer"):
             value = self.headers.get(header)
             if not value or value == "null":
@@ -441,9 +464,21 @@ class _Handler(BaseHTTPRequestHandler):
                 parsed = urlparse(value)
             except ValueError:
                 return False
-            if (parsed.hostname or "").lower() not in _LOOPBACK:
+            host = (parsed.hostname or "").lower()
+            if parsed.scheme != "http" or host not in _LOOPBACK:
+                return False
+            port = parsed.port if parsed.port is not None else 80
+            if (host, port) not in allowed:
                 return False
         return True
+
+    def _own_origins(self) -> set:
+        """(host, port) pairs that are genuinely this server."""
+        try:
+            port = int(self.server.server_address[1])
+        except Exception:  # noqa: BLE001
+            return {(h, p) for h in _LOOPBACK for p in range(0)}
+        return {(h, port) for h in _LOOPBACK}
 
     def _token_ok(self) -> bool:
         """The page we served knows the token; nothing else does.
@@ -454,7 +489,14 @@ class _Handler(BaseHTTPRequestHandler):
         got = self.headers.get("X-Shortsmith-Token") or ""
         if not got:
             got = (parse_qs(urlparse(self.path).query).get("k") or [""])[0]
-        return hmac.compare_digest(str(got), SESSION_TOKEN)
+        # compare_digest refuses non-ASCII str and raises TypeError, which the
+        # handler turned into a 500. Comparing bytes has no such restriction,
+        # and a token that cannot even be encoded is simply wrong.
+        try:
+            supplied = str(got).encode("utf-8")
+        except (UnicodeError, AttributeError):
+            return False
+        return hmac.compare_digest(supplied, SESSION_TOKEN.encode("ascii"))
 
     def _allowed(self, path: str) -> bool:
         if not self._caller_ok():
@@ -508,15 +550,26 @@ class _Handler(BaseHTTPRequestHandler):
         start, end = 0, size - 1
         partial = False
         if rng and rng.startswith("bytes="):
+            # Three shapes, and the suffix one was wrong: "bytes=-3" asks for
+            # the LAST three bytes, not the first four. The old code read the
+            # empty left side as "start at 0" and the 3 as an end offset.
             try:
-                a, _, b = rng[6:].partition("-")
-                if a:
+                spec = rng[6:].split(",")[0].strip()
+                a, sep, b = spec.partition("-")
+                if not sep:
+                    raise ValueError("not a range")
+                if not a:                       # bytes=-N  -> the last N bytes
+                    n = int(b)
+                    if n <= 0:
+                        raise ValueError("empty suffix range")
+                    start, end = max(0, size - n), size - 1
+                else:
                     start = int(a)
-                if b:
-                    end = min(int(b), size - 1)
+                    end = min(int(b), size - 1) if b else size - 1
                 partial = True
             except ValueError:
                 partial = False
+                start, end = 0, size - 1
             # An unsatisfiable range has its own status code; without this a
             # start past the end produced a zero-length 206 whose Content-Range
             # claimed otherwise, which browsers are entitled to find confusing.
@@ -608,6 +661,15 @@ class _Handler(BaseHTTPRequestHandler):
             return self._json(pull_state())
         if p == "/api/machine":
             return self._json(machine_info())
+        if p == "/api/connection":
+            # Asked right before a download starts, so the answer is fresh
+            # rather than whatever was true when Settings was opened.
+            from .network import describe
+            try:
+                size = float((q.get("gb") or ["0"])[0])
+            except (TypeError, ValueError):
+                size = 0.0
+            return self._json(describe(size))
         if p == "/api/clips":
             from .clips import free_space_gb, listing
             data = listing()
@@ -682,9 +744,14 @@ class _Handler(BaseHTTPRequestHandler):
             if declared > MAX_CLIP_BYTES:
                 return self._json({"error": "that file is too large"}, 413)
             name = unquote(self.headers.get("X-Clip-Name") or "")
-            # A long upload must not be killed by the idle read timeout.
+            # A socket timeout is PER READ, not for the whole transfer. Setting
+            # it to half an hour meant a client that promised 2 GB and then
+            # went quiet held a thread — and one of the 48 connection slots —
+            # for that entire half hour. A real upload never pauses this long
+            # between chunks, however big it is; silence this long means the
+            # other end is gone.
             try:
-                self.connection.settimeout(1800)
+                self.connection.settimeout(UPLOAD_STALL_TIMEOUT)
             except OSError:
                 pass
             r = save_stream(name, self.rfile, declared)
@@ -761,7 +828,17 @@ class _Handler(BaseHTTPRequestHandler):
         if p == "/api/bulk":
             # One request for a whole selection: the UI lets you tick several
             # videos, and firing N separate calls would half-apply on an error.
-            ids = [str(i) for i in (body.get("ids") or []) if i]
+            raw_ids = body.get("ids")
+            # Iterating whatever arrived raised TypeError on a number and
+            # silently walked the characters of a string, which would have
+            # turned "abc" into three deletions of "a", "b" and "c".
+            if raw_ids is None:
+                raw_ids = []
+            if not isinstance(raw_ids, list):
+                return self._json({"error": "ids must be a list"}, 400)
+            if len(raw_ids) > 500:
+                return self._json({"error": "too many ids in one request"}, 400)
+            ids = [str(i) for i in raw_ids if isinstance(i, str) and i.strip()]
             action = str(body.get("action") or "")
             if action not in ("approve", "reject", "delete"):
                 return self._json({"error": "unknown action"}, 400)
@@ -787,8 +864,18 @@ class _Handler(BaseHTTPRequestHandler):
             # Only tags from our own menu. Downloading is a multi-gigabyte,
             # long-running action and the name should never be free text.
             from .model_profiles import CATALOG
-            if model not in {e["tag"] for e in CATALOG}:
+            entry = next((e for e in CATALOG if e["tag"] == model), None)
+            if entry is None:
                 return self._json({"error": "unknown model"}, 400)
+            # A metered connection needs an explicit yes. The page asks first
+            # and sends confirm=true; anything else gets the question back
+            # rather than a silent multi-gigabyte download.
+            from .network import describe
+            conn = describe(float(entry.get("download_gb") or 0))
+            if conn.get("warn") and not body.get("confirm"):
+                return self._json({"ok": False, "needs_confirm": True,
+                                   "message": conn["message"],
+                                   "connection": conn}, 409)
             return self._json(start_pull(model))
 
         if p == "/api/update":

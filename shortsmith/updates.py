@@ -28,18 +28,25 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import subprocess
+import tempfile
 import time
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
 from . import __version__
-from .utils import CREATE_NO_WINDOW, ROOT, log
+from .safety import inside
+from .utils import (CREATE_NO_WINDOW, ROOT, STATE_DIR, http_download, log,
+                    sha256_of)
 
 REPO = "Onrynx/ShortSmith"
 BRANCH = "main"
 API = f"https://api.github.com/repos/{REPO}/commits?per_page=10"
-RAW_CHANGELOG = f"https://raw.githubusercontent.com/{REPO}/{BRANCH}/CHANGELOG.md"
+RAW_BASE = f"https://raw.githubusercontent.com/{REPO}/{BRANCH}/"
+RAW_CHANGELOG = RAW_BASE + "CHANGELOG.md"
+RAW_MANIFEST = RAW_BASE + "manifest.json"
 ZIP_URL = f"https://github.com/{REPO}/archive/refs/heads/{BRANCH}.zip"
 PAGE = f"https://github.com/{REPO}"
 
@@ -209,7 +216,9 @@ def check(force: bool = False) -> dict:
         out["state"] = by_version or "unknown"
 
     out["up_to_date"] = out["state"] in ("current", "ahead")
-    out["can_install"] = out["git"] and out["state"] == "behind"
+    # Any install can update itself now: a checkout pulls, everything else
+    # patches the files that differ.
+    out["can_install"] = out["state"] == "behind"
     _cache.clear()
     _cache.update(out)
     _cache_at = time.time()
@@ -259,14 +268,150 @@ def _signature_state() -> str:
     return "signature could NOT be verified"
 
 
-def apply_update() -> dict:
-    """Pull the newest code. Only possible on a git checkout."""
+
+
+# --------------------------------------------------------------------------- #
+# Incremental updating
+# --------------------------------------------------------------------------- #
+# A ZIP install used to be told "download the new version and unzip it over
+# this folder" — a whole fresh copy for a one-line fix, and a step the person
+# had to carry out by hand. Instead the release carries a manifest of every
+# shipped file and its SHA-256; the app hashes what it has, and fetches only
+# the entries that actually differ.
+#
+# Three rules keep this from being dangerous:
+#   * only paths named in the REMOTE manifest are ever written
+#   * every downloaded file must match its published hash before it is kept
+#   * nothing outside the install folder is touched, and nothing the user owns
+#     is in the manifest to begin with
+MAX_FILE_BYTES = 32 * 1024 ** 2          # no shipped source file is near this
+MAX_UPDATE_BYTES = 512 * 1024 ** 2       # a whole bundled runtime, and no more
+
+
+def _local_digest(path: Path) -> str | None:
+    try:
+        return sha256_of(path)
+    except OSError:
+        return None
+
+
+def remote_manifest() -> dict | None:
+    """The file list for the published version, or None if unavailable."""
+    try:
+        data = json.loads(_fetch(RAW_MANIFEST, timeout=20))
+    except Exception as exc:  # noqa: BLE001
+        log("warn", f"could not read the release manifest: {exc}")
+        return None
+    if not isinstance(data, dict) or not isinstance(data.get("files"), dict):
+        return None
+    return data
+
+
+def plan_update(manifest: dict | None = None) -> dict:
+    """What would change, without changing anything.
+
+    Returns the files to fetch and how many bytes that is, so the screen can
+    say "4 files, 61 KB" instead of "an update is available".
+    """
+    manifest = manifest or remote_manifest()
+    if not manifest:
+        return {"ok": False, "error": "Could not read the release manifest."}
+
+    fetch, total, unchanged = [], 0, 0
+    for rel, meta in sorted(manifest["files"].items()):
+        target = safe_target(rel)
+        if target is None:
+            # A manifest naming something outside the install folder is not a
+            # manifest we follow.
+            return {"ok": False, "error": f"the release manifest names an "
+                                          f"unusable path: {rel}"}
+        want = str(meta.get("sha256") or "")
+        size = int(meta.get("size") or 0)
+        if size > MAX_FILE_BYTES:
+            return {"ok": False, "error": f"{rel} is larger than this updater allows"}
+        if target.exists() and _local_digest(target) == want:
+            unchanged += 1
+            continue
+        fetch.append({"path": rel, "sha256": want, "size": size,
+                      "new": not target.exists()})
+        total += size
+
+    if total > MAX_UPDATE_BYTES:
+        return {"ok": False, "error": "that update is larger than this updater allows"}
+
+    return {"ok": True, "version": manifest.get("version"),
+            "files": fetch, "count": len(fetch), "unchanged": unchanged,
+            "bytes": total, "mb": round(total / 1024 ** 2, 2)}
+
+
+def safe_target(rel: str) -> Path | None:
+    """Where a manifest entry lands locally, or None if it cannot be trusted."""
+    rel = str(rel or "").strip().replace("\\", "/")
+    if not rel or rel.startswith("/") or ".." in rel.split("/"):
+        return None
+    target = (ROOT / rel).resolve()
+    return target if inside(target, ROOT) else None
+
+
+def apply_incremental(progress=None) -> dict:
+    """Fetch and install only the files that differ. Works for any install."""
+    manifest = remote_manifest()
+    plan = plan_update(manifest)
+    if not plan.get("ok"):
+        return plan
+    if not plan["files"]:
+        return {"ok": True, "updated": 0, "version": plan.get("version"),
+                "message": "Already up to date."}
+
+    staged: list[tuple[Path, Path]] = []
+    stage_dir = Path(tempfile.mkdtemp(prefix="shortsmith-update-", dir=str(STATE_DIR)))
+    try:
+        for i, item in enumerate(plan["files"], 1):
+            rel = item["path"]
+            target = safe_target(rel)
+            if target is None:
+                raise RuntimeError(f"unusable path in manifest: {rel}")
+            if progress:
+                progress(i, len(plan["files"]), rel)
+            tmp = stage_dir / f"{i:04d}.part"
+            http_download(RAW_BASE + urllib.parse.quote(rel), tmp,
+                          timeout=120, expect_sha256=item["sha256"],
+                          max_bytes=MAX_FILE_BYTES)
+            staged.append((tmp, target))
+
+        # Everything downloaded and verified before anything is replaced, so a
+        # failure halfway cannot leave a half-updated install.
+        for tmp, target in staged:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(tmp), str(target))
+    except Exception as exc:  # noqa: BLE001
+        shutil.rmtree(stage_dir, ignore_errors=True)
+        log("warn", f"incremental update failed: {exc}")
+        return {"ok": False, "error": str(exc)[:300]}
+    finally:
+        shutil.rmtree(stage_dir, ignore_errors=True)
+
+    _cache.clear()
     global _cache_at
+    _cache_at = 0.0
+    new_version = installed_version()
+    log("info", f"updated {len(staged)} file(s) -> v{new_version}")
+    return {"ok": True, "updated": len(staged), "version": new_version,
+            "mb": plan["mb"], "restart": True}
+
+
+
+def apply_update() -> dict:
+    """Update this copy. A git checkout pulls; anything else patches files.
+
+    Both paths change only program files. The manifest has no entry for
+    anything the user owns, so there is nothing in an update that could reach
+    a video, a clip, a model or a setting.
+    """
     if not is_git_checkout():
-        return {"ok": False,
-                "error": "This copy was downloaded as a ZIP, so it cannot "
-                         "update itself. Download the new version and unzip "
-                         "it over this folder."}
+        return apply_incremental()
+
+    global _cache_at
     try:
         dirty = _git("status", "--porcelain").stdout.strip()
         if dirty:
