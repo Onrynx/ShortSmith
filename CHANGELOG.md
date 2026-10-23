@@ -133,6 +133,15 @@ enough, and any website you visited could drive it.
 - `.env.example` no longer asks for credentials belonging to removed features.
 
 **Fixed**
+- The hardware scan is cached per machine now. The cache carried no record of
+  which computer wrote it, so an install folder shared between systems handed
+  one of them the other's hardware — and every model recommendation after that
+  was for the wrong computer.
+- The download page only offers builds that exist. It listed Windows, macOS and
+  Linux unconditionally while only Windows had ever been built, so a Mac got a
+  404 from the main button and a phone got two dead links. It now asks GitHub
+  what is actually attached, says plainly when a platform has no build yet, and
+  tells a phone that Shortsmith needs a computer.
 - Updates could never have worked. Git was converting line endings on checkout,
   so the manifest recorded hashes of CRLF files while the updater downloaded
   the LF versions GitHub serves — every text file failed its checksum. A

@@ -171,11 +171,22 @@ def _gpu_linux() -> tuple[str | None, float | None]:
 # --------------------------------------------------------------------------- #
 # Scan
 # --------------------------------------------------------------------------- #
+def _platform_key() -> str:
+    """Enough of this machine's identity to notice it is a different one."""
+    return f"{platform.system()}|{platform.machine()}|{platform.node()}"
+
+
 def scan(use_cache: bool = True) -> dict:
     """Describe this computer. Cached after the first run; never raises."""
     if use_cache:
         cached = read_json(_CACHE, {}) or {}
-        if cached.get("scan_version") == _SCAN_VERSION:
+        # The cache has to match the machine reading it, not just the scanner
+        # version. An install folder shared between systems — or carried on a
+        # USB stick — was handing a Linux run the hardware of the Windows box
+        # that happened to scan first, and every model recommendation after
+        # that was for the wrong computer.
+        same_machine = (cached.get("platform_key") == _platform_key())
+        if cached.get("scan_version") == _SCAN_VERSION and same_machine:
             return cached
 
     total_ram, free_ram = _ram()
@@ -199,6 +210,7 @@ def scan(use_cache: bool = True) -> dict:
 
     info = {
         "scan_version": _SCAN_VERSION,
+        "platform_key": _platform_key(),
         "os": {"Windows": "Windows", "Darwin": "macOS"}.get(system, system or "Unknown"),
         "os_release": platform.release() or "",
         "arch": platform.machine() or "",

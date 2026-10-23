@@ -6,8 +6,8 @@
    "size": 652
   },
   "CHANGELOG.md": {
-   "sha256": "507945f0f0764fc65a7940857751f2cd24d8c4cf4704c82434d5543b05427c82",
-   "size": 13492
+   "sha256": "39b3ad30d8b3c7dd2e9186c8e749ef136d9f38ef6c1192656d35bb278af75557",
+   "size": 14135
   },
   "COMPLIANCE.md": {
    "sha256": "bdc0e01c813fb017a96064964e42adac19be6eaeca6f946398fdb51e77eda258",
@@ -98,8 +98,8 @@
    "size": 9228
   },
   "shortsmith/hardware.py": {
-   "sha256": "163dda71afc5d2ede91670d8374d219326732107f30d4403173d186e9063bbc6",
-   "size": 10357
+   "sha256": "6c873c8f379db678abc710da6d791c9857240c02f7b0c27452182c2c15fb457b",
+   "size": 11298
   },
   "shortsmith/llm.py": {
    "sha256": "df22579a98dd705746c7dd753343fab0d902f6f1cf0fbd6f71b50a3ddc42a9bd",
@@ -227,6 +227,6 @@
   }
  },
  "manifest_version": 1,
- "total_bytes": 634515,
+ "total_bytes": 636099,
  "version": "2.3.0"
 }
