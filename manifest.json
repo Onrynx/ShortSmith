@@ -1,13 +1,13 @@
 {
- "count": 56,
+ "count": 57,
  "files": {
   ".gitattributes": {
    "sha256": "cfcf5770f1995d4e20262aa16888e8b6b6f5a5f26539edf9840848ae79f79f42",
    "size": 652
   },
   "CHANGELOG.md": {
-   "sha256": "39b3ad30d8b3c7dd2e9186c8e749ef136d9f38ef6c1192656d35bb278af75557",
-   "size": 14135
+   "sha256": "3aefd603a825db0265af06c5ac0744fbf18719d373df50f6155ed67ac418319d",
+   "size": 14707
   },
   "COMPLIANCE.md": {
    "sha256": "bdc0e01c813fb017a96064964e42adac19be6eaeca6f946398fdb51e77eda258",
@@ -30,8 +30,8 @@
    "size": 9844
   },
   "app/index.html": {
-   "sha256": "a0330a589f2dedbc543551eeca409532e999500f474c79f218c561b59e69e0cf",
-   "size": 85050
+   "sha256": "5a223af4cdf71282f1f2bf9e411970d9e8a0164a5c71895c7bd3ee7c7c2796ee",
+   "size": 86890
   },
   "assets/backgrounds/README.txt": {
    "sha256": "ae9bb9c87ed8d708966ebf792429a2d98f35826f5b308824e9ca841f3eb79af2",
@@ -88,6 +88,10 @@
   "shortsmith/factcheck.py": {
    "sha256": "a4f98267a5d9ff7292032aea8690325c5ca6c693ec480ebecf1da12320badbc9",
    "size": 10802
+  },
+  "shortsmith/ffmpeg_setup.py": {
+   "sha256": "4c6663571ffc307efb1e378288ed1e58f6dcaa9dfae0ce336921920b507d3bdf",
+   "size": 7574
   },
   "shortsmith/gate.py": {
    "sha256": "180dc63a7ae2a8ab22c67b70125a84a1497a80e0c12a220fee9f879776401813",
@@ -190,8 +194,8 @@
    "size": 8104
   },
   "shortsmith/setup_models.py": {
-   "sha256": "512d8efa846f0e6841d19095867f09ca0a0d3e90539a8fa7cc49443bd6577608",
-   "size": 8501
+   "sha256": "44531081a4698ea0136ac1e4323c47a2e96057af9ffb073bdc08f4a759866855",
+   "size": 9780
   },
   "shortsmith/state.py": {
    "sha256": "7b4de77d4d25b098dcb7f849642a869e94944de33f33cc8efef745dc5df378ab",
@@ -218,8 +222,8 @@
    "size": 17716
   },
   "shortsmith/utils.py": {
-   "sha256": "ccbb19f352db30f6005feb8893b69fea250486c6885c45d1715f955a75c3ded7",
-   "size": 19122
+   "sha256": "034cd1c68dcabc2077da20e5b83f8fa34343ec6fa8e30fabe61afb8de17089b1",
+   "size": 20385
   },
   "shortsmith/webapp.py": {
    "sha256": "3597c0500cd9a5cc21ee6f41c79db5a4b3edebe09e285af2c2c4eef8e707b717",
@@ -227,6 +231,6 @@
   }
  },
  "manifest_version": 1,
- "total_bytes": 636099,
+ "total_bytes": 648627,
  "version": "2.3.0"
 }

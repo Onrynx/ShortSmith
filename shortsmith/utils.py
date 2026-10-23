@@ -399,7 +399,12 @@ def ffmpeg_path() -> str:
     if _FFMPEG_CACHE:
         return _FFMPEG_CACHE[0]
     override = (env("FFMPEG_BIN", "") or "").strip()
-    candidates = ([override] if override else []) + _which_all("ffmpeg")
+    # Our own copy comes first when one exists. It is the one the app fetched
+    # and verified, so on a machine with nothing installed it is the whole
+    # reason rendering works — and on a machine that already had ffmpeg, this
+    # folder is simply empty and PATH wins as before.
+    own = STATE_DIR / "tools" / "bin" / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")
+    candidates = ([override] if override else [])         + ([str(own)] if own.is_file() else [])         + _which_all("ffmpeg")
     for cand in candidates:
         if cand and _is_real_ffmpeg(cand):
             if candidates.index(cand) > 0:
@@ -425,6 +430,11 @@ def _warn_if_writable(path: str) -> None:
     try:
         folder = Path(path).resolve().parent
         home = Path.home().resolve()
+        # Our own copy lives under the app, which is usually under the home
+        # folder — but we put it there on purpose and verified it, so warning
+        # about it would be crying wolf on the one binary we vouch for.
+        if folder == (STATE_DIR / "tools" / "bin").resolve():
+            return
         if folder == home or home in folder.parents:
             log("warn", f"ffmpeg is being run from {folder}, which is inside your "
                         f"user folder. Set FFMPEG_BIN to pin a specific binary "

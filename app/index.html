@@ -1519,7 +1519,8 @@ async function pullModel(tag){
   }
   if(!r || r.error){ notify('Download not started', (r && r.error) || 'Unknown problem', 'bad'); return; }
   notify('Getting everything ready',
-         'The writer model, the voice and the caption timer. This happens once.');
+         'The writer model, the video encoder, the voice and the caption '
+         + 'timer. This happens once.');
   pollPull();
 }
 // One bar for all three downloads. A render needs a writer, a voice and
@@ -1547,8 +1548,8 @@ function paintPull(p){
              + 'timing are all installed.', 'good');
     }
     host.innerHTML = '<b class="ok">Everything is ready.</b>'
-      + '<div class="muted">' + esc(p.model || '') + ', the narration voice and '
-      + 'the caption timer are all on this computer. Renders work offline from '
+      + '<div class="muted">' + esc(p.model || '') + ', the video encoder, the narration voice '
+      + 'and the caption timer are all on this computer. Renders work offline from '
       + 'here — press Make.</div>';
     return;
   }
@@ -1557,7 +1558,7 @@ function paintPull(p){
   const bytes = (p.stage === 'writer' && p.total_gb)
       ? p.done_gb + ' of ' + p.total_gb + ' GB · ' : '';
   host.innerHTML = '<b>Getting everything ready</b>'
-    + '<div class="muted">Step ' + step + ' of 3 — ' + esc(p.label || '') + '</div>'
+    + '<div class="muted">Step ' + step + ' of ' + (p.steps || 4) + ' — ' + esc(p.label || '') + '</div>'
     + '<div class="pbar"><i style="width:' + (p.overall || 0) + '%"></i></div>'
     + '<div class="muted">' + bytes + Math.round(p.overall || 0) + '% overall</div>'
     + '<div class="muted" style="margin-top:8px">Leave this running — you can use '

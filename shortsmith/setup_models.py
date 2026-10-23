@@ -35,7 +35,7 @@ STATE: dict = {
     "status": "idle",          # idle | running | done | failed
     "stage": "",               # writer | voice | captions
     "label": "",               # what to show under the bar
-    "step": 0, "steps": 3,
+    "step": 0, "steps": 4,
     "percent": 0.0,            # within the current stage
     "overall": 0.0,            # across all three
     "done_gb": 0.0, "total_gb": 0.0,
@@ -45,7 +45,7 @@ _lock = threading.Lock()
 
 # Rough shares of the total, used only to keep the overall bar honest while a
 # stage that cannot report bytes is running.
-_WEIGHTS = {"writer": 0.90, "voice": 0.07, "captions": 0.03}
+_WEIGHTS = {"writer": 0.80, "ffmpeg": 0.10, "voice": 0.07, "captions": 0.03}
 
 
 def state() -> dict:
@@ -57,7 +57,7 @@ def _set(**kw) -> None:
     with _lock:
         STATE.update(kw)
         # Overall = finished stages + progress through the current one.
-        order = ["writer", "voice", "captions"]
+        order = ["writer", "ffmpeg", "voice", "captions"]
         stage = STATE.get("stage")
         done = 0.0
         if stage in order:
@@ -101,9 +101,28 @@ def _pull_writer(model: str) -> None:
 # --------------------------------------------------------------------------- #
 # 2. the voice
 # --------------------------------------------------------------------------- #
+def _pull_ffmpeg() -> None:
+    """The video encoder. Nothing renders without it, and the bundle has none.
+
+    Skipped when the machine already has one. Many do not — and that was the
+    hole: everything else was fetched, nine gigabytes spent, and the render
+    failed at the cutter with "FFmpeg not found on PATH".
+    """
+    from .ffmpeg_setup import have_any, install
+    _set(stage="ffmpeg", step=2, percent=0.0, label="Checking for the video encoder")
+    if have_any():
+        log("info", "ffmpeg is already on this machine; not downloading one")
+        _set(percent=100.0, label="Video encoder already installed")
+        return
+    r = install(on_progress=lambda m: _set(percent=40.0, label=m))
+    if not r.get("ok"):
+        raise RuntimeError(r.get("error") or "could not install ffmpeg")
+    _set(percent=100.0)
+
+
 def _pull_voice() -> None:
     from .nodes import voice as V
-    _set(stage="voice", step=2, percent=0.0, label="Downloading the narrator's voice")
+    _set(stage="voice", step=3, percent=0.0, label="Downloading the narration voice")
     pairs = [(V.KOKORO_ONNX_URL, V.MODEL_PATH, V.KOKORO_ONNX_SHA256),
              (V.KOKORO_VOICES_URL, V.VOICES_PATH, V.KOKORO_VOICES_SHA256)]
     for i, (url, path, digest) in enumerate(pairs):
@@ -130,7 +149,7 @@ def _pull_captions() -> None:
     allowed to fail the setup.
     """
     import os
-    _set(stage="captions", step=3, percent=0.0,
+    _set(stage="captions", step=4, percent=0.0,
          label="Downloading the caption timer")
     try:
         from faster_whisper import WhisperModel  # type: ignore
@@ -148,6 +167,7 @@ def _run(model: str) -> None:
     started = time.time()
     try:
         _pull_writer(model)
+        _pull_ffmpeg()
         _pull_voice()
         _pull_captions()
     except Exception as exc:  # noqa: BLE001
@@ -195,18 +215,22 @@ def ready() -> dict:
     from .llm import select_model
     from .nodes import voice as V
 
+    from .ffmpeg_setup import have_any
     writer = select_model(False)
     have_writer = writer.get("backend") == "ollama"
+    have_encoder = have_any()
     have_voice = (V.MODEL_PATH.exists() and V.VOICES_PATH.exists()
                   and V.MODEL_PATH.stat().st_size > 1024)
     missing = []
     if not have_writer:
         missing.append("a writer model")
     if not have_voice:
-        missing.append("the narrator's voice")
+        missing.append("the narration voice")
+    if not have_encoder:
+        missing.append("the video encoder")
     return {"ready": not missing, "missing": missing,
             "writer": writer.get("model") if have_writer else None,
-            "voice": have_voice}
+            "voice": have_voice, "ffmpeg": have_encoder}
 
 
 __all__ = ["start", "state", "ready", "total_gb", "VOICE_GB", "CAPTIONS_GB"]

@@ -4,7 +4,7 @@
 
 **New**
 - Everything a render needs is fetched in one step. Picking a writer model now
-  also brings the narration voice and the caption timer, behind a single
+  also brings the video encoder, the narration voice and the caption timer, behind a single
   progress bar that ends with "everything is ready". They used to arrive
   separately, the first time a render happened to reach their stage, so a first
   video stalled twice for downloads nobody had mentioned — and those two
@@ -133,6 +133,13 @@ enough, and any website you visited could drive it.
 - `.env.example` no longer asks for credentials belonging to removed features.
 
 **Fixed**
+- Nothing could render on a machine without ffmpeg, and the bundle never had
+  one. It cuts the clips, assembles the video, reads durations and makes the
+  thumbnail — so a clean computer got all the way through picking a model, nine
+  gigabytes of downloads and several minutes of writing before failing with
+  "FFmpeg not found on PATH". It is now fetched during setup like everything
+  else, into the app's own folder, needing no administrator rights and touching
+  nothing outside it. A machine that already has ffmpeg keeps using its own.
 - The hardware scan is cached per machine now. The cache carried no record of
   which computer wrote it, so an install folder shared between systems handed
   one of them the other's hardware — and every model recommendation after that
