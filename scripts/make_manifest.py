@@ -35,8 +35,13 @@ SKIP_DIRS = {
 # The manifest describes what an INSTALL consists of. Anything only a person
 # working on Shortsmith needs is left out, so the updater never adds developer
 # tooling to somebody's copy of the app.
+# Anything the bundle deliberately leaves out must be skipped here too. The
+# manifest is what an installed copy compares itself against, so a file listed
+# here but absent from the bundle is a difference that can never be resolved:
+# every fresh install would download it on its first update check, for ever.
 SKIP_NAMES = {".env", ".env.example", "manifest.json", ".gitignore",
               "requirements.txt", "requirements-lock.txt",
+              "requirements-build.txt", "requirements-build.in",
               ".DS_Store", "Thumbs.db", "Shortsmith.lnk", "Shortsmith.desktop"}
 SKIP_SUFFIXES = {".pyc", ".pyo", ".log", ".part", ".tmp"}
 

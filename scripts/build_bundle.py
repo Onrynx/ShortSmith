@@ -546,6 +546,48 @@ def package(folder: Path) -> Path:
     return archive
 
 
+def verify_against_manifest(out: Path) -> None:
+    """Every file the manifest lists must be in the bundle, byte for byte.
+
+    An installed copy updates by hashing what it has and fetching whatever
+    differs from the manifest. So a file that is listed but not shipped is a
+    difference that can never be resolved: every fresh install downloads it on
+    its first update check, finds it still missing next time, and downloads it
+    again for ever.
+
+    That has happened twice. Once when the bundle rewrote its own README, and
+    once when requirements-build.txt was added to the repo but excluded from
+    the bundle without being excluded from the manifest. Both were invisible
+    until someone looked. Checking here makes the build fail instead.
+    """
+    manifest = json.loads((ROOT / "manifest.json").read_text(encoding="utf-8"))
+    listed = manifest["files"]
+    missing, differing = [], []
+    for rel, meta in (listed.items() if isinstance(listed, dict)
+                      else [(f["path"], f) for f in listed]):
+        want = meta["sha256"] if isinstance(meta, dict) else meta
+        p = out / rel
+        if not p.exists():
+            missing.append(rel)
+        elif hashlib.sha256(p.read_bytes()).hexdigest() != want:
+            differing.append(rel)
+
+    if missing or differing:
+        lines = ["the bundle does not match manifest.json:"]
+        for rel in missing:
+            lines.append(f"    listed but not shipped: {rel}")
+        for rel in differing:
+            lines.append(f"    shipped with different contents: {rel}")
+        lines.append("")
+        lines.append("  Every fresh install would download these on its first")
+        lines.append("  update check and never stop. Either ship the file, or")
+        lines.append("  add it to SKIP_NAMES in scripts/make_manifest.py.")
+        raise SystemExit("\n  ".join(lines))
+
+    total = len(listed)
+    log(f"bundle matches manifest ({total}/{total} files)")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Build a self-contained Shortsmith")
     ap.add_argument("--zip", action="store_true", help="also produce a .zip")
@@ -567,6 +609,8 @@ def main() -> int:
         build_linux(out, arch, refresh_only=args.refresh)
     else:
         raise SystemExit(f"No bundle recipe for {system}.")
+
+    verify_against_manifest(out)
 
     size = sum(f.stat().st_size for f in out.rglob("*") if f.is_file())
     print(f"\n  {out}  ({size / 1024 ** 2:.0f} MB)")
