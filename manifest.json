@@ -34,8 +34,8 @@
    "size": 86890
   },
   "assets/backgrounds/README.txt": {
-   "sha256": "ae9bb9c87ed8d708966ebf792429a2d98f35826f5b308824e9ca841f3eb79af2",
-   "size": 990
+   "sha256": "f42e1d43e60fd499669f7ab8030aba1c4cd048146123858310fa2e65e997093a",
+   "size": 971
   },
   "config/gaming_lore.yaml": {
    "sha256": "ed4ecfeb692c206acb9b6f43b109265d41f4b5a47bfcafc45d94512b65e0440a",
@@ -231,6 +231,6 @@
   }
  },
  "manifest_version": 1,
- "total_bytes": 649863,
+ "total_bytes": 649844,
  "version": "2.3.0"
 }

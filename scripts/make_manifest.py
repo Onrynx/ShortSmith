@@ -35,6 +35,49 @@ SKIP_DIRS = {
 # The manifest describes what an INSTALL consists of. Anything only a person
 # working on Shortsmith needs is left out, so the updater never adds developer
 # tooling to somebody's copy of the app.
+def check_line_endings(paths: list[Path], root: Path) -> None:
+    """Refuse to write a manifest describing bytes no bundle will contain.
+
+    The manifest is hashed from the working copy; a bundle built anywhere else
+    is made from a fresh checkout. If a file on disk differs from what git
+    stores by nothing but line endings, those two can never agree, and every
+    installed copy re-downloads that file on every update check for ever.
+
+    This is not hypothetical and it is not loud. assets/backgrounds/README.txt
+    sat with CRLF on disk and LF in the repository; git status called the tree
+    clean, because its cached stat info meant it never re-read the file. The
+    published manifest and the published bundles disagreed about one file and
+    nothing anywhere said so.
+
+    .gitattributes keeps the two in step from here on. This catches anything
+    that slipped through before it ships.
+    """
+    import subprocess
+
+    bad = []
+    for p in paths:
+        rel = p.relative_to(root).as_posix()
+        blob = subprocess.run(["git", "cat-file", "-p", f"HEAD:{rel}"],
+                              cwd=root, capture_output=True)
+        if blob.returncode != 0:          # new file, not committed yet
+            continue
+        disk = p.read_bytes()
+        if disk == blob.stdout:
+            continue
+        if disk.replace(b"\r\n", b"\n") == blob.stdout:
+            bad.append((rel, len(disk), len(blob.stdout)))
+
+    if bad:
+        lines = ["line endings on disk differ from the repository:"]
+        for rel, d, b in bad:
+            lines.append(f"    {rel}: {d} bytes on disk, {b} in git")
+        lines.append("")
+        lines.append("  A bundle built from a checkout can never match this")
+        lines.append("  manifest. Restore the working copy first:")
+        lines.append("    git cat-file -p HEAD:<path> > <path>")
+        raise SystemExit("\n  ".join(lines))
+
+
 # Anything the bundle deliberately leaves out must be skipped here too. The
 # manifest is what an installed copy compares itself against, so a file listed
 # here but absent from the bundle is a difference that can never be resolved:
@@ -71,12 +114,11 @@ def sha256(path: Path) -> str:
 def build() -> dict:
     files = {}
     total = 0
-    for p in sorted(ROOT.rglob("*")):
-        if not p.is_file():
-            continue
+    shipped = [p for p in sorted(ROOT.rglob("*"))
+               if p.is_file() and not _skip(p.relative_to(ROOT))]
+    check_line_endings(shipped, ROOT)
+    for p in shipped:
         rel = p.relative_to(ROOT)
-        if _skip(rel):
-            continue
         size = p.stat().st_size
         total += size
         # Forward slashes: this is a URL path as much as a file path.
