@@ -13,12 +13,17 @@ no cloud. Nothing you make is uploaded anywhere until you decide to post it.
 
 ### [⬇ Download for Windows](https://github.com/Onrynx/ShortSmith/releases/latest/download/Shortsmith-Windows.zip)
 
-[macOS](https://github.com/Onrynx/ShortSmith/releases/latest/download/Shortsmith-macOS.zip)
- · [Linux](https://github.com/Onrynx/ShortSmith/releases/latest/download/Shortsmith-Linux.tar.gz)
- · [all versions](https://github.com/Onrynx/ShortSmith/releases)
+That link always gives you the newest release — it is not tied to a version
+number, so it keeps working after every update.
+[All versions](https://github.com/Onrynx/ShortSmith/releases).
 
-Those links always give you the newest release — they are not tied to a version
-number, so they keep working after every update.
+> **macOS and Linux are not built yet.** Shortsmith runs on them — the code is
+> the same — but each one needs its bundle built on that kind of machine, and
+> that has not been done. If you are on a Mac or Linux and want it, open an
+> issue and say so.
+>
+> **There is no phone version.** Shortsmith renders video on the machine it
+> runs on.
 
 Then, once:
 

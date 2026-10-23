@@ -14,8 +14,8 @@
    "size": 3577
   },
   "README.md": {
-   "sha256": "755f5663226cfee3ccc78ecffaf5b7cc666b9a7f2bf0493601bdced54194d4c1",
-   "size": 10833
+   "sha256": "e3fd42819f291321bce94a41f2dd4b3c6dfdd51a993e465c30f0d8dcd0bace97",
+   "size": 11254
   },
   "app/icon.icns": {
    "sha256": "76cad7283bcb0fdc20c74d5840eed6672842d591c0f063efe175a1fa288bdc09",
@@ -227,6 +227,6 @@
   }
  },
  "manifest_version": 1,
- "total_bytes": 634094,
+ "total_bytes": 634515,
  "version": "2.3.0"
 }

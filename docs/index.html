@@ -105,58 +105,111 @@
 </div>
 
 <script>
-// One button, for the computer you are actually on. Everything else is still
-// one click away underneath, because detection is a guess and a wrong guess
-// should never be a dead end.
+// Only ever offer a download that exists.
+//
+// The first version listed Windows, macOS and Linux unconditionally, and two
+// of those files had never been built — so a Mac visitor got a 404 from the
+// main button and an Android visitor got two dead links underneath. Asking
+// GitHub which assets are actually attached fixes that for good, and means a
+// macOS or Linux build starts appearing here the moment it is uploaded,
+// without this page being edited.
 (function () {
-  var REPO = 'https://github.com/Onrynx/ShortSmith';
+  var OWNER = 'Onrynx', NAME = 'ShortSmith';
+  var REPO = 'https://github.com/' + OWNER + '/' + NAME;
   var LATEST = REPO + '/releases/latest/download/';
+  var API = 'https://api.github.com/repos/' + OWNER + '/' + NAME + '/releases/latest';
 
   var BUILDS = {
-    'windows': {label: 'Download for Windows',  file: 'Shortsmith-Windows.zip',      note: 'Windows 10 or 11, 64-bit'},
-    'macos':   {label: 'Download for macOS',    file: 'Shortsmith-macOS.zip',        note: 'macOS 12 or newer'},
-    'linux':   {label: 'Download for Linux',    file: 'Shortsmith-Linux.tar.gz',     note: '64-bit'}
+    windows: {name: 'Windows', file: 'Shortsmith-Windows.zip',    note: 'Windows 10 or 11, 64-bit'},
+    macos:   {name: 'macOS',   file: 'Shortsmith-macOS.zip',      note: 'macOS 12 or newer'},
+    linux:   {name: 'Linux',   file: 'Shortsmith-Linux.tar.gz',   note: '64-bit'}
   };
+
+  var dl = document.getElementById('dl');
+  var meta = document.getElementById('meta');
+  var others = document.getElementById('others');
 
   function detect() {
     var d = navigator.userAgentData;
-    var p = (d && d.platform ? d.platform : (navigator.platform || '')) + ' ' +
+    var p = ((d && d.platform) ? d.platform : (navigator.platform || '')) + ' ' +
             (navigator.userAgent || '');
     p = p.toLowerCase();
-    // Order matters: "android" contains "linux", and iPads report as Mac.
-    if (p.indexOf('android') >= 0 || p.indexOf('iphone') >= 0 || p.indexOf('ipad') >= 0) return null;
+    // Order matters: "android" contains "linux", and an iPad reports as a Mac.
+    if (p.indexOf('android') >= 0) return 'phone';
+    if (p.indexOf('iphone') >= 0 || p.indexOf('ipad') >= 0 || p.indexOf('ipod') >= 0) return 'phone';
     if (p.indexOf('win') >= 0) return 'windows';
     if (p.indexOf('mac') >= 0 || p.indexOf('darwin') >= 0) return 'macos';
     if (p.indexOf('linux') >= 0 || p.indexOf('x11') >= 0) return 'linux';
     return null;
   }
 
-  var found = detect();
-  var dl = document.getElementById('dl');
-  var meta = document.getElementById('meta');
-  var others = document.getElementById('others');
+  function mb(bytes) { return Math.round(bytes / 1048576) + ' MB'; }
 
-  if (found) {
-    dl.textContent = BUILDS[found].label;
-    dl.href = LATEST + BUILDS[found].file;
-    meta.textContent = BUILDS[found].note + ' · about 121 MB';
-  } else {
-    // A phone, or something we could not place. Say so rather than offering a
-    // build that will not run.
-    dl.textContent = 'Choose your computer';
-    dl.href = REPO + '/releases/latest';
-    meta.textContent = 'Shortsmith runs on a computer, not a phone — it needs ' +
-                       'the machine it renders on.';
+  function render(available) {
+    var found = detect();
+    others.innerHTML = '';
+
+    // A phone cannot run this at all. Saying so is kinder than a download
+    // button that produces a file nothing on the device can open.
+    if (found === 'phone') {
+      dl.textContent = 'Open this on a computer';
+      dl.href = REPO;
+      dl.style.pointerEvents = 'none';
+      dl.style.opacity = '0.75';
+      meta.textContent = 'Shortsmith renders video on the machine it runs on, ' +
+                         'so it needs a Windows PC, a Mac or a Linux computer. ' +
+                         'There is no phone version.';
+      return;
+    }
+
+    var mine = found && BUILDS[found];
+    var haveMine = mine && available[mine.file];
+
+    if (haveMine) {
+      dl.textContent = 'Download for ' + mine.name;
+      dl.href = LATEST + mine.file;
+      meta.textContent = mine.note + ' \u00b7 ' + mb(available[mine.file]);
+    } else if (mine) {
+      // We know which computer this is, and there is no build for it yet.
+      dl.textContent = 'Not ready for ' + mine.name + ' yet';
+      dl.href = REPO + '/releases';
+      dl.style.opacity = '0.75';
+      meta.textContent = 'Shortsmith is built for ' + mine.name + ', but that ' +
+                         'download has not been published yet. Only the ' +
+                         'builds below are available right now.';
+    } else {
+      dl.textContent = 'See the downloads';
+      dl.href = REPO + '/releases/latest';
+      meta.textContent = 'Pick the one that matches your computer.';
+    }
+
+    Object.keys(BUILDS).forEach(function (key) {
+      if (haveMine && key === found) return;
+      if (!available[BUILDS[key].file]) return;      // never link a missing file
+      var a = document.createElement('a');
+      a.className = 'btn ghost';
+      a.href = LATEST + BUILDS[key].file;
+      a.textContent = BUILDS[key].name + ' \u00b7 ' + mb(available[BUILDS[key].file]);
+      others.appendChild(a);
+    });
   }
 
-  Object.keys(BUILDS).forEach(function (key) {
-    if (key === found) return;
-    var a = document.createElement('a');
-    a.className = 'btn ghost';
-    a.href = LATEST + BUILDS[key].file;
-    a.textContent = BUILDS[key].label.replace('Download for ', '');
-    others.appendChild(a);
-  });
+  // Ask what is actually attached. If the request fails — offline, or GitHub
+  // rate-limiting an unauthenticated call — fall back to the releases page,
+  // which always exists, rather than guessing at filenames.
+  fetch(API, {headers: {'Accept': 'application/vnd.github+json'}})
+    .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(function (data) {
+      var available = {};
+      (data.assets || []).forEach(function (a) { available[a.name] = a.size; });
+      render(available);
+    })
+    .catch(function () {
+      dl.textContent = 'See the downloads';
+      dl.href = REPO + '/releases/latest';
+      meta.textContent = 'Pick the one that matches your computer.';
+      others.innerHTML = '';
+    });
 })();
 </script>
 </body>
