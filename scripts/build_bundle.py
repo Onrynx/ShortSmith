@@ -546,6 +546,29 @@ def package(folder: Path) -> Path:
     return archive
 
 
+def check_download_page() -> None:
+    """The page offers a download per platform by matching the asset's name.
+
+    It asks GitHub which assets a release carries and shows a button for each
+    one it recognises, so a name only it knows about is simply never offered.
+    That is silent: the build succeeds, the asset uploads, and the button
+    never appears. It happened to Linux, which the page looked for as
+    Shortsmith-Linux.tar.gz while the builder had always produced a .zip.
+    """
+    page = ROOT / "docs" / "index.html"
+    if not page.exists():
+        return
+    text = page.read_text(encoding="utf-8")
+    missing = [n for n in ASSET_NAME.values() if n not in text]
+    if missing:
+        raise SystemExit(
+            "docs/index.html does not know these asset names, so it will "
+            "never offer them:\n    " + "\n    ".join(missing) +
+            "\n\n  Update the BUILDS table in docs/index.html to match "
+            "ASSET_NAME in this script.")
+    log("download page knows all three asset names")
+
+
 def verify_against_manifest(out: Path) -> None:
     """Every file the manifest lists must be in the bundle, byte for byte.
 
@@ -610,6 +633,7 @@ def main() -> int:
     else:
         raise SystemExit(f"No bundle recipe for {system}.")
 
+    check_download_page()
     verify_against_manifest(out)
 
     size = sum(f.stat().st_size for f in out.rglob("*") if f.is_file())
