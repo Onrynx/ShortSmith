@@ -89,6 +89,63 @@ def shipped_files() -> list[str]:
     return sorted(json.loads(manifest.read_text(encoding="utf-8"))["files"])
 
 
+def install_dependencies(py: Path, runtime: Path) -> None:
+    """Install the locked dependencies into a runtime that has only pip.
+
+    One package in the tree -- proxy-tools, which pywebview depends on -- has
+    never been published as a wheel. PyPI carries its source and nothing else,
+    so pip has to build it, and building anything needs setuptools.
+
+    The Windows embeddable Python ships without setuptools. pip would normally
+    fetch it into an isolated build environment, but --require-hashes forbids
+    installing anything whose hash isn't pinned, so the isolated environment
+    comes up empty and the build dies with "Cannot import setuptools.build_meta".
+
+    This never shows up on a developer machine: pip keeps wheels it built
+    before and quietly reuses them, so the source build simply doesn't happen
+    again. It took a clean CI runner to surface it.
+
+    So: install a pinned, hashed setuptools first, then build against it
+    directly. Both files are hash-checked, so this adds nothing unverified.
+    """
+    build_lock = ROOT / "requirements-build.txt"
+    log("installing pinned build tooling ...")
+    subprocess.run([str(py), "-m", "pip", "install", "-q",
+                    "--require-hashes", "--no-warn-script-location",
+                    "-r", str(build_lock)], check=True, cwd=str(runtime))
+
+    lock = ROOT / "requirements-lock.txt"
+    log(f"installing dependencies from {lock.name} (this is the slow part) ...")
+    subprocess.run([str(py), "-m", "pip", "install", "-q",
+                    "--require-hashes", "--no-build-isolation",
+                    "--no-warn-script-location",
+                    "-r", str(lock)], check=True, cwd=str(runtime))
+
+
+def strip_build_tooling(runtime: Path) -> None:
+    """Remove what only the build needed. Nothing at runtime imports these."""
+    roots = [runtime / "Lib" / "site-packages"]
+    roots += list(runtime.glob("lib/python*/site-packages"))
+    for site in roots:
+        if not site.is_dir():
+            continue
+        # distutils-precedence.pth belongs with _distutils_hack: site.py runs
+        # every .pth at startup, so removing the module but leaving the .pth
+        # makes the interpreter print a ModuleNotFoundError traceback on every
+        # single launch. Harmless, and it looks like the app is broken.
+        for junk in ("pip", "pip-*.dist-info", "setuptools",
+                     "setuptools-*.dist-info", "wheel", "wheel-*.dist-info",
+                     "pkg_resources", "_distutils_hack",
+                     "distutils-precedence.pth"):
+            for p in site.glob(junk):
+                if p.is_dir():
+                    shutil.rmtree(p, ignore_errors=True)
+                else:
+                    p.unlink(missing_ok=True)
+    for cache_dir in runtime.rglob("__pycache__"):
+        shutil.rmtree(cache_dir, ignore_errors=True)
+
+
 # --------------------------------------------------------------------------- #
 # Windows
 # --------------------------------------------------------------------------- #
@@ -141,19 +198,8 @@ def build_windows(out: Path, arch: str, refresh_only: bool = False) -> Path:
     subprocess.run([str(py), str(get_pip), "--no-warn-script-location", "-q"],
                    check=True, cwd=str(runtime))
 
-    lock = ROOT / "requirements-lock.txt"
-    log(f"installing dependencies from {lock.name} (this is the slow part) ...")
-    subprocess.run([str(py), "-m", "pip", "install", "-q",
-                    "--require-hashes", "--no-warn-script-location",
-                    "-r", str(lock)], check=True, cwd=str(runtime))
-
-    # Strip what only a developer needs.
-    for junk in ("pip", "pip-*.dist-info", "setuptools", "setuptools-*.dist-info",
-                 "wheel", "wheel-*.dist-info", "_distutils_hack"):
-        for p in (runtime / "Lib" / "site-packages").glob(junk):
-            shutil.rmtree(p, ignore_errors=True) if p.is_dir() else p.unlink(missing_ok=True)
-    for cache_dir in runtime.rglob("__pycache__"):
-        shutil.rmtree(cache_dir, ignore_errors=True)
+    install_dependencies(py, runtime)
+    strip_build_tooling(runtime)
 
     return _app_files_and_launchers(out)
 
@@ -164,7 +210,7 @@ def _app_files_and_launchers(out: Path, mac: bool = False,
     # ON Shortsmith needs. Unzipping and finding four launchers and a pile of
     # build scripts is exactly the confusion this bundle exists to remove.
     DEV_ONLY = ("scripts/", "docs/", "requirements.txt", "requirements-lock.txt",
-                ".gitignore", ".env.example")
+                "requirements-build.txt", ".gitignore", ".env.example")
     copied = 0
     for rel in shipped_files():
         if rel.startswith(DEV_ONLY) or rel in DEV_ONLY:
@@ -403,13 +449,8 @@ def build_linux(out: Path, arch: str, refresh_only: bool = False) -> Path:
 
     py = runtime / "bin" / "python3"
     py.chmod(0o755)
-    lock = ROOT / "requirements-lock.txt"
-    log(f"installing dependencies from {lock.name} (this is the slow part) ...")
-    subprocess.run([str(py), "-m", "pip", "install", "-q",
-                    "--require-hashes", "--no-warn-script-location",
-                    "-r", str(lock)], check=True, cwd=str(runtime))
-    for cache_dir in runtime.rglob("__pycache__"):
-        shutil.rmtree(cache_dir, ignore_errors=True)
+    install_dependencies(py, runtime)
+    strip_build_tooling(runtime)
     return _app_files_and_launchers(out, linux=True)
 
 
@@ -449,14 +490,8 @@ def build_macos(out: Path, arch: str, refresh_only: bool = False) -> Path:
 
     py = runtime / "bin" / "python3"
     py.chmod(0o755)
-    lock = ROOT / "requirements-lock.txt"
-    log(f"installing dependencies from {lock.name} (this is the slow part) ...")
-    subprocess.run([str(py), "-m", "pip", "install", "-q",
-                    "--require-hashes", "--no-warn-script-location",
-                    "-r", str(lock)], check=True, cwd=str(runtime))
-
-    for cache_dir in runtime.rglob("__pycache__"):
-        shutil.rmtree(cache_dir, ignore_errors=True)
+    install_dependencies(py, runtime)
+    strip_build_tooling(runtime)
 
     return _app_files_and_launchers(out, mac=True)
 

@@ -1,0 +1,26 @@
+# Build tooling only. This never ships inside a bundle.
+#
+# One dependency in the tree -- proxy-tools, required by pywebview -- has never
+# been published as a wheel; PyPI has its source and nothing else. Building it
+# needs setuptools, and the Windows embeddable Python does not include one.
+# pip would normally fetch setuptools into an isolated build environment, but
+# --require-hashes forbids installing anything unpinned, so the build failed
+# with "Cannot import setuptools.build_meta" -- only on a clean machine, since
+# pip reuses wheels it built earlier.
+#
+# Pinned and hashed like everything else. Regenerate with:
+#
+#     uv pip compile --universal --generate-hashes --python-version 3.13 #        --no-header requirements-build.in -o requirements-build.txt
+#
+packaging==26.3 \
+    --hash=sha256:94edc256424af38762eb31306eed28beb9f0efc50a8837492c9d6fd6004aed79 \
+    --hash=sha256:d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c
+    # via wheel
+setuptools==84.2.1 \
+    --hash=sha256:3ff8b3b5492a0aa66960f4419365a86b84e013070d4313e4d4a6894f5d64d6bc \
+    --hash=sha256:ca140b45d5325a9478f880e351484f62fef15f336462e449ca0c03c873d589c2
+    # via -r C:/Users/User/AppData/Local/Temp/claude/C--Users-User-Desktop-Youtube-Ecosystem/5baa444a-5bbe-4413-a2df-0675b1e2f5c7/scratchpad/build-reqs.in
+wheel==0.48.0 \
+    --hash=sha256:3217dcc807155e45db462d7ef2431f5ddda0d7273b700d05a67b271ceb1287ab \
+    --hash=sha256:94800765601e9171bf5d58d066e640662842bcedcbab982b2c90787a2c987322
+    # via -r C:/Users/User/AppData/Local/Temp/claude/C--Users-User-Desktop-Youtube-Ecosystem/5baa444a-5bbe-4413-a2df-0675b1e2f5c7/scratchpad/build-reqs.in
