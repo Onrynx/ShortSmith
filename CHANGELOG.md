@@ -24,6 +24,12 @@
   the download is staged so a failure halfway cannot leave a half-updated
   install, and nothing you own is in a manifest to begin with. This works for
   every install now, not only ones cloned with git.
+- Bundles for macOS and Linux are built by GitHub, on GitHub's own Macs and
+  Linux machines. A bundle carries compiled libraries, so it can only be
+  assembled on the system it is for — which previously meant Windows was the
+  only download that existed, and the page's macOS button was a 404. Publishing
+  a release now builds all three and attaches them, and the download page picks
+  them up by itself because it asks GitHub which assets exist.
 - `scripts/release.py` cuts a release in one command, in the order that
   matters: checks, version, changelog, manifest, push, build, publish. The
   manifest has to be regenerated after the last edit and before the push, and

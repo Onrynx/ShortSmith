@@ -1,0 +1,97 @@
+name: Build bundles
+
+# Shortsmith ships a folder containing its own Python and every library, so the
+# person installing it needs nothing. Those libraries are compiled, which means
+# a bundle can only be assembled ON the system it is for — a Mac bundle needs a
+# Mac, a Linux bundle needs Linux.
+#
+# GitHub has all three. This builds on real hardware for each and attaches the
+# results to the release, so no one has to own three computers.
+
+on:
+  release:
+    types: [published]        # the normal path: publish a release, get bundles
+  workflow_dispatch:          # and a manual button, for trying it without a release
+    inputs:
+      tag:
+        description: "Attach to this existing release tag (e.g. v2.3.0). Leave blank to only upload build artifacts."
+        required: false
+        default: ""
+
+permissions:
+  contents: write             # needed to attach files to a release
+
+jobs:
+  build:
+    name: ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false        # one platform failing must not cancel the others
+      matrix:
+        include:
+          - os: windows-latest
+            label: Windows
+            asset: Shortsmith-Windows.zip
+          - os: macos-14      # Apple Silicon
+            label: macOS
+            asset: Shortsmith-macOS.zip
+          - os: ubuntu-latest
+            label: Linux
+            asset: Shortsmith-Linux.zip
+
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v4
+
+      # Only used to RUN the build script. The bundle gets its own Python,
+      # downloaded by the script, independent of this one.
+      - name: Python for the build script
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Refresh the manifest
+        shell: bash
+        run: |
+          python scripts/make_manifest.py
+          echo "The manifest must describe the files going into the bundle, or"
+          echo "every fresh install re-downloads them on its first update check."
+
+      - name: Build the bundle
+        shell: bash
+        run: python scripts/build_bundle.py --zip
+
+      - name: Check it is actually runnable
+        shell: bash
+        run: |
+          set -e
+          cd build/Shortsmith
+          if [ -f runtime/python.exe ]; then
+            PY=runtime/python.exe
+          else
+            PY=runtime/bin/python3
+          fi
+          "$PY" -c "import shortsmith, shortsmith.webapp, shortsmith.control; print('imports OK, v' + shortsmith.__version__)"
+          "$PY" -c "import numpy, PIL, yaml, psutil, onnxruntime, kokoro_onnx, faster_whisper; print('every dependency present')"
+          "$PY" -c "
+          from shortsmith.hardware import scan
+          h = scan()
+          print('hardware scan on this runner:', h['os'], h['arch'])
+          "
+
+      - name: Keep the build even if nothing is attached
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: build/${{ matrix.asset }}
+          retention-days: 14
+
+      - name: Attach it to the release
+        if: github.event_name == 'release' || inputs.tag != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        shell: bash
+        run: |
+          gh release upload "$TAG" "build/${{ matrix.asset }}" --clobber --repo "$GITHUB_REPOSITORY"
+          echo "Attached ${{ matrix.asset }} to $TAG"

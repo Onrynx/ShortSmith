@@ -54,6 +54,11 @@ PBS_URL = ("https://github.com/astral-sh/python-build-standalone/releases/"
            f"download/{PBS_RELEASE}/cpython-{PBS_PYTHON}+{PBS_RELEASE}-"
            "{arch}-apple-darwin-install_only.tar.gz")
 PBS_ARCH = {"arm64": "aarch64", "aarch64": "aarch64", "x86_64": "x86_64"}
+PBS_LINUX_URL = ("https://github.com/astral-sh/python-build-standalone/releases/"
+                 f"download/{PBS_RELEASE}/cpython-{PBS_PYTHON}+{PBS_RELEASE}-"
+                 "{arch}-unknown-linux-gnu-install_only.tar.gz")
+PBS_LINUX_ARCH = {"x86_64": "x86_64", "amd64": "x86_64",
+                  "aarch64": "aarch64", "arm64": "aarch64"}
 
 
 def log(msg: str) -> None:
@@ -153,7 +158,8 @@ def build_windows(out: Path, arch: str, refresh_only: bool = False) -> Path:
     return _app_files_and_launchers(out)
 
 
-def _app_files_and_launchers(out: Path, mac: bool = False) -> Path:
+def _app_files_and_launchers(out: Path, mac: bool = False,
+                             linux: bool = False) -> Path:
     # The app itself, as plain source — minus the things only someone working
     # ON Shortsmith needs. Unzipping and finding four launchers and a pile of
     # build scripts is exactly the confusion this bundle exists to remove.
@@ -171,8 +177,8 @@ def _app_files_and_launchers(out: Path, mac: bool = False) -> Path:
         copied += 1
     log(f"copied {copied} app files (developer tooling left out)")
 
-    if mac:
-        return _macos_launchers(out)
+    if mac or linux:
+        return _unix_launchers(out, linux=linux)
 
     # One double-click, no console window.
     (out / "Shortsmith.vbs").write_text(
@@ -270,7 +276,7 @@ def _app_files_and_launchers(out: Path, mac: bool = False) -> Path:
 # macOS
 
 
-def _macos_launchers(out: Path) -> Path:
+def _unix_launchers(out: Path, linux: bool = False) -> Path:
     """A double-clickable .command, and the note that goes with it.
 
     A .app bundle would look tidier, but an unsigned .app that Gatekeeper
@@ -368,6 +374,46 @@ def _macos_launchers(out: Path) -> Path:
 
 
 # --------------------------------------------------------------------------- #
+# Linux
+# --------------------------------------------------------------------------- #
+def build_linux(out: Path, arch: str, refresh_only: bool = False) -> Path:
+    """Same shape as the others: a relocatable Python beside the app."""
+    import tarfile
+
+    if refresh_only:
+        if not (out / "runtime" / "bin" / "python3").exists():
+            raise SystemExit("no runtime to refresh — run without --refresh first")
+        log("reusing the existing runtime")
+        return _app_files_and_launchers(out, linux=True)
+
+    key = PBS_LINUX_ARCH.get(arch.lower())
+    if not key:
+        raise SystemExit(f"no relocatable Python published for Linux/{arch}")
+
+    tarball = fetch(PBS_LINUX_URL.format(arch=key),
+                    BUILD / "_cache" / f"python-linux-{key}.tar.gz")
+    runtime = out / "runtime"
+    if runtime.exists():
+        shutil.rmtree(runtime)
+    out.mkdir(parents=True, exist_ok=True)
+    with tarfile.open(tarball) as t:
+        t.extractall(out)
+    (out / "python").rename(runtime)
+    log(f"runtime unpacked ({sum(f.stat().st_size for f in runtime.rglob('*') if f.is_file()) / 1024**2:.0f} MB)")
+
+    py = runtime / "bin" / "python3"
+    py.chmod(0o755)
+    lock = ROOT / "requirements-lock.txt"
+    log(f"installing dependencies from {lock.name} (this is the slow part) ...")
+    subprocess.run([str(py), "-m", "pip", "install", "-q",
+                    "--require-hashes", "--no-warn-script-location",
+                    "-r", str(lock)], check=True, cwd=str(runtime))
+    for cache_dir in runtime.rglob("__pycache__"):
+        shutil.rmtree(cache_dir, ignore_errors=True)
+    return _app_files_and_launchers(out, linux=True)
+
+
+# --------------------------------------------------------------------------- #
 def build_macos(out: Path, arch: str, refresh_only: bool = False) -> Path:
     """Assemble a Mac bundle. Must be run ON a Mac.
 
@@ -417,18 +463,50 @@ def build_macos(out: Path, arch: str, refresh_only: bool = False) -> Path:
 
 
 # --------------------------------------------------------------------------- #
+ASSET_NAME = {"Windows": "Shortsmith-Windows.zip",
+              "Darwin": "Shortsmith-macOS.zip",
+              "Linux": "Shortsmith-Linux.zip"}
+
+
+def asset_name(system: str | None = None) -> str:
+    """What this platform's download must be called.
+
+    The download page asks GitHub which assets exist and matches these exact
+    names, so a build that names its zip anything else never appears on it.
+    """
+    return ASSET_NAME.get(system or platform.system(), "Shortsmith.zip")
+
+
 def package(folder: Path) -> Path:
-    # zip on every platform: it preserves the executable bit via external_attr
-    # when written by shutil/zipfile with the right mode, and every Mac opens
-    # one on a double-click without a third-party tool.
-    archive = folder.with_suffix(".zip")
+    """Zip the bundle, keeping the parts a Unix machine needs to run it.
+
+    A plain zipfile.write drops the executable bit and follows symlinks. On
+    Windows neither matters; on a Mac both are fatal — the launcher would not
+    be runnable, and the Python framework's symlinks would be expanded into
+    several duplicate copies of the whole runtime.
+    """
+    archive = folder.parent / asset_name()
     if archive.exists():
         archive.unlink()
     log("compressing ...")
     with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as z:
         for p in sorted(folder.rglob("*")):
-            if p.is_file():
-                z.write(p, p.relative_to(folder.parent).as_posix())
+            rel = p.relative_to(folder.parent).as_posix()
+            if p.is_symlink():
+                info = zipfile.ZipInfo(rel)
+                info.create_system = 3
+                info.external_attr = (0xA000 | 0o777) << 16
+                z.writestr(info, os.readlink(p))
+                continue
+            if not p.is_file():
+                continue
+            info = zipfile.ZipInfo.from_file(p, rel)
+            info.compress_type = zipfile.ZIP_DEFLATED
+            if os.name != "nt":
+                info.create_system = 3                      # Unix
+                info.external_attr = (p.stat().st_mode & 0xFFFF) << 16
+            with open(p, "rb") as src, z.open(info, "w") as dst:
+                shutil.copyfileobj(src, dst)
     log(f"{archive.name}: {archive.stat().st_size / 1024 ** 2:.0f} MB")
     return archive
 
@@ -450,11 +528,10 @@ def main() -> int:
         build_windows(out, arch, refresh_only=args.refresh)
     elif system == "Darwin":
         build_macos(out, arch, refresh_only=args.refresh)
+    elif system == "Linux":
+        build_linux(out, arch, refresh_only=args.refresh)
     else:
-        raise SystemExit(
-            f"No bundle recipe for {system} yet. The shape is the same — a "
-            f"relocatable Python in runtime/ beside the app — so adding one is "
-            f"mostly picking the right Python build for the platform.")
+        raise SystemExit(f"No bundle recipe for {system}.")
 
     size = sum(f.stat().st_size for f in out.rglob("*") if f.is_file())
     print(f"\n  {out}  ({size / 1024 ** 2:.0f} MB)")
