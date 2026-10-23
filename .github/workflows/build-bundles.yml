@@ -79,6 +79,46 @@ jobs:
           print('hardware scan on this runner:', h['os'], h['arch'])
           "
 
+      # The app opens in a real window via pywebview, which needs a different
+      # backend on each platform. If that backend is missing, nothing crashes --
+      # shortsmith/app.py quietly opens the browser instead -- so a broken
+      # bundle looks fine until someone notices they never got a window.
+      #
+      # This is not hypothetical. The lockfile was once resolved on Windows,
+      # which recorded pythonnet with no platform marker and omitted the six
+      # pyobjc packages macOS needs. Every Mac download would have been
+      # browser-only. Assert the backend instead of trusting the resolver.
+      - name: Check the app window can actually open
+        shell: bash
+        run: |
+          set -e
+          cd build/Shortsmith
+          if [ -f runtime/python.exe ]; then PY=runtime/python.exe; else PY=runtime/bin/python3; fi
+          "$PY" -c "
+          import webview
+          from importlib.metadata import version
+          print('pywebview', version('pywebview'))
+          "
+          case "${{ runner.os }}" in
+            Windows)
+              "$PY" -c "import clr_loader, pythonnet; print('Windows backend present')" ;;
+            macOS)
+              "$PY" -c "
+          import objc, Cocoa, WebKit, Quartz
+          from importlib.metadata import version
+          print('macOS backend present (pyobjc', version('pyobjc-core') + ')')
+          " ;;
+            Linux)
+              echo "Linux has no bundled webview backend by choice: GTK/Qt would"
+              echo "have to be compiled against this runner's system libraries,"
+              echo "which need not exist on the user's machine. Linux opens in"
+              echo "the browser, which app.py handles."
+              "$PY" -c "
+          from shortsmith.app import main
+          print('launcher imports; browser fallback is the Linux path')
+          " ;;
+          esac
+
       - name: Keep the build even if nothing is attached
         uses: actions/upload-artifact@v4
         with:

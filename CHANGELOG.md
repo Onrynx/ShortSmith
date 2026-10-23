@@ -24,6 +24,16 @@
   the download is staged so a failure halfway cannot leave a half-updated
   install, and nothing you own is in a manifest to begin with. This works for
   every install now, not only ones cloned with git.
+- The macOS download opens in a real window, not a browser tab. The pinned
+  dependency list had been resolved on a Windows machine, which recorded only
+  the Windows half of what the window library needs and left out the six
+  packages macOS requires. Nothing would have crashed — Shortsmith falls back
+  to your normal browser whenever a window cannot be drawn — so a Mac download
+  would have looked like it worked while silently never giving anyone the app.
+  The list is now resolved for every platform at once, and the build refuses to
+  publish a bundle whose window cannot open. Linux stays on the browser by
+  choice: its window toolkits would have to be compiled against the build
+  machine's system libraries, which are not guaranteed to exist on yours.
 - Bundles for macOS and Linux are built by GitHub, on GitHub's own Macs and
   Linux machines. A bundle carries compiled libraries, so it can only be
   assembled on the system it is for — which previously meant Windows was the
