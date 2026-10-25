@@ -119,6 +119,80 @@ jobs:
           " ;;
           esac
 
+      # Everything above inspects files. This runs the thing.
+      #
+      # A download gets the quarantine mark from the browser, and that mark is
+      # the entire reason macOS objects -- so a bundle built here, which has
+      # never been downloaded, proves nothing about a first launch. Set the
+      # mark by hand, the worst case, then check what a Mac actually does:
+      # whether the bundled Python runs while marked, whether the launcher's
+      # own clearing line fixes it, and whether a window appears.
+      #
+      # It cannot double-click in Finder, which macOS treats differently from
+      # a terminal, so this does not replace one person trying it once. It does
+      # mean a regression in the launcher is caught on the build that causes
+      # it rather than by a stranger weeks later.
+      #
+      # Reports, never blocks: a window server that is unavailable on the
+      # runner must not stop a release going out.
+      - name: What a Mac does with it
+        if: runner.os == 'macOS'
+        continue-on-error: true
+        shell: bash
+        run: |
+          APP="$PWD/build/Shortsmith"
+          PY="$APP/runtime/bin/python3"
+          STAMP="0081;$(printf '%x' "$(date +%s)");Safari;"
+
+          echo "--- marking every file as downloaded (worst case) ---"
+          xattr -wr com.apple.quarantine "$STAMP" "$APP"
+          MARKED=$(find "$APP" -type f -print0 \
+                   | xargs -0 xattr -p com.apple.quarantine 2>/dev/null \
+                   | wc -l | tr -d ' ')
+          echo "files carrying the mark: $MARKED"
+
+          echo "--- does the bundled Python run while marked? ---"
+          if "$PY" -c "print('runs')" 2>/dev/null; then
+            echo "RESULT: not blocked while quarantined"
+          else
+            echo "RESULT: blocked while quarantined -- the launcher's clearing line is load-bearing"
+          fi
+
+          echo "--- the launcher's own clearing line ---"
+          ( cd "$APP" && xattr -dr com.apple.quarantine . 2>/dev/null || true )
+          LEFT=$(find "$APP" -type f -print0 \
+                 | xargs -0 xattr -p com.apple.quarantine 2>/dev/null \
+                 | wc -l | tr -d ' ')
+          echo "files still marked: $LEFT  (want 0)"
+          "$PY" -c "print('interpreter runs after clearing')"
+
+          echo "--- does a window open? ---"
+          cat > /tmp/window_test.py <<'PYCODE'
+          import threading, time, webview
+
+          def close_soon():
+              time.sleep(3)
+              for w in list(webview.windows):
+                  try:
+                      w.destroy()
+                  except Exception:
+                      pass
+
+          webview.create_window("Shortsmith", html="<h1>ok</h1>")
+          threading.Thread(target=close_soon, daemon=True).start()
+          webview.start()
+          print("WINDOW: opened and closed cleanly")
+          PYCODE
+          cd "$APP"
+          "$PY" /tmp/window_test.py & TEST=$!
+          ( sleep 90; kill -9 $TEST 2>/dev/null ) & GUARD=$!
+          if wait $TEST; then
+            echo "RESULT: the window layer works on a real Mac"
+          else
+            echo "RESULT: the window test did not finish -- may be the runner, may be real"
+          fi
+          kill $GUARD 2>/dev/null || true
+
       - name: Keep the build even if nothing is attached
         uses: actions/upload-artifact@v4
         with:
