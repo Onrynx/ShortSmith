@@ -76,6 +76,45 @@
     fetches the one you chose.
   </div>
 
+  <!-- These steps are deliberately here and not only inside the download. If
+       macOS refuses to open anything in the folder, a note inside that folder
+       is no use; this page always opens. -->
+  <h2 id="mac-blocked">If macOS says it cannot open Shortsmith</h2>
+  <p>
+    Shortsmith is not signed by a registered Apple developer, so macOS blocks it
+    the first time. This is about who paid Apple to sign it, not about what the
+    software is. You do this once.
+  </p>
+  <ol>
+    <li>Double-click <b>Shortsmith.command</b>. macOS refuses it.</li>
+    <li>Open <b>Apple menu &rsaquo; System Settings &rsaquo; Privacy &amp; Security</b>,
+      scroll down to <b>Security</b>, and click <b>Open Anyway</b> next to
+      Shortsmith. That button only stays for about an hour after the refusal,
+      so do it straight away.</li>
+    <li>That is all. Shortsmith unmarks the rest of the folder itself the first
+      time it runs, so nothing asks you again.</li>
+  </ol>
+  <p>
+    On macOS 14 and earlier there is a shortcut instead: right-click
+    <b>Shortsmith.command</b>, choose Open, then Open again. Apple removed that
+    in macOS 15.
+  </p>
+  <p>
+    <b>If it still refuses</b>, open Terminal (press Command and Space, type
+    Terminal, press enter), type <code>xattr -dr com.apple.quarantine</code>
+    followed by a space, drag the Shortsmith folder onto the Terminal window,
+    and press enter. Nothing is printed when it works.
+  </p>
+
+  <h2 id="linux-blocked">If Linux will not run it on a double-click</h2>
+  <p>
+    Most Linux file managers refuse to run a script until you allow it.
+    Double-click <b>Shortsmith.sh</b> and choose <b>Run</b> if asked. If it
+    opens in a text editor instead, right-click it, open Properties, and tick
+    the option that allows running it as a program. Or open a terminal in the
+    folder and type <code>./Shortsmith.sh</code>.
+  </p>
+
   <h2>What it does</h2>
   <div class="grid">
     <div class="f"><b>Writes the story</b><span>Give it an idea, or nothing at all.

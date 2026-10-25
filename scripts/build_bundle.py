@@ -339,17 +339,62 @@ def _unix_launchers(out: Path, linux: bool = False) -> Path:
     launcher_name = f"Shortsmith{ext}"
     errors_name = f"Shortsmith (show errors){ext}"
 
+    # Put back permission bits that an unzipper may have dropped. Some Linux
+    # archive tools, and anything unzipped by way of Windows, lose them, and
+    # the result is a launcher that does nothing at all on a double-click.
+    repair = (
+        "\n"
+        "# An unzipper may have dropped the permission bits. Put them back\n"
+        "# before anything tries to run.\n"
+        'chmod +x "$0" ./runtime/bin/python3 2>/dev/null || true\n'
+    )
+
+    # macOS marks every file from a download as untrusted, and this folder
+    # holds about 600 of them. Approving those one dialog at a time is not a
+    # procedure anyone finishes, so the launcher clears the folder it sits in.
+    # Approving the launcher is approving this; it is the same command the
+    # instructions would otherwise ask the user to type.
     unmark = "" if linux else (
         "\n"
         "# macOS marks every file from a download as untrusted, and this folder\n"
         "# holds about 600 of them -- its own Python and the compiled libraries\n"
-        "# that do the video work. Approving those one dialog at a time is not a\n"
-        "# procedure anyone finishes, so clear the whole folder here instead.\n"
-        "#\n"
-        "# This grants nothing new. You allowed this launcher to run; it is the\n"
-        "# same command the instructions would otherwise ask you to type, and it\n"
-        "# touches only the folder it is sitting in.\n"
+        "# that do the video work. Clear the whole folder in one go.\n"
         'xattr -dr com.apple.quarantine . 2>/dev/null || true\n'
+    )
+
+    # If the interpreter still will not run, the shell leaves something like
+    # "Killed: 9" on a line that closes with the window. Say it properly, and
+    # fill the real path into the command so nothing has to be typed.
+    guard = (
+        "\n"
+        "if ! ./runtime/bin/python3 -c \"\" 2>/dev/null; then\n"
+        # Double quotes, not single: Mac home folders are routinely named
+        # things like "John's MacBook", and an apostrophe inside single
+        # quotes would end the quoting and hand the user a broken command.
+        '  FIX="xattr -dr com.apple.quarantine \\"$PWD\\""\n'
+        '  MSG="macOS is still blocking Shortsmith.\n'
+        "\n"
+        "Open Terminal, paste this line, and press enter:\n"
+        "\n"
+        '$FIX\n'
+        "\n"
+        'Then open Shortsmith again."\n'
+        "  printf '%s\\n' \"$MSG\"\n"
+        "  osascript -e 'on run argv\n"
+        "display dialog (item 1 of argv) with title \"Shortsmith\" "
+        "buttons {\"OK\"} default button 1\n"
+        "end run' -- \"$MSG\" >/dev/null 2>&1\n"
+        "  exit 1\n"
+        "fi\n"
+    ) if not linux else (
+        "\n"
+        "if ! ./runtime/bin/python3 -c \"\" 2>/dev/null; then\n"
+        '  echo "Shortsmith cannot start: ./runtime/bin/python3 will not run."\n'
+        '  echo "If you unzipped this with a tool that drops permissions, try:"\n'
+        '  echo "    chmod -R +x ./runtime/bin"\n'
+        "  read -n 1 -s -r -p \"Press any key to close.\"\n"
+        "  exit 1\n"
+        "fi\n"
     )
 
     launcher = out / launcher_name
@@ -357,7 +402,7 @@ def _unix_launchers(out: Path, linux: bool = False) -> Path:
         "#!/bin/bash\n"
         "# Shortsmith - double-click this.\n"
         'cd "$(dirname "$0")"\n'
-        + unmark +
+        + repair + unmark + guard +
         "\n"
         "exec ./runtime/bin/python3 -m shortsmith.app\n",
         encoding="utf-8", newline="\n")
@@ -367,7 +412,7 @@ def _unix_launchers(out: Path, linux: bool = False) -> Path:
     errors.write_text(
         "#!/bin/bash\n"
         'cd "$(dirname "$0")"\n'
-        + unmark +
+        + repair + unmark + guard +
         "\n"
         "./runtime/bin/python3 -m shortsmith.app\n"
         "echo\n"
