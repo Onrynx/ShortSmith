@@ -339,11 +339,26 @@ def _unix_launchers(out: Path, linux: bool = False) -> Path:
     launcher_name = f"Shortsmith{ext}"
     errors_name = f"Shortsmith (show errors){ext}"
 
+    unmark = "" if linux else (
+        "\n"
+        "# macOS marks every file from a download as untrusted, and this folder\n"
+        "# holds about 600 of them -- its own Python and the compiled libraries\n"
+        "# that do the video work. Approving those one dialog at a time is not a\n"
+        "# procedure anyone finishes, so clear the whole folder here instead.\n"
+        "#\n"
+        "# This grants nothing new. You allowed this launcher to run; it is the\n"
+        "# same command the instructions would otherwise ask you to type, and it\n"
+        "# touches only the folder it is sitting in.\n"
+        'xattr -dr com.apple.quarantine . 2>/dev/null || true\n'
+    )
+
     launcher = out / launcher_name
     launcher.write_text(
         "#!/bin/bash\n"
         "# Shortsmith - double-click this.\n"
         'cd "$(dirname "$0")"\n'
+        + unmark +
+        "\n"
         "exec ./runtime/bin/python3 -m shortsmith.app\n",
         encoding="utf-8", newline="\n")
     launcher.chmod(0o755)
@@ -352,6 +367,8 @@ def _unix_launchers(out: Path, linux: bool = False) -> Path:
     errors.write_text(
         "#!/bin/bash\n"
         'cd "$(dirname "$0")"\n'
+        + unmark +
+        "\n"
         "./runtime/bin/python3 -m shortsmith.app\n"
         "echo\n"
         'echo "Shortsmith closed. Anything above this line is the reason."\n'
@@ -388,34 +405,38 @@ def _unix_launchers(out: Path, linux: bool = False) -> Path:
             "   refuses to run it. This is about who paid Apple to sign it,\n"
             "   not about what the software is or does. You do this once.\n"
             "\n"
-            "   THE WAY THAT WORKS  (about twenty seconds)\n"
+            f"   Double-click '{launcher_name}'. macOS will refuse it.\n"
             "\n"
-            "   Open Terminal: press Command and Space together, type\n"
-            "   Terminal, press enter.\n"
+            "   Then open:\n"
             "\n"
-            "   Type this, including the space at the end:\n"
+            "       Apple menu > System Settings > Privacy & Security\n"
+            "\n"
+            "   Scroll down to Security. There is a line about Shortsmith\n"
+            "   with an 'Open Anyway' button next to it. Click that, enter\n"
+            "   your password, and confirm.\n"
+            "\n"
+            "   Do it straight after the refusal -- the button only stays for\n"
+            "   about an hour. If it is not there, double-click Shortsmith\n"
+            "   again and look once more.\n"
+            "\n"
+            "   That is all of it. You are approving one file. Shortsmith\n"
+            "   clears the mark from the rest of the folder itself the first\n"
+            "   time it runs, so you are never asked again.\n"
+            "\n"
+            "   On macOS 14 Sonoma and earlier there is a shortcut instead:\n"
+            f"   RIGHT-CLICK '{launcher_name}', choose Open, then Open again.\n"
+            "   Apple removed that shortcut in macOS 15.\n"
+            "\n"
+            "\n"
+            "   IF IT STILL REFUSES\n"
+            "\n"
+            "   Open Terminal: press Command and Space, type Terminal, press\n"
+            "   enter. Type this, including the space at the end:\n"
             "\n"
             "       xattr -dr com.apple.quarantine \n"
             "\n"
-            "   Now drag this Shortsmith folder onto the Terminal window --\n"
-            "   that fills in its location for you -- and press enter.\n"
-            "   Nothing is printed when it works. Close Terminal.\n"
-            "\n"
-            f"   Then double-click '{launcher_name}'.\n"
-            "\n"
-            "   THE WAY THAT SOMETIMES WORKS\n"
-            "\n"
-            f"   Double-click '{launcher_name}'. When macOS refuses, open\n"
-            "   Apple menu > System Settings > Privacy & Security, scroll to\n"
-            "   Security, and click 'Open Anyway'. That button only appears\n"
-            "   for about an hour after the refusal.\n"
-            "\n"
-            "   It approves one file at a time, and this folder holds roughly\n"
-            "   six hundred separate program files -- the Python engine and\n"
-            "   the libraries that do the video work -- so it often stops at\n"
-            "   the first one and asks again about the next. The command\n"
-            "   above clears the whole folder at once, which is why it is\n"
-            "   listed first.\n"
+            "   Then drag this Shortsmith folder onto the Terminal window and\n"
+            "   press enter. Nothing is printed when it works.\n"
         )
 
     (out / "! START HERE.txt").write_text(
