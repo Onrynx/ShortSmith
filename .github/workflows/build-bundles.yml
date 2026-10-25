@@ -140,6 +140,16 @@ jobs:
         continue-on-error: true
         shell: bash
         run: |
+          # GitHub runs this shell with -e -o pipefail. That is right for a
+          # build step and wrong for this one: counting marked files means
+          # running xattr -p over every file, and xattr -p exits non-zero for
+          # a file that has no such attribute -- which, right after clearing
+          # them, is every file. pipefail turns that into a failed pipeline,
+          # -e turns the failed assignment into a dead step, and the checks
+          # below never run. That is what happened on the first attempt: the
+          # step reported nothing and left a red mark on a green build.
+          set +e +o pipefail
+
           APP="$PWD/build/Shortsmith"
           PY="$APP/runtime/bin/python3"
           STAMP="0081;$(printf '%x' "$(date +%s)");Safari;"
@@ -191,7 +201,12 @@ jobs:
           else
             echo "RESULT: the window test did not finish -- may be the runner, may be real"
           fi
-          kill $GUARD 2>/dev/null || true
+          kill $GUARD 2>/dev/null
+
+          # Always succeed. This step reports; the lines above are the output,
+          # and a red cross here would only mean "a diagnostic command exited
+          # non-zero", which says nothing about the build.
+          exit 0
 
       - name: Keep the build even if nothing is attached
         uses: actions/upload-artifact@v4
