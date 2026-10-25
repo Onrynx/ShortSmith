@@ -349,16 +349,18 @@ def _unix_launchers(out: Path, linux: bool = False) -> Path:
         'chmod +x "$0" ./runtime/bin/python3 2>/dev/null || true\n'
     )
 
-    # macOS marks every file from a download as untrusted, and this folder
-    # holds about 600 of them. Approving those one dialog at a time is not a
-    # procedure anyone finishes, so the launcher clears the folder it sits in.
-    # Approving the launcher is approving this; it is the same command the
-    # instructions would otherwise ask the user to type.
+    # macOS marks every file from a download as untrusted. A build on a real
+    # Mac counted 8014 of them here -- roughly 600 are executable code, the
+    # rest is everything beside it. Approving those one dialog at a time is
+    # not a procedure anyone finishes, so the launcher clears the folder it
+    # sits in. Approving the launcher is approving this; it is the same
+    # command the instructions would otherwise ask the user to type.
     unmark = "" if linux else (
         "\n"
-        "# macOS marks every file from a download as untrusted, and this folder\n"
-        "# holds about 600 of them -- its own Python and the compiled libraries\n"
-        "# that do the video work. Clear the whole folder in one go.\n"
+        "# macOS marks every file from a download as untrusted. In this folder\n"
+        "# that is about eight thousand files -- its own Python, the compiled\n"
+        "# libraries that do the video work, and everything beside them.\n"
+        "# Clear the lot in one go.\n"
         'xattr -dr com.apple.quarantine . 2>/dev/null || true\n'
     )
 
