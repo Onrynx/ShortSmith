@@ -323,32 +323,89 @@ def _app_files_and_launchers(out: Path, mac: bool = False,
 
 
 def _unix_launchers(out: Path, linux: bool = False) -> Path:
-    """A double-clickable .command, and the note that goes with it.
+    """A double-clickable launcher, and the note that goes with it.
 
-    A .app bundle would look tidier, but an unsigned .app that Gatekeeper
-    quarantines is worse than a .command: the error it gives is "damaged and
-    can't be opened", which reads like a corrupt download rather than a
-    permissions decision. A .command at least says what it is.
+    macOS and Linux share a runtime layout but nothing else here. A Mac
+    launcher is a .command, which Finder runs on a double-click; on Linux that
+    extension means nothing and the obstacle is different -- not Gatekeeper,
+    but file managers that refuse to run a script until told to.
+
+    The note was macOS-only for both platforms for a while, so Linux users
+    were told their download was "not signed by a registered Apple developer"
+    and that the app would check "what your Mac can handle".
     """
-    launcher = out / "Shortsmith.command"
+    ext = ".sh" if linux else ".command"
+    machine = "computer" if linux else "Mac"
+    launcher_name = f"Shortsmith{ext}"
+    errors_name = f"Shortsmith (show errors){ext}"
+
+    launcher = out / launcher_name
     launcher.write_text(
         "#!/bin/bash\n"
-        '# Shortsmith — double-click this.\n'
+        "# Shortsmith - double-click this.\n"
         'cd "$(dirname "$0")"\n'
-        'exec ./runtime/bin/python3 -m shortsmith.app\n',
+        "exec ./runtime/bin/python3 -m shortsmith.app\n",
         encoding="utf-8", newline="\n")
     launcher.chmod(0o755)
 
-    errors = out / "Shortsmith (show errors).command"
+    errors = out / errors_name
     errors.write_text(
         "#!/bin/bash\n"
         'cd "$(dirname "$0")"\n'
-        './runtime/bin/python3 -m shortsmith.app\n'
-        'echo\n'
+        "./runtime/bin/python3 -m shortsmith.app\n"
+        "echo\n"
         'echo "Shortsmith closed. Anything above this line is the reason."\n'
         'read -n 1 -s -r -p "Press any key to close."\n',
         encoding="utf-8", newline="\n")
     errors.chmod(0o755)
+
+    if linux:
+        step_two = (
+            "2. LET YOUR SYSTEM RUN IT  (once)\n"
+            "\n"
+            "   The launcher is already marked executable inside the download,\n"
+            "   but most Linux file managers will not run a script on a plain\n"
+            "   double-click until you allow it.\n"
+            "\n"
+            f"   Double-click '{launcher_name}'. If a box appears, choose Run,\n"
+            "   or Run in Terminal.\n"
+            "\n"
+            "   If it opens in a text editor instead, right-click it, open\n"
+            "   Properties, and tick the option that allows running it as a\n"
+            "   program. Then double-click again.\n"
+            "\n"
+            "   If you would rather use a terminal, open one in this folder\n"
+            "   and type:\n"
+            "\n"
+            f"       ./{launcher_name}\n"
+        )
+    else:
+        step_two = (
+            "2. LET MACOS OPEN IT  (once)\n"
+            "\n"
+            "   This download is not signed by a registered Apple developer,\n"
+            "   so macOS blocks it the first time. This is normal for software\n"
+            "   that does not come from the App Store. You do it once, ever.\n"
+            "\n"
+            f"   Double-click '{launcher_name}'. macOS will refuse it.\n"
+            "\n"
+            "   Then go to:\n"
+            "\n"
+            "       Apple menu > System Settings > Privacy & Security\n"
+            "\n"
+            "   Scroll down to Security. There is a line about Shortsmith with\n"
+            "   an 'Open Anyway' button. Click it, enter your password, and\n"
+            "   confirm.\n"
+            "\n"
+            "   Do this straight after the refusal: the button disappears\n"
+            "   about an hour later. If it is not there, double-click\n"
+            "   Shortsmith again and look once more.\n"
+            "\n"
+            "   On macOS 14 Sonoma and earlier there is a shortcut: RIGHT-CLICK\n"
+            f"   '{launcher_name}', choose Open, then Open again. Apple removed\n"
+            "   that shortcut in macOS 15, so use the steps above unless you\n"
+            "   know your Mac is older.\n"
+        )
 
     (out / "! START HERE.txt").write_text(
         "SHORTSMITH\n"
@@ -365,32 +422,20 @@ def _unix_launchers(out: Path, linux: bool = False) -> Path:
         "   when you open the app and stops it when you close it.\n"
         "\n"
         "\n"
-        "2. LET MACOS OPEN IT  (once)\n"
-        "\n"
-        "   This download is not signed by a registered Apple developer, so\n"
-        "   macOS will refuse it on a normal double-click.\n"
-        "\n"
-        "   RIGHT-CLICK on 'Shortsmith.command', choose Open, then click Open\n"
-        "   again in the box that appears. You only do this the first time.\n"
-        "\n"
-        "   If it still refuses, open Terminal, type this, and press enter:\n"
-        "\n"
-        "       xattr -dr com.apple.quarantine \n"
-        "\n"
-        "   ...then drag this folder onto the Terminal window after it, and\n"
-        "   press enter again.\n"
+        + step_two +
         "\n"
         "\n"
         "3. OPEN SHORTSMITH\n"
         "\n"
-        "   Double-click:  Shortsmith.command\n"
+        f"   Double-click:  {launcher_name}\n"
         "\n"
         "\n"
         "THE FIRST TIME IT OPENS\n"
         "\n"
-        "   It checks what your Mac can handle and shows you a list of writer\n"
-        "   models. Pick one and press Download. That one press also fetches\n"
-        "   the video encoder, the narration voice and the caption timer.\n"
+        f"   It checks what your {machine} can handle and shows you a list of\n"
+        "   writer models. Pick one and press Download. That one press also\n"
+        "   fetches the video encoder, the narration voice and the caption\n"
+        "   timer.\n"
         "\n"
         "   Then open the Backgrounds tab and drop in a few gameplay clips.\n"
         "   Those play behind your videos.\n"
@@ -400,15 +445,14 @@ def _unix_launchers(out: Path, linux: bool = False) -> Path:
         "\n"
         "IF NOTHING HAPPENS\n"
         "\n"
-        "   Double-click  'Shortsmith (show errors).command'  instead. It\n"
-        "   leaves the reason on screen.\n"
+        f"   Open  '{errors_name}'  instead. It leaves the reason on screen.\n"
         "\n"
         "\n"
         "WHAT THIS DOES NOT DO\n"
         "\n"
         "   It does not upload anything, has no account and no API key. It\n"
-        "   talks to Ollama on your own Mac, checks GitHub for updates, and\n"
-        "   downloads the models you choose. That is all.\n"
+        f"   talks to Ollama on your own {machine}, checks GitHub for updates,\n"
+        "   and downloads the models you choose. That is all.\n"
         "\n"
         "\n"
         "More detail is in README.md. Source: github.com/Onrynx/ShortSmith\n",
@@ -416,7 +460,6 @@ def _unix_launchers(out: Path, linux: bool = False) -> Path:
 
     log("wrote launchers and first-run notes")
     return out
-
 
 
 # --------------------------------------------------------------------------- #
