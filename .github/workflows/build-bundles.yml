@@ -176,6 +176,51 @@ jobs:
           echo "files still marked: $LEFT  (want 0)"
           "$PY" -c "print('interpreter runs after clearing')"
 
+          # The question nobody could answer: what does macOS do when the
+          # launcher is DOUBLE-CLICKED, rather than run by path from a shell?
+          #
+          # A double-click goes through LaunchServices, and that is where
+          # Gatekeeper engages. `open` uses the same path, and `spctl` is the
+          # assessment tool Gatekeeper itself consults. Neither needs a person,
+          # so the verdict can be read here instead of guessed at.
+          #
+          # What matters is WHICH refusal it is. A hard Gatekeeper rejection is
+          # the one that needs System Settings and an Open Anyway button. The
+          # softer "downloaded from the Internet, are you sure?" prompt has an
+          # Open button right on it and needs nothing else. They look similar
+          # in a screenshot and are very different to live with.
+          echo "--- what Gatekeeper says about a double-click ---"
+          ( cd "$APP" && xattr -wr com.apple.quarantine "$STAMP" . )
+
+          echo "> is the launcher quarantined?"
+          xattr -p com.apple.quarantine "$APP/Shortsmith.command" \
+            && echo "  yes, marked" || echo "  no mark"
+
+          echo "> spctl assessment of the launcher:"
+          spctl --assess --type execute -vv "$APP/Shortsmith.command" 2>&1 \
+            | sed 's/^/    /'
+          echo "  (spctl exit: $?)"
+
+          echo "> spctl assessment of the interpreter:"
+          spctl --assess --type execute -vv "$PY" 2>&1 | sed 's/^/    /'
+
+          echo "> is the interpreter signed at all?"
+          codesign -dvv "$PY" 2>&1 | head -5 | sed 's/^/    /'
+
+          echo "> what LaunchServices does with it (same path as a double-click):"
+          open -g "$APP/Shortsmith.command" 2>&1 | sed 's/^/    /' &
+          OPENER=$!
+          ( sleep 25; kill -9 $OPENER 2>/dev/null ) &
+          OGUARD=$!
+          wait $OPENER
+          echo "  open exit: $?  (0 = LaunchServices accepted it)"
+          kill $OGUARD 2>/dev/null
+
+          echo "> global Gatekeeper state on this machine:"
+          spctl --status 2>&1 | sed 's/^/    /'
+
+          ( cd "$APP" && xattr -dr com.apple.quarantine . 2>/dev/null )
+
           echo "--- does a window open? ---"
           cat > /tmp/window_test.py <<'PYCODE'
           import threading, time, webview
