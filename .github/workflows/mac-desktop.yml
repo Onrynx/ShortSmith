@@ -225,6 +225,75 @@ jobs:
 
           osascript -e 'tell application "System Settings" to quit' >/dev/null 2>&1
 
+      # The same bundle, fetched the way a one-line installer would fetch it.
+      #
+      # The quarantine flag is not a property of the file, it is applied by
+      # whatever downloaded it. Safari, Chrome, Mail and AirDrop set it; curl,
+      # git and wget do not. If that holds, a curl-fetched copy opens with no
+      # dialog at all -- no command to paste, nothing to clean up afterwards,
+      # and no button offering to move it to the Trash.
+      #
+      # That would make the Mac instructions one paste instead of three steps,
+      # so it is worth proving rather than assuming.
+      - name: The same download, fetched by curl instead of a browser
+        shell: bash
+        run: |
+          set +e
+          DESK="$HOME/Desktop"
+          URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${{ inputs.tag }}/Shortsmith-macOS.zip"
+
+          # Note what is missing: no xattr -w. Nothing pretends to be Safari.
+          curl -fL -s -o "$DESK/viacurl.zip" "$URL"
+          ditto -x -k "$DESK/viacurl.zip" "$DESK/viacurl" \
+            || unzip -q "$DESK/viacurl.zip" -d "$DESK/viacurl"
+          APP2="$DESK/viacurl/Shortsmith"
+
+          echo "> is anything marked as downloaded?"
+          MARKED=$(find "$APP2" -type f -print0 \
+                   | xargs -0 xattr -p com.apple.quarantine 2>/dev/null \
+                   | wc -l | tr -d ' ')
+          echo "  files carrying the mark: $MARKED   (0 means curl set nothing)"
+
+          echo "> double-clicking it, the same way as before"
+          open "$APP2/Shortsmith.command" </dev/null >/dev/null 2>&1 &
+          sleep 15
+          screencapture -x /tmp/shots/05-opened-via-curl.png
+
+          echo "> did macOS put a dialog on screen?"
+          osascript <<'APPLESCRIPT' 2>&1 | sed 's/^/    /'
+          tell application "System Events"
+            if not (exists process "CoreServicesUIAgent") then
+              return "NO DIALOG -- it opened without being blocked"
+            end if
+            tell process "CoreServicesUIAgent"
+              try
+                if (count of windows) is 0 then
+                  return "NO DIALOG -- it opened without being blocked"
+                end if
+                set names to {}
+                repeat with b in buttons of window 1
+                  set end of names to name of b
+                end repeat
+                return "A DIALOG APPEARED. buttons: " & (names as string)
+              on error
+                return "NO DIALOG -- it opened without being blocked"
+              end try
+            end tell
+          end tell
+          APPLESCRIPT
+
+          echo "> is Shortsmith actually running?"
+          if pgrep -f "shortsmith.app" >/dev/null 2>&1; then
+            echo "  yes -- the app started"
+          else
+            echo "  no -- it did not start"
+          fi
+
+          pkill -f "shortsmith.app" >/dev/null 2>&1
+          pkill -f "viacurl" >/dev/null 2>&1
+          osascript -e 'tell application "Terminal" to quit' >/dev/null 2>&1
+          sleep 2
+
       - name: What the system log recorded about it
         shell: bash
         run: |
