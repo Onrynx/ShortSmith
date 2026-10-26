@@ -79,31 +79,34 @@
   <!-- These steps are deliberately here and not only inside the download. If
        macOS refuses to open anything in the folder, a note inside that folder
        is no use; this page always opens. -->
-  <h2 id="mac-blocked">If macOS says it cannot open Shortsmith</h2>
+  <h2 id="mac-blocked">On a Mac, do this before you open it</h2>
   <p>
-    Shortsmith is not signed by a registered Apple developer, so macOS blocks it
-    the first time. This is about who paid Apple to sign it, not about what the
-    software is. You do this once.
+    Shortsmith is not signed by a registered Apple developer &mdash; that costs
+    $99 a year &mdash; so macOS marks everything you download as untrusted.
+    This is about who paid Apple, not about what the software is. Twenty
+    seconds, once.
   </p>
   <ol>
-    <li>Double-click <b>Shortsmith.command</b>. macOS refuses it.</li>
-    <li>Open <b>Apple menu &rsaquo; System Settings &rsaquo; Privacy &amp; Security</b>,
-      scroll down to <b>Security</b>, and click <b>Open Anyway</b> next to
-      Shortsmith. That button only stays for about an hour after the refusal,
-      so do it straight away.</li>
-    <li>That is all. Shortsmith unmarks the rest of the folder itself the first
-      time it runs, so nothing asks you again.</li>
+    <li>Unzip the download.</li>
+    <li>Open Terminal (press <b>Command</b> and <b>Space</b>, type Terminal,
+      press enter). Type <code>xattr -dr com.apple.quarantine</code> followed
+      by a space, then <b>drag the Shortsmith folder onto the Terminal
+      window</b> &mdash; that fills in its location, so there is nothing to
+      type &mdash; and press enter. Nothing is printed when it works.</li>
+    <li>Double-click <b>Shortsmith.command</b>. It opens normally.</li>
   </ol>
   <p>
-    On macOS 14 and earlier there is a shortcut instead: right-click
-    <b>Shortsmith.command</b>, choose Open, then Open again. Apple removed that
-    in macOS 15.
+    <b>If you already double-clicked it</b> you will have seen a box saying
+    <b>&ldquo;Not Opened&rdquo;</b>, offering <b>Move to Trash</b> and
+    <b>Done</b>. Click <b>Done</b>. Never <b>Move to Trash</b> &mdash; that
+    deletes Shortsmith, and it is the highlighted button, so do not just press
+    Return. Then do step 2 above.
   </p>
   <p>
-    <b>If it still refuses</b>, open Terminal (press Command and Space, type
-    Terminal, press enter), type <code>xattr -dr com.apple.quarantine</code>
-    followed by a space, drag the Shortsmith folder onto the Terminal window,
-    and press enter. Nothing is printed when it works.
+    There may also be an <b>Open Anyway</b> button under
+    <b>Apple menu &rsaquo; System Settings &rsaquo; Privacy &amp; Security</b>,
+    in the Security section near the bottom, for about an hour after the
+    refusal. If you see it, that works too.
   </p>
 
   <h2 id="linux-blocked">If Linux will not run it on a double-click</h2>

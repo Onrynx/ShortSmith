@@ -131,13 +131,35 @@ jobs:
         run: |
           set +e
 
-          # The refusal dialog is modal and sits above everything. On the first
-          # attempt it stayed on screen, so System Settings opened behind it and
-          # the Page Down keystrokes went to the dialog instead of the window.
-          # The pictures came back showing the Privacy list with the dialog on
-          # top, and the Security section -- the only part that mattered -- was
-          # never reached. Dismiss it first.
-          killall CoreServicesUIAgent >/dev/null 2>&1
+          # Dismiss the refusal dialog by clicking its own Done button.
+          #
+          # killall CoreServicesUIAgent was tried and does not work: the agent
+          # restarts and brings the message back, so the dialog stayed on top
+          # and the Page Down keys went to it instead of to System Settings.
+          #
+          # Click "Done" by name, never by position and never with Return --
+          # the DEFAULT button on this dialog is "Move to Trash", so a stray
+          # Return deletes the thing under test.
+          echo "> dismissing the dialog by clicking Done"
+          osascript <<'APPLESCRIPT' 2>&1 | sed 's/^/    /'
+          tell application "System Events"
+            if not (exists process "CoreServicesUIAgent") then
+              return "no dialog process running"
+            end if
+            tell process "CoreServicesUIAgent"
+              try
+                set names to {}
+                repeat with b in buttons of window 1
+                  set end of names to name of b
+                end repeat
+                click button "Done" of window 1
+                return "clicked Done. buttons were: " & (names as string)
+              on error errMsg
+                return "could not click Done: " & errMsg
+              end try
+            end tell
+          end tell
+          APPLESCRIPT
           sleep 2
           screencapture -x /tmp/shots/02-dialog-dismissed.png
 
@@ -157,11 +179,15 @@ jobs:
           sleep 2
           screencapture -x /tmp/shots/04-security-section.png
 
-          # A picture needs reading; this does not. Ask the accessibility tree
-          # whether a button with that name exists anywhere in the window. It
-          # needs permission the runner may not grant, so it is allowed to fail
-          # and the screenshots remain the fallback.
-          echo "--- looking for an Open Anyway button in the window ---"
+          # A picture needs reading; this does not. Walk the accessibility tree
+          # and report every button name, plus any text mentioning Shortsmith
+          # or a block.
+          #
+          # The previous attempt asked for "every button of entire contents of
+          # window 1", which is not valid: entire contents returns a flat list
+          # of elements, and you filter it by class rather than subscripting it
+          # by type. It failed with "Can't make ... into type specifier".
+          echo "--- what is actually in the Security window ---"
           osascript <<'APPLESCRIPT' 2>&1 | sed 's/^/    /'
           tell application "System Events"
             if not (exists process "System Settings") then
@@ -169,15 +195,26 @@ jobs:
             end if
             tell process "System Settings"
               try
-                set found to {}
-                repeat with b in (every button of entire contents of window 1)
-                  set nm to ""
+                set btns to {}
+                set notes to {}
+                repeat with e in (entire contents of window 1)
                   try
-                    set nm to name of b
+                    if class of e is button then
+                      set nm to name of e
+                      if nm is not missing value then set end of btns to nm
+                    else if class of e is static text then
+                      set tx to name of e
+                      if tx is not missing value then
+                        if tx contains "block" or tx contains "Shortsmith" ¬
+                           or tx contains "Open Anyway" then
+                          set end of notes to tx
+                        end if
+                      end if
+                    end if
                   end try
-                  if nm is not "" then set end of found to nm
                 end repeat
-                return "buttons on screen: " & (found as string)
+                return "BUTTONS: " & (btns as string) & return & ¬
+                       "RELEVANT TEXT: " & (notes as string)
               on error errMsg
                 return "could not read the window: " & errMsg
               end try
