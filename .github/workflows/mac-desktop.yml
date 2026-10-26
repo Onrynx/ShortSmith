@@ -1,0 +1,176 @@
+name: Mac desktop
+
+# A real macOS desktop, for when something can only be answered by using one.
+#
+# GitHub's macOS runners are Apple Silicon Macs. This one hands you a session
+# on it: a terminal over SSH, and optionally the actual desktop over Screen
+# Sharing, with Finder, System Settings and everything else. It is free on a
+# public repository, it is Apple hardware so it runs the arm64 bundle we
+# actually ship, and there is no licence question the way a VM has.
+#
+# It exists because of one question nothing else could answer: whether
+# double-clicking Shortsmith.command in Finder offers an "Open Anyway" button
+# in System Settings. spctl says Gatekeeper rejects the launcher outright
+# (source=no usable signature), but whether that produces an overridable
+# refusal or a dead end is a matter of what the interface does, and that needs
+# a person looking at it.
+#
+# SECURITY. This repository is public, which means these logs are public.
+# Anything printed here can be read by anyone:
+#   - tmate is restricted to the GitHub account that started the run, so the
+#     connection string in the log is useless to anyone else;
+#   - the Screen Sharing password is never printed. It comes from a repository
+#     secret you set, and if you have not set one, Screen Sharing stays off;
+#   - Screen Sharing listens on the machine itself only. You reach it by
+#     forwarding a port down your own SSH connection, so it is never exposed
+#     to the internet.
+# The runner is destroyed when the job ends. Nothing survives it.
+
+on:
+  workflow_dispatch:
+    inputs:
+      minutes:
+        description: "How long to hold the session open (max 350)"
+        required: false
+        default: "45"
+      desktop:
+        description: "Also enable Screen Sharing (needs the MAC_VNC_PASSWORD secret)"
+        type: boolean
+        required: false
+        default: true
+      tag:
+        description: "Release tag to put on the Desktop, ready to test"
+        required: false
+        default: "v2.3.0"
+
+permissions:
+  contents: read
+
+jobs:
+  desktop:
+    name: macOS desktop
+    runs-on: macos-14
+    timeout-minutes: 360
+
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v4
+
+      - name: Describe the machine
+        run: |
+          echo "macOS $(sw_vers -productVersion)  ($(uname -m))"
+          echo "logged in as: $(whoami)"
+          sw_vers
+
+      # Put the real download on the Desktop, already marked the way a browser
+      # marks it, so the moment you connect the test is set up and the first
+      # thing you do is the thing we need to know.
+      - name: Put the real download on the Desktop, marked as downloaded
+        shell: bash
+        run: |
+          set +e
+          TAG="${{ inputs.tag }}"
+          DESK="$HOME/Desktop"
+          mkdir -p "$DESK"
+          URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/$TAG/Shortsmith-macOS.zip"
+          echo "fetching $URL"
+          curl -fL --progress-bar -o "$DESK/Shortsmith-macOS.zip" "$URL" || {
+            echo "could not download $TAG -- the Desktop will be empty"
+            exit 0
+          }
+
+          # curl does not set the quarantine flag; a browser does. Without it
+          # Gatekeeper has no reason to object and the test proves nothing.
+          STAMP="0081;$(printf '%x' "$(date +%s)");Safari;"
+          xattr -w com.apple.quarantine "$STAMP" "$DESK/Shortsmith-macOS.zip"
+
+          # Unpack it the way Archive Utility would, then force the mark onto
+          # everything, which is the worst case a real download produces.
+          ditto -x -k "$DESK/Shortsmith-macOS.zip" "$DESK/unpacked" \
+            || unzip -q "$DESK/Shortsmith-macOS.zip" -d "$DESK/unpacked"
+          xattr -wr com.apple.quarantine "$STAMP" "$DESK/unpacked" 2>/dev/null
+          echo "ready at: $DESK/unpacked/Shortsmith"
+          ls -la "$DESK/unpacked/Shortsmith" | head -12
+
+      - name: Leave the instructions on the Desktop too
+        shell: bash
+        run: |
+          cat > "$HOME/Desktop/WHAT TO DO.txt" <<'NOTE'
+          THE ONE THING THIS SESSION IS FOR
+          =================================
+
+          Open the folder:   Desktop > unpacked > Shortsmith
+
+          1. Double-click 'Shortsmith.command'.
+
+          2. Write down EXACTLY what macOS says. The wording decides this:
+
+               "cannot be opened because it is from an unidentified developer"
+               "Apple could not verify ... free of malware"
+               "is damaged and can't be opened"      <- this one is bad news
+               or it just opens
+
+          3. Open System Settings > Privacy & Security, scroll to Security.
+
+             IS THERE AN "Open Anyway" BUTTON FOR SHORTSMITH?
+
+             That is the answer. If yes, the current design is finished: one
+             click, and the launcher clears the other 8013 files itself.
+             If no, the bundle has to become a real .app instead.
+
+          4. If the button is there, click it and say whether Shortsmith
+             opens, and whether a window appears.
+
+          Everything on this machine is thrown away when the job ends.
+          NOTE
+          echo "written"
+
+      # Screen Sharing is only switched on when a password exists to protect
+      # it. The secret is never echoed; it goes straight from the secret store
+      # into the password change.
+      - name: Turn on Screen Sharing
+        if: ${{ inputs.desktop }}
+        env:
+          VNC_PASSWORD: ${{ secrets.MAC_VNC_PASSWORD }}
+        shell: bash
+        run: |
+          set +e
+          if [ -z "$VNC_PASSWORD" ]; then
+            echo "No MAC_VNC_PASSWORD secret is set, so Screen Sharing stays off."
+            echo "You still get a terminal over SSH below."
+            echo
+            echo "To enable it: Settings > Secrets and variables > Actions >"
+            echo "New repository secret, named MAC_VNC_PASSWORD."
+            exit 0
+          fi
+
+          # The account password doubles as the Screen Sharing password, so
+          # nothing extra is stored and nothing is printed.
+          sudo dscl . -passwd /Users/runner "$VNC_PASSWORD" 2>/dev/null \
+            || echo "could not set the account password"
+
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
+            -activate -configure -access -on \
+            -restart -agent -privs -all -users runner 2>&1 | tail -3
+
+          # Listening on the machine itself. You reach it by forwarding the
+          # port down your own SSH connection, never over the open internet.
+          echo "Screen Sharing is on, listening on port 5900 locally."
+          echo
+          echo "When the SSH line appears below, connect with the port"
+          echo "forwarded, then point a VNC viewer at localhost:5900 and sign"
+          echo "in as 'runner' with the password you stored in the secret:"
+          echo
+          echo "    ssh -L 5900:localhost:5900 <the ssh line printed below>"
+
+      # timeout-minutes belongs to the STEP, not to the action. Passing it
+      # under `with:` would be an input tmate does not have: silently ignored,
+      # and the session would then sit open until the 360-minute job cap.
+      - name: Hold the session open
+        uses: mxschmitt/action-tmate@v3
+        timeout-minutes: ${{ fromJSON(inputs.minutes) }}
+        with:
+          # Only the account that started this run can connect, using the SSH
+          # keys on its GitHub profile. The connection string is printed in a
+          # public log and is useless to anyone else.
+          limit-access-to-actor: true
