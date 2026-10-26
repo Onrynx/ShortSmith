@@ -25,6 +25,11 @@ jobs:
   build:
     name: ${{ matrix.label }}
     runs-on: ${{ matrix.os }}
+    # A hung step costs real money on the macOS runners, which bill at ten
+    # times the Linux rate -- one did, for 39 minutes, before this existed.
+    # The whole job normally finishes in under two minutes, so anything past
+    # twenty is stuck rather than slow.
+    timeout-minutes: 20
     strategy:
       fail-fast: false        # one platform failing must not cancel the others
       matrix:
@@ -207,14 +212,21 @@ jobs:
           echo "> is the interpreter signed at all?"
           codesign -dvv "$PY" 2>&1 | head -5 | sed 's/^/    /'
 
-          echo "> what LaunchServices does with it (same path as a double-click):"
-          open -g "$APP/Shortsmith.command" 2>&1 | sed 's/^/    /' &
-          OPENER=$!
-          ( sleep 25; kill -9 $OPENER 2>/dev/null ) &
-          OGUARD=$!
-          wait $OPENER
-          echo "  open exit: $?  (0 = LaunchServices accepted it)"
-          kill $OGUARD 2>/dev/null
+          # Deliberately NOT `open`. An earlier version ran it against the real
+          # launcher, which did exactly what it is built to do: started
+          # Shortsmith and kept running. A step does not end while anything
+          # still holds its output pipe, so the job hung for 39 minutes on a
+          # runner billed at ten times the normal rate. The guard meant to stop
+          # it captured $! from a pipeline, which is the PID of the last command
+          # in it -- sed -- so it killed the wrong process.
+          #
+          # spctl answers the same question without launching anything, and
+          # --type open is the assessment LaunchServices performs when opening
+          # a document or script, as opposed to --type execute for a binary.
+          echo "> the assessment LaunchServices makes on a double-click:"
+          spctl --assess --type open \
+                --context context:primary-signature -vv \
+                "$APP/Shortsmith.command" </dev/null 2>&1 | sed 's/^/    /'
 
           echo "> global Gatekeeper state on this machine:"
           spctl --status 2>&1 | sed 's/^/    /'
