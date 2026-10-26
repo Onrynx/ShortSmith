@@ -37,7 +37,12 @@ jobs:
           - os: windows-latest
             label: Windows
             asset: Shortsmith-Windows.zip
-          - os: macos-14      # Apple Silicon
+          # macos-26 (Tahoe), not macos-14. GitHub's macOS 14 image is fully
+          # unsupported from 2 November 2026, and macos-latest already points
+          # at 26. The runner version barely affects the bundle -- the Python
+          # and the wheels are prebuilt and downloaded -- but a retired image
+          # stops the build dead.
+          - os: macos-26
             label: macOS
             asset: Shortsmith-macOS.zip
           - os: ubuntu-latest

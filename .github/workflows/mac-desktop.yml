@@ -40,7 +40,12 @@ permissions:
 jobs:
   desktop:
     name: What a person sees
-    runs-on: macos-14
+    # macOS 26 (Tahoe), the current image and what macos-latest points at.
+    # The first run used macos-14 (Sonoma), and Apple changed precisely this
+    # behaviour in macOS 15 -- so even a clean answer there would not have been
+    # the answer for anybody's actual Mac. macos-14 is also unsupported from
+    # 2 November 2026.
+    runs-on: macos-26
     timeout-minutes: 60
 
     steps:
@@ -125,20 +130,62 @@ jobs:
         shell: bash
         run: |
           set +e
+
+          # The refusal dialog is modal and sits above everything. On the first
+          # attempt it stayed on screen, so System Settings opened behind it and
+          # the Page Down keystrokes went to the dialog instead of the window.
+          # The pictures came back showing the Privacy list with the dialog on
+          # top, and the Security section -- the only part that mattered -- was
+          # never reached. Dismiss it first.
+          killall CoreServicesUIAgent >/dev/null 2>&1
+          sleep 2
+          screencapture -x /tmp/shots/02-dialog-dismissed.png
+
           open "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension" \
             </dev/null >/dev/null 2>&1 &
-          sleep 10
-          screencapture -x /tmp/shots/02-privacy-and-security.png
-
-          # The override lives at the bottom of that pane, so scroll down and
-          # take another. If an "Open Anyway" button exists, it is in this one.
-          osascript -e 'tell application "System Events" to key code 121' \
-            >/dev/null 2>&1
+          sleep 12
+          osascript -e 'tell application "System Settings" to activate' >/dev/null 2>&1
           sleep 2
-          osascript -e 'tell application "System Events" to key code 121' \
-            >/dev/null 2>&1
-          sleep 3
-          screencapture -x /tmp/shots/03-security-scrolled.png
+          screencapture -x /tmp/shots/03-privacy-and-security.png
+
+          # Security sits at the very bottom of that pane. End, not Page Down,
+          # and aimed at the window now that it actually has focus.
+          for _ in 1 2 3 4 5 6; do
+            osascript -e 'tell application "System Events" to key code 121' >/dev/null 2>&1
+            sleep 1
+          done
+          sleep 2
+          screencapture -x /tmp/shots/04-security-section.png
+
+          # A picture needs reading; this does not. Ask the accessibility tree
+          # whether a button with that name exists anywhere in the window. It
+          # needs permission the runner may not grant, so it is allowed to fail
+          # and the screenshots remain the fallback.
+          echo "--- looking for an Open Anyway button in the window ---"
+          osascript <<'APPLESCRIPT' 2>&1 | sed 's/^/    /'
+          tell application "System Events"
+            if not (exists process "System Settings") then
+              return "System Settings is not running"
+            end if
+            tell process "System Settings"
+              try
+                set found to {}
+                repeat with b in (every button of entire contents of window 1)
+                  set nm to ""
+                  try
+                    set nm to name of b
+                  end try
+                  if nm is not "" then set end of found to nm
+                end repeat
+                return "buttons on screen: " & (found as string)
+              on error errMsg
+                return "could not read the window: " & errMsg
+              end try
+            end tell
+          end tell
+          APPLESCRIPT
+          echo "--- end ---"
+
           osascript -e 'tell application "System Settings" to quit' >/dev/null 2>&1
 
       - name: What the system log recorded about it
