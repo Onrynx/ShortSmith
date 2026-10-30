@@ -636,16 +636,31 @@ def build_macos(out: Path, arch: str, refresh_only: bool = False) -> Path:
 # --------------------------------------------------------------------------- #
 ASSET_NAME = {"Windows": "Shortsmith-Windows.zip",
               "Darwin": "Shortsmith-macOS.zip",
+              "Darwin-x86_64": "Shortsmith-macOS-Intel.zip",
               "Linux": "Shortsmith-Linux.zip"}
 
+# Apple sold Intel Macs until 2020 and supported them for years after. A
+# bundle built on Apple Silicon contains arm64 code only -- reading the Mach-O
+# header of the published zip confirmed libpython3.13.dylib is arm64 with no
+# Intel slice -- so an Intel Mac downloads 109 MB and gets "Bad CPU type in
+# executable". Until this, the page offered it to them anyway.
+INTEL_MAC = {"x86_64", "amd64", "i386"}
 
-def asset_name(system: str | None = None) -> str:
+
+def asset_name(system: str | None = None, machine: str | None = None) -> str:
     """What this platform's download must be called.
 
     The download page asks GitHub which assets exist and matches these exact
     names, so a build that names its zip anything else never appears on it.
+
+    macOS needs two: the same source produces two incompatible binaries and
+    only the processor tells them apart.
     """
-    return ASSET_NAME.get(system or platform.system(), "Shortsmith.zip")
+    system = system or platform.system()
+    machine = (machine or platform.machine()).lower()
+    if system == "Darwin" and machine in INTEL_MAC:
+        return ASSET_NAME["Darwin-x86_64"]
+    return ASSET_NAME.get(system, "Shortsmith.zip")
 
 
 def package(folder: Path) -> Path:
@@ -702,7 +717,7 @@ def check_download_page() -> None:
             "never offer them:\n    " + "\n    ".join(missing) +
             "\n\n  Update the BUILDS table in docs/index.html to match "
             "ASSET_NAME in this script.")
-    log("download page knows all three asset names")
+    log(f"download page knows all {len(ASSET_NAME)} asset names")
 
 
 def verify_against_manifest(out: Path) -> None:

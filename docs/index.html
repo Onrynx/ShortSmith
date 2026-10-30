@@ -92,9 +92,10 @@
     enter), paste this, and press enter:
   </p>
   <pre style="background:#0c0d10;border:1px solid #262a33;border-radius:10px;
-              padding:14px 16px;overflow-x:auto;font-size:13px;line-height:1.6"><code>curl -fL -o ~/Downloads/Shortsmith.zip https://github.com/Onrynx/ShortSmith/releases/latest/download/Shortsmith-macOS.zip &amp;&amp; unzip -qo ~/Downloads/Shortsmith.zip -d ~/Desktop &amp;&amp; open ~/Desktop/Shortsmith</code></pre>
+              padding:14px 16px;overflow-x:auto;font-size:13px;line-height:1.6"><code>F=$( [ "$(uname -m)" = arm64 ] &amp;&amp; echo Shortsmith-macOS.zip || echo Shortsmith-macOS-Intel.zip ); curl -fL -o ~/Downloads/Shortsmith.zip "https://github.com/Onrynx/ShortSmith/releases/latest/download/$F" &amp;&amp; unzip -qo ~/Downloads/Shortsmith.zip -d ~/Desktop &amp;&amp; open ~/Desktop/Shortsmith</code></pre>
   <p>
-    It downloads Shortsmith, unpacks it onto your Desktop and opens the folder.
+    It works out whether your Mac has Apple Silicon or an Intel chip, fetches
+    the right one, unpacks it onto your Desktop and opens the folder.
     Double-click <b>Shortsmith.command</b> and it starts &mdash; no warnings,
     no Terminal afterwards. This is the same thing Homebrew does when it
     installs unsigned software, and the same reason developers never hit this.
@@ -167,10 +168,17 @@
   var LATEST = REPO + '/releases/latest/download/';
   var API = 'https://api.github.com/repos/' + OWNER + '/' + NAME + '/releases/latest';
 
+  // macOS needs two. A bundle built on Apple Silicon holds arm64 code only,
+  // so an Intel Mac that downloads it gets "Bad CPU type in executable" after
+  // 109 MB. And the page cannot tell them apart: Safari reports the platform
+  // as "MacIntel" on Apple Silicon too. So Apple Silicon is offered as the
+  // default -- every Mac sold since 2020 -- with Intel listed beside it, and
+  // the one-line install above works out the processor itself.
   var BUILDS = {
-    windows: {name: 'Windows', file: 'Shortsmith-Windows.zip',    note: 'Windows 10 or 11, 64-bit'},
-    macos:   {name: 'macOS',   file: 'Shortsmith-macOS.zip',      note: 'macOS 12 or newer'},
-    linux:   {name: 'Linux',   file: 'Shortsmith-Linux.zip',      note: '64-bit'}
+    windows:    {name: 'Windows',   file: 'Shortsmith-Windows.zip',       note: 'Windows 10 or 11, 64-bit'},
+    macos:      {name: 'macOS',     file: 'Shortsmith-macOS.zip',         note: 'Apple Silicon — any Mac from 2020 on'},
+    macosintel: {name: 'Mac (Intel)', file: 'Shortsmith-macOS-Intel.zip', note: 'Older Intel Macs'},
+    linux:      {name: 'Linux',     file: 'Shortsmith-Linux.zip',         note: '64-bit'}
   };
 
   var dl = document.getElementById('dl');

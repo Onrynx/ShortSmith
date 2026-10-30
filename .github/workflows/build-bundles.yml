@@ -45,6 +45,13 @@ jobs:
           - os: macos-26
             label: macOS
             asset: Shortsmith-macOS.zip
+          # Intel Macs. A bundle built on Apple Silicon is arm64 only, so one
+          # built here is the only thing an Intel Mac can run. macos-13 was
+          # retired in December 2025; macos-15-intel replaces it and is
+          # supported until autumn 2027.
+          - os: macos-15-intel
+            label: macOS-Intel
+            asset: Shortsmith-macOS-Intel.zip
           - os: ubuntu-latest
             label: Linux
             asset: Shortsmith-Linux.zip
