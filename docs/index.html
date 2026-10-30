@@ -79,34 +79,40 @@
   <!-- These steps are deliberately here and not only inside the download. If
        macOS refuses to open anything in the folder, a note inside that folder
        is no use; this page always opens. -->
-  <h2 id="mac-blocked">On a Mac, do this before you open it</h2>
+  <h2 id="mac-blocked">On a Mac, one line is easier</h2>
   <p>
-    Shortsmith is not signed by a registered Apple developer &mdash; that costs
-    $99 a year &mdash; so macOS marks everything you download as untrusted.
-    This is about who paid Apple, not about what the software is. Twenty
-    seconds, once.
+    macOS refuses software that is not signed by a registered Apple developer,
+    which costs $99 a year. The refusal is triggered by a hidden tag your
+    browser attaches to anything it downloads &mdash; and the command below
+    fetches the same file without one, so nothing is ever blocked and there is
+    nothing to undo afterwards.
   </p>
-  <ol>
-    <li>Unzip the download.</li>
-    <li>Open Terminal (press <b>Command</b> and <b>Space</b>, type Terminal,
-      press enter). Type <code>xattr -dr com.apple.quarantine</code> followed
-      by a space, then <b>drag the Shortsmith folder onto the Terminal
-      window</b> &mdash; that fills in its location, so there is nothing to
-      type &mdash; and press enter. Nothing is printed when it works.</li>
-    <li>Double-click <b>Shortsmith.command</b>. It opens normally.</li>
-  </ol>
+  <p>
+    Open Terminal (press <b>Command</b> and <b>Space</b>, type Terminal, press
+    enter), paste this, and press enter:
+  </p>
+  <pre style="background:#0c0d10;border:1px solid #262a33;border-radius:10px;
+              padding:14px 16px;overflow-x:auto;font-size:13px;line-height:1.6"><code>curl -fL -o ~/Downloads/Shortsmith.zip https://github.com/Onrynx/ShortSmith/releases/latest/download/Shortsmith-macOS.zip &amp;&amp; unzip -qo ~/Downloads/Shortsmith.zip -d ~/Desktop &amp;&amp; open ~/Desktop/Shortsmith</code></pre>
+  <p>
+    It downloads Shortsmith, unpacks it onto your Desktop and opens the folder.
+    Double-click <b>Shortsmith.command</b> and it starts &mdash; no warnings,
+    no Terminal afterwards. This is the same thing Homebrew does when it
+    installs unsigned software, and the same reason developers never hit this.
+  </p>
+
+  <h3>If you used the download button instead</h3>
+  <p>
+    Then the tag is attached and macOS will refuse it. Unzip it, open Terminal,
+    type <code>xattr -dr com.apple.quarantine</code> followed by a space, drag
+    the Shortsmith folder onto the Terminal window, and press enter. Nothing is
+    printed when it works. Then double-click <b>Shortsmith.command</b>.
+  </p>
   <p>
     <b>If you already double-clicked it</b> you will have seen a box saying
     <b>&ldquo;Not Opened&rdquo;</b>, offering <b>Move to Trash</b> and
     <b>Done</b>. Click <b>Done</b>. Never <b>Move to Trash</b> &mdash; that
     deletes Shortsmith, and it is the highlighted button, so do not just press
-    Return. Then do step 2 above.
-  </p>
-  <p>
-    There may also be an <b>Open Anyway</b> button under
-    <b>Apple menu &rsaquo; System Settings &rsaquo; Privacy &amp; Security</b>,
-    in the Security section near the bottom, for about an hour after the
-    refusal. If you see it, that works too.
+    Return.
   </p>
 
   <h2 id="linux-blocked">If Linux will not run it on a double-click</h2>
