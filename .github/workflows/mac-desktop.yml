@@ -210,10 +210,19 @@ jobs:
           sleep 2
           screencapture -x /tmp/shots/04-security-section.png
 
-          # And read it, so the answer is a line of text rather than a picture
-          # somebody has to squint at.
+          # Say it out loud, where it can be heard.
+          #
+          # GitHub makes you sign in to read a run's log. It does not make you
+          # sign in to read its annotations. Everything below therefore goes
+          # out twice: to the log for detail, and as a one-line notice that
+          # shows on the run page itself.
+          say_note () {
+            printf '::notice title=%s::%s\n' "$1" \
+              "$(printf '%s' "$2" | tr '\n\r' '  ' | sed 's/%/%25/g')"
+          }
+
           echo "> is there an Open Anyway button?"
-          osascript <<'APPLESCRIPT' 2>&1 | sed 's/^/    /'
+          FOUND=$(osascript <<'APPLESCRIPT' 2>&1
           tell application "System Events"
             tell process "System Settings"
               try
@@ -230,26 +239,29 @@ jobs:
                   end try
                 end repeat
                 if (count of hits) is 0 then
-                  return "nothing mentioning Open Anyway or Shortsmith is on screen"
+                  return "NO -- nothing about Open Anyway or Shortsmith is on screen"
                 end if
-                return hits as string
+                return "YES -- " & (hits as string)
               on error errMsg
                 return "could not read the window: " & errMsg
               end try
             end tell
           end tell
           APPLESCRIPT
+          )
+          printf '%s\n' "$FOUND" | sed 's/^/    /'
+          say_note "Open Anyway button" "$FOUND"
 
           # A picture needs reading; this does not. Walk the accessibility tree
           # and report every button name, plus any text mentioning Shortsmith
           # or a block.
           #
-          # The previous attempt asked for "every button of entire contents of
+          # An earlier attempt asked for "every button of entire contents of
           # window 1", which is not valid: entire contents returns a flat list
           # of elements, and you filter it by class rather than subscripting it
           # by type. It failed with "Can't make ... into type specifier".
           echo "--- what is actually in the Security window ---"
-          osascript <<'APPLESCRIPT' 2>&1 | sed 's/^/    /'
+          CONTENTS=$(osascript <<'APPLESCRIPT' 2>&1
           tell application "System Events"
             if not (exists process "System Settings") then
               return "System Settings is not running"
@@ -274,14 +286,78 @@ jobs:
                     end if
                   end try
                 end repeat
-                return "BUTTONS: " & (btns as string) & return & ¬
-                       "RELEVANT TEXT: " & (notes as string)
+                return "BUTTONS: " & (btns as string) & " // RELEVANT TEXT: " ¬
+                       & (notes as string)
               on error errMsg
                 return "could not read the window: " & errMsg
               end try
             end tell
           end tell
           APPLESCRIPT
+          )
+          printf '%s\n' "$CONTENTS" | sed 's/^/    /'
+          say_note "Security window" "$CONTENTS"
+
+          # Now do what the page tells people to do: click it. Finding the
+          # button is not the same as the button working, and the page should
+          # not promise a step nobody has ever completed.
+          echo "> clicking Open Anyway, the way a person would"
+          CLICK=$(osascript <<'APPLESCRIPT' 2>&1
+          tell application "System Events"
+            tell process "System Settings"
+              try
+                repeat with e in (entire contents of window 1)
+                  try
+                    if class of e is button then
+                      if name of e contains "Open Anyway" then
+                        click e
+                        return "clicked it"
+                      end if
+                    end if
+                  end try
+                end repeat
+                return "there was no Open Anyway button to click"
+              on error errMsg
+                return "could not click it: " & errMsg
+              end try
+            end tell
+          end tell
+          APPLESCRIPT
+          )
+          printf '%s\n' "$CLICK" | sed 's/^/    /'
+          say_note "Clicking it" "$CLICK"
+          sleep 6
+          screencapture -x /tmp/shots/04b-after-open-anyway.png
+
+          # A password sheet here is the expected, ordinary thing -- it is the
+          # same one macOS puts up for any setting worth protecting, and the
+          # page already says to expect it. Anything else is news.
+          echo "> and then what happened?"
+          AFTER=$(osascript <<'APPLESCRIPT' 2>&1
+          tell application "System Events"
+            set out to {}
+            try
+              set end of out to "frontmost: " ¬
+                & (name of first process whose frontmost is true)
+            end try
+            try
+              tell process "System Settings"
+                if (count of sheets of window 1) is 0 then
+                  set end of out to "no password sheet came up"
+                else
+                  set end of out to "a password sheet came up, which is normal"
+                end if
+              end tell
+            on error
+              set end of out to "System Settings has closed"
+            end try
+            return out as string
+          end tell
+          APPLESCRIPT
+          )
+          printf '%s\n' "$AFTER" | sed 's/^/    /'
+          say_note "After the click" "$AFTER"
+
           echo "--- end ---"
 
           osascript -e 'tell application "System Settings" to quit' >/dev/null 2>&1
@@ -350,8 +426,17 @@ jobs:
           sleep 15
           screencapture -x /tmp/shots/05-opened-via-curl.png
 
+          # Same trick as the step above: the log needs a sign-in to read,
+          # an annotation does not.
+          say_note () {
+            printf '::notice title=%s::%s\n' "$1" \
+              "$(printf '%s' "$2" | tr '\n\r' '  ' | sed 's/%/%25/g')"
+          }
+          say_note "Marked as downloaded" \
+            "files carrying the mark after curl: $MARKED (0 means curl set nothing)"
+
           echo "> did macOS put a dialog on screen?"
-          osascript <<'APPLESCRIPT' 2>&1 | sed 's/^/    /'
+          DIALOG=$(osascript <<'APPLESCRIPT' 2>&1
           tell application "System Events"
             if not (exists process "CoreServicesUIAgent") then
               return "NO DIALOG -- it opened without being blocked"
@@ -372,13 +457,18 @@ jobs:
             end tell
           end tell
           APPLESCRIPT
+          )
+          printf '%s\n' "$DIALOG" | sed 's/^/    /'
+          say_note "Curl path, dialog" "$DIALOG"
 
           echo "> is Shortsmith actually running?"
           if pgrep -f "shortsmith.app" >/dev/null 2>&1; then
-            echo "  yes -- the app started"
+            RUNNING="yes -- the app started"
           else
-            echo "  no -- it did not start"
+            RUNNING="no -- it did not start"
           fi
+          echo "  $RUNNING"
+          say_note "Curl path, did it run" "$RUNNING"
 
           pkill -f "shortsmith.app" >/dev/null 2>&1
           pkill -f "viacurl" >/dev/null 2>&1
