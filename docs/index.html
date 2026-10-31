@@ -28,7 +28,21 @@
   .btn.ghost{background:var(--panel2);color:var(--txt);border:1px solid var(--line);
     font-size:14px;font-weight:600;padding:11px 18px}
   .meta{font-size:13px;color:var(--faint);margin-top:12px}
+  .small{font-size:13px;color:var(--faint)}
   .others{margin-top:20px;display:flex;flex-wrap:wrap;gap:9px}
+  /* Four downloads of equal weight. The previous layout gave one platform a
+     large button and demoted the rest to small links underneath, which made
+     three of the four look like afterthoughts. */
+  .picks{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));
+    gap:12px;margin:4px 0 2px}
+  .pick{display:flex;flex-direction:column;gap:3px;background:var(--panel2);
+    border:1px solid var(--line);border-radius:13px;padding:16px 18px;
+    text-decoration:none;color:var(--txt);transition:border-color .15s,transform .15s}
+  .pick:hover{border-color:var(--accent);transform:translateY(-1px)}
+  .pick b{font-size:16px;font-weight:700}
+  .pick span{font-size:12.5px;color:var(--faint)}
+  .pick em{color:var(--accent);font-weight:600;font-size:11.5px;font-style:normal;
+    letter-spacing:.3px;text-transform:uppercase}
   h2{font-size:13px;text-transform:uppercase;letter-spacing:.9px;color:var(--faint);
     margin:44px 0 14px;font-weight:650}
   ol{padding-left:22px;margin:0}
@@ -54,9 +68,8 @@
     Nothing is uploaded, nothing is tracked, and there is no account to make.</p>
 
   <div class="card">
-    <a class="btn" id="dl" href="#">Download Shortsmith</a>
-    <div class="meta" id="meta">Detecting your computer&hellip;</div>
-    <div class="others" id="others"></div>
+    <div class="picks" id="picks"></div>
+    <div class="meta" id="meta">Loading the downloads&hellip;</div>
   </div>
 
   <h2>Then two more things, once</h2>
@@ -79,41 +92,42 @@
   <!-- These steps are deliberately here and not only inside the download. If
        macOS refuses to open anything in the folder, a note inside that folder
        is no use; this page always opens. -->
-  <h2 id="mac-blocked">On a Mac, one line is easier</h2>
+  <h2 id="mac-blocked">On a Mac, one extra click the first time</h2>
   <p>
-    macOS refuses software that is not signed by a registered Apple developer,
-    which costs $99 a year. The refusal is triggered by a hidden tag your
-    browser attaches to anything it downloads &mdash; and the command below
-    fetches the same file without one, so nothing is ever blocked and there is
-    nothing to undo afterwards.
+    Apple charges $99 a year to sign software. Shortsmith is free and is not
+    signed, so the first time you open it macOS asks you to confirm. You do
+    this once, ever.
   </p>
+  <ol>
+    <li>Download the Mac version above and unzip it.</li>
+    <li>Double-click <b>Shortsmith.command</b>. macOS refuses it and shows a
+      box. Click <b>Done</b>.
+      <br><b>Do not click &ldquo;Move to Trash&rdquo;</b> &mdash; it is the
+      highlighted button, so do not simply press Return. It deletes
+      Shortsmith.</li>
+    <li>Open <b>Apple menu &rsaquo; System Settings &rsaquo; Privacy &amp;
+      Security</b>, scroll to the bottom, and click <b>Open Anyway</b> next to
+      Shortsmith. Enter your password.</li>
+    <li>That is it. Shortsmith opens, and nothing asks you again.</li>
+  </ol>
+  <p class="small">
+    The <b>Open Anyway</b> button only stays for about an hour after the
+    refusal, so do step 3 straight after step 2. If it is not there,
+    double-click Shortsmith again and look once more.
+  </p>
+
+  <h3>Or skip the approval entirely</h3>
   <p>
-    Open Terminal (press <b>Command</b> and <b>Space</b>, type Terminal, press
-    enter), paste this, and press enter:
+    If you would rather not see the box at all, this fetches the same download
+    without the marker that triggers it, and picks Apple Silicon or Intel for
+    you. Paste it into Terminal (press <b>Command</b> and <b>Space</b>, type
+    Terminal, press enter):
   </p>
   <pre style="background:#0c0d10;border:1px solid #262a33;border-radius:10px;
               padding:14px 16px;overflow-x:auto;font-size:13px;line-height:1.6"><code>F=$( [ "$(uname -m)" = arm64 ] &amp;&amp; echo Shortsmith-macOS.zip || echo Shortsmith-macOS-Intel.zip ); curl -fL -o ~/Downloads/Shortsmith.zip "https://github.com/Onrynx/ShortSmith/releases/latest/download/$F" &amp;&amp; unzip -qo ~/Downloads/Shortsmith.zip -d ~/Desktop &amp;&amp; open ~/Desktop/Shortsmith</code></pre>
   <p>
-    It works out whether your Mac has Apple Silicon or an Intel chip, fetches
-    the right one, unpacks it onto your Desktop and opens the folder.
-    Double-click <b>Shortsmith.command</b> and it starts &mdash; no warnings,
-    no Terminal afterwards. This is the same thing Homebrew does when it
-    installs unsigned software, and the same reason developers never hit this.
-  </p>
-
-  <h3>If you used the download button instead</h3>
-  <p>
-    Then the tag is attached and macOS will refuse it. Unzip it, open Terminal,
-    type <code>xattr -dr com.apple.quarantine</code> followed by a space, drag
-    the Shortsmith folder onto the Terminal window, and press enter. Nothing is
-    printed when it works. Then double-click <b>Shortsmith.command</b>.
-  </p>
-  <p>
-    <b>If you already double-clicked it</b> you will have seen a box saying
-    <b>&ldquo;Not Opened&rdquo;</b>, offering <b>Move to Trash</b> and
-    <b>Done</b>. Click <b>Done</b>. Never <b>Move to Trash</b> &mdash; that
-    deletes Shortsmith, and it is the highlighted button, so do not just press
-    Return.
+    Shortsmith lands on your Desktop and the folder opens. Double-click
+    <b>Shortsmith.command</b> and it starts, with nothing to approve.
   </p>
 
   <h2 id="linux-blocked">If Linux will not run it on a double-click</h2>
@@ -181,9 +195,8 @@
     linux:      {name: 'Linux',     file: 'Shortsmith-Linux.zip',         note: '64-bit'}
   };
 
-  var dl = document.getElementById('dl');
+  var picks = document.getElementById('picks');
   var meta = document.getElementById('meta');
-  var others = document.getElementById('others');
 
   function detect() {
     var d = navigator.userAgentData;
@@ -203,51 +216,47 @@
 
   function render(available) {
     var found = detect();
-    others.innerHTML = '';
+    picks.innerHTML = '';
 
-    // A phone cannot run this at all. Saying so is kinder than a download
-    // button that produces a file nothing on the device can open.
+    // A phone cannot run this at all. Saying so is kinder than four download
+    // buttons that each produce a file nothing on the device can open.
     if (found === 'phone') {
-      dl.textContent = 'Open this on a computer';
-      dl.href = REPO;
-      dl.style.pointerEvents = 'none';
-      dl.style.opacity = '0.75';
-      meta.textContent = 'Shortsmith renders video on the machine it runs on, ' +
+      meta.textContent = 'Shortsmith makes the video on the machine it runs on, ' +
                          'so it needs a Windows PC, a Mac or a Linux computer. ' +
-                         'There is no phone version.';
+                         'There is no phone version. Open this page on a computer.';
       return;
     }
 
-    var mine = found && BUILDS[found];
-    var haveMine = mine && available[mine.file];
-
-    if (haveMine) {
-      dl.textContent = 'Download for ' + mine.name;
-      dl.href = LATEST + mine.file;
-      meta.textContent = mine.note + ' \u00b7 ' + mb(available[mine.file]);
-    } else if (mine) {
-      // We know which computer this is, and there is no build for it yet.
-      dl.textContent = 'Not ready for ' + mine.name + ' yet';
-      dl.href = REPO + '/releases';
-      dl.style.opacity = '0.75';
-      meta.textContent = 'Shortsmith is built for ' + mine.name + ', but that ' +
-                         'download has not been published yet. Only the ' +
-                         'builds below are available right now.';
-    } else {
-      dl.textContent = 'See the downloads';
-      dl.href = REPO + '/releases/latest';
-      meta.textContent = 'Pick the one that matches your computer.';
-    }
-
+    // Every platform gets the same tile. The page can mark which one looks
+    // like yours, but it should not decide for you -- and on a Mac it cannot
+    // tell Apple Silicon from Intel anyway, because Safari reports both as
+    // "MacIntel". Showing all four and labelling the likely one is honest
+    // about what the page actually knows.
+    var shown = 0;
     Object.keys(BUILDS).forEach(function (key) {
-      if (haveMine && key === found) return;
-      if (!available[BUILDS[key].file]) return;      // never link a missing file
+      var b = BUILDS[key];
+      if (!available[b.file]) return;              // never link a missing file
       var a = document.createElement('a');
-      a.className = 'btn ghost';
-      a.href = LATEST + BUILDS[key].file;
-      a.textContent = BUILDS[key].name + ' \u00b7 ' + mb(available[BUILDS[key].file]);
-      others.appendChild(a);
+      a.className = 'pick';
+      a.href = LATEST + b.file;
+      var yours = (key === found)
+        ? '<em>Looks like your computer</em>'
+        : '';
+      a.innerHTML = yours +
+                    '<b>' + b.name + '</b>' +
+                    '<span>' + b.note + ' \u00b7 ' + mb(available[b.file]) + '</span>';
+      picks.appendChild(a);
+      shown++;
     });
+
+    if (!shown) {
+      meta.innerHTML = 'The downloads are not published yet. ' +
+                       '<a href="' + REPO + '/releases">Check the releases page</a>.';
+      return;
+    }
+    meta.innerHTML = 'Unzip it and open Shortsmith. ' +
+                     '<b>On a Mac, see the step below first</b> \u2014 it takes ' +
+                     'one click and you only do it once.';
   }
 
   // Ask what is actually attached. If the request fails — offline, or GitHub
@@ -261,10 +270,19 @@
       render(available);
     })
     .catch(function () {
-      dl.textContent = 'See the downloads';
-      dl.href = REPO + '/releases/latest';
-      meta.textContent = 'Pick the one that matches your computer.';
-      others.innerHTML = '';
+      // GitHub unreachable, so the sizes are unknown. Still offer every
+      // download rather than one link to go hunting through.
+      picks.innerHTML = '';
+      Object.keys(BUILDS).forEach(function (key) {
+        var b = BUILDS[key];
+        var a = document.createElement('a');
+        a.className = 'pick';
+        a.href = LATEST + b.file;
+        a.innerHTML = '<b>' + b.name + '</b><span>' + b.note + '</span>';
+        picks.appendChild(a);
+      });
+      meta.textContent = 'Could not check the sizes just now. ' +
+                         'The links above always give the newest version.';
     });
 })();
 </script>
