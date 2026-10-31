@@ -170,14 +170,75 @@ jobs:
           sleep 2
           screencapture -x /tmp/shots/03-privacy-and-security.png
 
-          # Security sits at the very bottom of that pane. End, not Page Down,
-          # and aimed at the window now that it actually has focus.
-          for _ in 1 2 3 4 5 6; do
-            osascript -e 'tell application "System Events" to key code 121' >/dev/null 2>&1
-            sleep 1
-          done
+          # Getting to the Security section, which is the whole point.
+          #
+          # Keystrokes alone have never worked: the right-hand pane does not
+          # have keyboard focus just because the window is frontmost, so Page
+          # Down and End went nowhere and every attempt photographed the
+          # Privacy list instead. Click inside the pane first, then scroll it
+          # directly rather than hoping a key reaches it.
+          echo "> scrolling to the Security section"
+          osascript <<'APPLESCRIPT' 2>&1 | sed 's/^/    /'
+          tell application "System Settings" to activate
+          delay 1
+          tell application "System Events"
+            tell process "System Settings"
+              try
+                -- Put the click in the middle of the right-hand pane so the
+                -- scroll area, not the sidebar, takes the focus.
+                set {w, h} to size of window 1
+                set {x, y} to position of window 1
+                click at {x + (w * 0.7), y + (h * 0.6)}
+                delay 1
+              end try
+              -- Drive the scrollbar straight to the bottom. This works whether
+              -- or not the click landed, and does not depend on key handling.
+              try
+                set sa to scroll area 1 of group 1 of group 1 of window 1
+                set value of scroll bar 1 of sa to 1.0
+                return "scrolled the pane to the bottom"
+              on error
+                repeat 12 times
+                  key code 121
+                  delay 0.3
+                end repeat
+                return "no scroll area found; fell back to Page Down"
+              end try
+            end tell
+          end tell
+          APPLESCRIPT
           sleep 2
           screencapture -x /tmp/shots/04-security-section.png
+
+          # And read it, so the answer is a line of text rather than a picture
+          # somebody has to squint at.
+          echo "> is there an Open Anyway button?"
+          osascript <<'APPLESCRIPT' 2>&1 | sed 's/^/    /'
+          tell application "System Events"
+            tell process "System Settings"
+              try
+                set hits to {}
+                repeat with e in (entire contents of window 1)
+                  try
+                    set n to name of e
+                    if n is not missing value then
+                      if n contains "Open Anyway" or n contains "was blocked" ¬
+                         or n contains "Shortsmith" then
+                        set end of hits to (class of e as text) & ": " & n
+                      end if
+                    end if
+                  end try
+                end repeat
+                if (count of hits) is 0 then
+                  return "nothing mentioning Open Anyway or Shortsmith is on screen"
+                end if
+                return hits as string
+              on error errMsg
+                return "could not read the window: " & errMsg
+              end try
+            end tell
+          end tell
+          APPLESCRIPT
 
           # A picture needs reading; this does not. Walk the accessibility tree
           # and report every button name, plus any text mentioning Shortsmith
