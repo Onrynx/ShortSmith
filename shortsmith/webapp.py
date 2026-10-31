@@ -75,6 +75,13 @@ _STAGE_TEXT = {
 #            every /api/ call. Sent as a header, which cannot be set on a
 #            cross-origin simple request at all.
 SESSION_TOKEN = secrets.token_urlsafe(24)
+
+# The same token, delivered as a cookie so <img>, <video> and <audio> can
+# authenticate without it appearing in a URL. Named per run so two copies
+# running on different ports do not overwrite each other's cookie: cookies
+# ignore the port, so a fixed name would mean the last page loaded wins and
+# the other copy starts failing its own media requests.
+COOKIE_NAME = f"shortsmith_{secrets.token_hex(4)}"
 _LOOPBACK = {"127.0.0.1", "localhost", "::1", "0:0:0:0:0:0:0:1"}
 MAX_BODY = 1 << 20          # 1 MB; no legitimate call is anywhere near this
 # A thread per connection with no ceiling is a denial of service waiting for a
@@ -480,15 +487,52 @@ class _Handler(BaseHTTPRequestHandler):
             return {(h, p) for h in _LOOPBACK for p in range(0)}
         return {(h, port) for h in _LOOPBACK}
 
+    def _cookie_token(self) -> str:
+        """Our token out of the Cookie header, parsed without the cookie module.
+
+        http.cookies.SimpleCookie raises on input it dislikes and silently
+        drops the rest of the header on anything malformed, which makes a
+        hostile Cookie header a way to turn a request into a 500 or a false
+        negative. Splitting on ';' and '=' has neither failure mode.
+        """
+        raw = self.headers.get("Cookie") or ""
+        for part in raw.split(";"):
+            name, _, value = part.strip().partition("=")
+            if name == COOKIE_NAME:
+                return value.strip().strip('"')
+        return ""
+
+    def _fetch_site_ok(self) -> bool:
+        """Reject what the browser itself says came from another site.
+
+        Sec-Fetch-Site is set by the browser and cannot be altered by page
+        script, which is what makes it worth checking: it is a statement from
+        the browser rather than from the request. "cross-site" is a request
+        another origin caused, and nothing here should ever be one.
+
+        Absent means an older browser or a non-browser client, and the Host,
+        Origin and token checks still apply -- so this adds a refusal, it does
+        not replace one.
+        """
+        site = (self.headers.get("Sec-Fetch-Site") or "").strip().lower()
+        return site in ("", "same-origin", "none")
+
     def _token_ok(self) -> bool:
         """The page we served knows the token; nothing else does.
 
-        Accepted as a header for fetch(), or as ?k= for <img>/<video>/<audio>,
-        which cannot send headers at all.
+        Accepted as a header for fetch(), or as a cookie for <img>/<video>/
+        <audio>, which cannot send headers at all.
+
+        The cookie replaced a ?k= query parameter. A token in a URL is written
+        into browser history, into any log that records paths, and into the
+        clipboard whenever someone copies a link to a clip -- and it stays
+        valid for the life of the run. The cookie is HttpOnly, so page script
+        cannot read it either, and SameSite=Strict keeps it off requests that
+        another site causes.
         """
         got = self.headers.get("X-Shortsmith-Token") or ""
         if not got:
-            got = (parse_qs(urlparse(self.path).query).get("k") or [""])[0]
+            got = self._cookie_token()
         # compare_digest refuses non-ASCII str and raises TypeError, which the
         # handler turned into a 500. Comparing bytes has no such restriction,
         # and a token that cannot even be encoded is simply wrong.
@@ -499,6 +543,8 @@ class _Handler(BaseHTTPRequestHandler):
         return hmac.compare_digest(supplied, SESSION_TOKEN.encode("ascii"))
 
     def _allowed(self, path: str) -> bool:
+        if not self._fetch_site_ok():
+            return self._json({"error": "cross-site request refused"}, 403)
         if not self._caller_ok():
             return False
         return self._token_ok() if path.startswith("/api/") else True
@@ -521,10 +567,19 @@ class _Handler(BaseHTTPRequestHandler):
             html = (APP_DIR / "index.html").read_text(encoding="utf-8")
         except OSError:
             return self._json({"error": "index.html is missing"}, 500)
+        html = html.replace("__SHORTSMITH_COOKIE__", COOKIE_NAME)
         body = html.replace("__SHORTSMITH_TOKEN__", SESSION_TOKEN).encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
+        # HttpOnly: page script never needs to read this, and not being able
+        # to read it means a script injected into the page cannot carry it
+        # away. SameSite=Strict: never sent on a request another site caused.
+        # No Secure flag, because this is http://127.0.0.1 and Secure would
+        # stop the cookie being sent at all.
+        self.send_header("Set-Cookie",
+                         f"{COOKIE_NAME}={SESSION_TOKEN}; Path=/; "
+                         f"HttpOnly; SameSite=Strict")
         self.send_header("Cache-Control", "no-store, must-revalidate")
         # The page never embeds anything remote, so say so.
         self.send_header("Content-Security-Policy",

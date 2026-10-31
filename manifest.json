@@ -30,8 +30,8 @@
    "size": 9844
   },
   "app/index.html": {
-   "sha256": "5a223af4cdf71282f1f2bf9e411970d9e8a0164a5c71895c7bd3ee7c7c2796ee",
-   "size": 86890
+   "sha256": "e361b00e76f42106efb1624fd91a4963bde78b233be2f10d206b9e54ddbb5911",
+   "size": 87380
   },
   "assets/backgrounds/README.txt": {
    "sha256": "f42e1d43e60fd499669f7ab8030aba1c4cd048146123858310fa2e65e997093a",
@@ -226,11 +226,11 @@
    "size": 22345
   },
   "shortsmith/webapp.py": {
-   "sha256": "e3a688494ae4bced5baa500b19e890521673963747135498e0617c83c3a8cde8",
-   "size": 44109
+   "sha256": "728cce4b65c7ad524b294f323c635e67dcc9fbab2b6b9d03534bc6081c49fa36",
+   "size": 46988
   }
  },
  "manifest_version": 1,
- "total_bytes": 657721,
+ "total_bytes": 661090,
  "version": "2.3.0"
 }

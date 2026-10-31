@@ -555,7 +555,17 @@ $('#counts').onclick= e => { const c=e.target.closest('.chip'); if(c) pickIn($('
 const TOKEN = "__SHORTSMITH_TOKEN__";
 
 // <img>, <video> and <audio> cannot send headers, so they carry it in the URL.
-function signed(url){ return url + (url.includes('?') ? '&' : '?') + 'k=' + TOKEN; }
+// Media URLs no longer carry the token.
+//
+// <img>, <video> and <audio> cannot send headers, so the token used to be
+// appended as ?k=. That put it in browser history, in anything logging paths,
+// and in the clipboard whenever a link to a clip was copied -- valid for the
+// whole run. The server now sets it as an HttpOnly SameSite=Strict cookie,
+// which the browser attaches to these requests by itself.
+//
+// Kept as a function so every call site stays unchanged and nothing can
+// quietly start appending a token again.
+function signed(url){ return url; }
 
 async function api(path, body){
   const headers = {'X-Shortsmith-Token': TOKEN};
