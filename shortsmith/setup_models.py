@@ -102,11 +102,17 @@ def _pull_writer(model: str) -> None:
 # 2. the voice
 # --------------------------------------------------------------------------- #
 def _pull_ffmpeg() -> None:
-    """The video encoder. Nothing renders without it, and the bundle has none.
+    """The video encoder. Nothing renders without it.
 
-    Skipped when the machine already has one. Many do not — and that was the
-    hole: everything else was fetched, nine gigabytes spent, and the render
-    failed at the cutter with "FFmpeg not found on PATH".
+    The bundle now carries one, as a hash-pinned wheel, so this normally finds
+    it already present and returns immediately. It stays as the safety net for
+    an install that somehow has none — and for running from a source checkout,
+    which carries no runtime at all.
+
+    Before the bundle carried one, this was the hole: everything else was
+    fetched, nine gigabytes spent, and the render failed at the cutter with
+    "FFmpeg not found on PATH". On macOS it was worse, because there was no
+    download to fall back to and the answer was "install Homebrew".
     """
     from .ffmpeg_setup import have_any, install
     _set(stage="ffmpeg", step=2, percent=0.0, label="Checking for the video encoder")

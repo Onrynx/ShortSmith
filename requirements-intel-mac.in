@@ -36,6 +36,16 @@ onnxruntime==1.23.2
 # word-level burned captions (optional but recommended for long-form)
 faster-whisper==1.2.1
 
+# FFmpeg itself, as a wheel. Every platform this targets has one carrying a
+# static binary, so a fresh install can render without downloading anything
+# more and without Homebrew.
+#
+# This is why it is here rather than fetched at setup: Windows and Linux both
+# have single-file ffmpeg publishers, macOS does not. The Mac build used to
+# raise "install ffmpeg with: brew install ffmpeg" -- at render time, after
+# the person had already downloaded a writer model several gigabytes large.
+imageio-ffmpeg==0.7.0
+
 # desktop app window (uses the OS webview — ~1 MB, not a bundled browser).
 # Without it Shortsmith still runs, just in your normal browser.
 pywebview==6.2.1

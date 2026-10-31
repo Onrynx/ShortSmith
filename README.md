@@ -17,10 +17,17 @@ That link always gives you the newest release — it is not tied to a version
 number, so it keeps working after every update.
 [All versions](https://github.com/Onrynx/ShortSmith/releases).
 
-> **macOS and Linux are not built yet.** Shortsmith runs on them — the code is
-> the same — but each one needs its bundle built on that kind of machine, and
-> that has not been done. If you are on a Mac or Linux and want it, open an
-> issue and say so.
+> **Windows, macOS and Linux all have downloads.** Four of them: Windows,
+> macOS on Apple Silicon, macOS on Intel, and Linux. Each is built on that
+> kind of machine, because a bundle carries compiled libraries and can only be
+> assembled where it will run.
+>
+> **On a Mac, use the one-line install** on the
+> [download page](https://onrynx.github.io/ShortSmith/). macOS refuses
+> software that is not signed by a registered Apple developer, and the refusal
+> is triggered by a tag your browser attaches to downloads. That command
+> fetches the same file without one, so nothing is blocked and there is
+> nothing to undo. It also picks Apple Silicon or Intel for you.
 >
 > **There is no phone version.** Shortsmith renders video on the machine it
 > runs on.

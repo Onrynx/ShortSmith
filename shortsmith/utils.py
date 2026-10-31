@@ -386,6 +386,31 @@ def _is_real_ffmpeg(path: str) -> bool:
         return False
 
 
+def _shipped_ffmpeg() -> str | None:
+    """The ffmpeg that comes inside the bundle, or None outside one.
+
+    imageio-ffmpeg publishes a wheel per platform carrying a static ffmpeg, so
+    installing it puts a working encoder beside everything else and a fresh
+    install can render without fetching anything further.
+
+    macOS is the reason it is here. Windows and Linux both have publishers who
+    ship a single-file ffmpeg, which is what ffmpeg_setup fetches. macOS has no
+    equivalent, so the Mac build used to raise "install ffmpeg with: brew
+    install ffmpeg" -- and it raised it at render time, after the person had
+    downloaded a writer model several gigabytes large. This removes that.
+
+    It sits after the copy the app downloaded, and ahead of PATH, because a
+    known binary beats whatever a PATH search turns up first; see below for
+    what PATH turned up on a real machine.
+    """
+    try:
+        from imageio_ffmpeg import get_ffmpeg_exe
+        found = get_ffmpeg_exe()
+    except Exception:
+        return None
+    return found if found and Path(found).is_file() else None
+
+
 def ffmpeg_path() -> str:
     """Find an ffmpeg that actually works.
 
@@ -404,7 +429,13 @@ def ffmpeg_path() -> str:
     # reason rendering works — and on a machine that already had ffmpeg, this
     # folder is simply empty and PATH wins as before.
     own = STATE_DIR / "tools" / "bin" / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")
-    candidates = ([override] if override else [])         + ([str(own)] if own.is_file() else [])         + _which_all("ffmpeg")
+    shipped = _shipped_ffmpeg()
+    candidates = (
+        ([override] if override else [])
+        + ([str(own)] if own.is_file() else [])
+        + ([shipped] if shipped else [])
+        + _which_all("ffmpeg")
+    )
     for cand in candidates:
         if cand and _is_real_ffmpeg(cand):
             if candidates.index(cand) > 0:
@@ -430,10 +461,18 @@ def _warn_if_writable(path: str) -> None:
     try:
         folder = Path(path).resolve().parent
         home = Path.home().resolve()
-        # Our own copy lives under the app, which is usually under the home
-        # folder — but we put it there on purpose and verified it, so warning
-        # about it would be crying wolf on the one binary we vouch for.
-        if folder == (STATE_DIR / "tools" / "bin").resolve():
+        # Our own copies live under the app, which is usually under the home
+        # folder — but we put them there on purpose and verified them, so
+        # warning would be crying wolf on the binaries we vouch for. One was
+        # downloaded and checksummed by ffmpeg_setup; the other arrived inside
+        # the bundle as a hash-pinned wheel, and on macOS it is the only one
+        # there is. Without this exception every Mac and Windows user would
+        # see this warning on every single run.
+        vouched = {(STATE_DIR / "tools" / "bin").resolve()}
+        shipped = _shipped_ffmpeg()
+        if shipped:
+            vouched.add(Path(shipped).resolve().parent)
+        if folder in vouched:
             return
         if folder == home or home in folder.parents:
             log("warn", f"ffmpeg is being run from {folder}, which is inside your "
