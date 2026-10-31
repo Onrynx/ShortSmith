@@ -1,0 +1,63 @@
+name: Dependency audit
+
+# Checks the three shipped lockfiles against published advisories, weekly and
+# on every push that touches them.
+#
+# The pins are deliberate and do not move on their own, which is the point of
+# pinning -- but it also means a package that was clean when pinned stays
+# pinned after an advisory is published against it. Nothing would say so. This
+# does.
+#
+# Pillow was once pinned here at a version carrying 26 published advisories,
+# several of them heap out-of-bounds writes, purely because that was what one
+# machine happened to have installed. That was caught by looking. This is the
+# version of looking that happens without anyone remembering to.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "requirements*.txt"
+      - "requirements*.in"
+      - ".github/workflows/audit.yml"
+  pull_request:
+    branches: [main]
+  schedule:
+    # Mondays, early. A weekly cadence matches how fast advisories appear for
+    # a dependency set this size, without opening a run for every push.
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  advisories:
+    name: Published advisories
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+
+      - name: Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+        with:
+          python-version: "3.13"
+
+      - name: Audit every shipped lockfile
+        shell: bash
+        run: |
+          set -e
+          python -m pip install --disable-pip-version-check -q pip-audit
+
+          # --no-deps: the lockfiles are already fully resolved, so resolving
+          # them again would audit packages that are never installed.
+          # --disable-pip: audit what is written down, not what this runner
+          # happens to have.
+          failed=0
+          for lock in requirements-lock.txt requirements-intel-mac.txt requirements-build.txt; do
+            echo "--- $lock"
+            python -m pip_audit -r "$lock" --no-deps --disable-pip || failed=1
+          done
+          exit $failed

@@ -90,8 +90,8 @@
    "size": 10802
   },
   "shortsmith/ffmpeg_setup.py": {
-   "sha256": "4c6663571ffc307efb1e378288ed1e58f6dcaa9dfae0ce336921920b507d3bdf",
-   "size": 7574
+   "sha256": "9c6059ce469e6ef13af92af8b79641433335f5f159dd60c5c938712ccc321cc9",
+   "size": 9316
   },
   "shortsmith/gate.py": {
    "sha256": "180dc63a7ae2a8ab22c67b70125a84a1497a80e0c12a220fee9f879776401813",
@@ -222,8 +222,8 @@
    "size": 17716
   },
   "shortsmith/utils.py": {
-   "sha256": "a89e6dcf86de3e6e7ed81f52b3778568579969223b7c86c7ccce27a91b9f44bb",
-   "size": 22042
+   "sha256": "6c4fd302b98cb37207721666fcb6312fcd16f9a58fd166208304a19ee67274ff",
+   "size": 22345
   },
   "shortsmith/webapp.py": {
    "sha256": "e3a688494ae4bced5baa500b19e890521673963747135498e0617c83c3a8cde8",
@@ -231,6 +231,6 @@
   }
  },
  "manifest_version": 1,
- "total_bytes": 653056,
+ "total_bytes": 655101,
  "version": "2.3.0"
 }

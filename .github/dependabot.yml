@@ -1,0 +1,26 @@
+version: 2
+updates:
+  # The workflows pin every action to a commit rather than a tag, so a moved
+  # tag cannot change what runs on the machine that builds and publishes the
+  # downloads. The cost of that is the pins going stale on their own.
+  #
+  # Dependabot opens a pull request when a pinned action has a newer release,
+  # updating the commit and leaving the "# v4" comment accurate. It does not
+  # put mutable tags back.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "Update"
+
+  # Python dependencies are NOT listed here on purpose.
+  #
+  # They are installed with pip --require-hashes from lockfiles resolved for
+  # every platform at once, and one of them pins an older onnxruntime because
+  # that is the last release with Intel Mac wheels. A bot editing those files
+  # would break the hashes, the platform markers, or both. Moving a pin is a
+  # deliberate act: change requirements.txt, re-resolve, check the result
+  # against advisories, and build. The audit workflow reports when one of them
+  # needs that attention.

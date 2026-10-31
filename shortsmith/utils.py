@@ -251,7 +251,8 @@ def sha256_of(path: Path | str, chunk: int = 1 << 20) -> str:
 
 def http_download(url: str, dest: Path | str, headers: dict | None = None,
                   timeout: float = 120.0, expect_sha256: str | None = None,
-                  max_bytes: int | None = None) -> Path:
+                  max_bytes: int | None = None,
+                  expect_md5: str | None = None) -> Path:
     """Fetch a file, optionally refusing to keep one that is not what we expect.
 
     Model weights are executed as a computation graph after this returns, so
@@ -284,6 +285,21 @@ def http_download(url: str, dest: Path | str, headers: dict | None = None,
             if got.lower() != expect_sha256.lower():
                 raise IOError(
                     f"checksum mismatch for {url} — expected {expect_sha256}, "
+                    f"got {got}. The file was NOT kept.")
+        if expect_md5:
+            # MD5 only where that is all the publisher offers. It is no longer
+            # sound against someone deliberately constructing a collision, so
+            # it is never the only thing standing between a download and being
+            # run — but it does catch corruption and casual substitution, and
+            # it is strictly better than keeping whatever arrives.
+            h = hashlib.md5()
+            with open(part, "rb") as fh:
+                while block := fh.read(1 << 20):
+                    h.update(block)
+            got = h.hexdigest()
+            if got.lower() != expect_md5.lower():
+                raise IOError(
+                    f"checksum mismatch for {url} — expected MD5 {expect_md5}, "
                     f"got {got}. The file was NOT kept.")
         part.replace(dest)
         return dest

@@ -18,8 +18,12 @@ on:
         required: false
         default: ""
 
+# Read-only by default. The build job installs third-party packages and runs
+# a downloaded interpreter; it has no business holding authority to rewrite
+# releases. Only the small attach job below is granted that, and it runs no
+# project code -- it moves files the build already produced.
 permissions:
-  contents: write             # needed to attach files to a release
+  contents: read
 
 jobs:
   build:
@@ -284,12 +288,37 @@ jobs:
           path: build/${{ matrix.asset }}
           retention-days: 14
 
-      - name: Attach it to the release
-        if: github.event_name == 'release' || inputs.tag != ''
+  # A separate job, so that release-write authority is held by as little as
+  # possible for as short a time as possible. It downloads what the build
+  # already made and uploads it; it checks out no code and runs none.
+  #
+  # needs: build means one platform failing stops all four being attached,
+  # rather than quietly publishing three. That is deliberate: a release
+  # carrying some of its downloads is worse than a release carrying none,
+  # because the missing one looks like a platform that was never supported.
+  attach:
+    name: Attach the downloads to the release
+    needs: build
+    if: github.event_name == 'release' || inputs.tag != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - name: Collect what the builds produced
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4
+        with:
+          pattern: Shortsmith-*
+          path: build
+          merge-multiple: true
+
+      - name: Attach them
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.event.release.tag_name || inputs.tag }}
         shell: bash
         run: |
-          gh release upload "$TAG" "build/${{ matrix.asset }}" --clobber --repo "$GITHUB_REPOSITORY"
-          echo "Attached ${{ matrix.asset }} to $TAG"
+          set -e
+          ls -la build/ | sed 's/^/  /'
+          gh release upload "$TAG" build/Shortsmith-*.zip --clobber --repo "$GITHUB_REPOSITORY"
+          echo "Attached $(ls build/Shortsmith-*.zip | wc -l) downloads to $TAG"

@@ -23,6 +23,7 @@ people who build it, under their terms, rather than redistributed by us.
 from __future__ import annotations
 
 import platform
+import re
 import shutil
 import tarfile
 import urllib.request
@@ -77,18 +78,28 @@ def _install_windows(on_progress=None) -> Path:
     url = GYAN_PKG.format(v=version)
 
     # The publisher's own checksum, fetched separately from the archive.
-    digest = ""
+    #
+    # This fails closed. It used to warn and carry on with no checksum at all,
+    # which meant the one case the check exists for -- something interfering
+    # with the download -- was also the case where it was skipped, and the
+    # result is an executable this code then runs.
     try:
         digest = _fetch_text(GYAN_SHA.format(v=version)).split()[0]
     except Exception as exc:  # noqa: BLE001
-        log("warn", f"no published checksum for ffmpeg {version} ({exc})")
+        raise RuntimeError(
+            f"could not fetch the published checksum for ffmpeg {version}, so "
+            f"the download cannot be verified. Nothing was installed.") from exc
+    if not re.fullmatch(r"[0-9a-fA-F]{64}", digest):
+        raise RuntimeError(
+            f"ffmpeg {version} published a checksum that is not a SHA-256 "
+            f"({digest[:32]!r}). Nothing was installed.")
 
     TOOLS.mkdir(parents=True, exist_ok=True)
     archive = TOOLS / f"ffmpeg-{version}.zip"
     if on_progress:
         on_progress(f"Downloading ffmpeg {version}")
     http_download(url, archive, timeout=1800,
-                  expect_sha256=digest or None, max_bytes=MAX_BYTES)
+                  expect_sha256=digest, max_bytes=MAX_BYTES)
 
     if on_progress:
         on_progress("Unpacking ffmpeg")
@@ -109,9 +120,30 @@ def _install_posix(on_progress=None) -> Path:
     archive = TOOLS / f"ffmpeg-{arch}.tar.xz"
     if on_progress:
         on_progress("Downloading ffmpeg")
-    # These builds publish a .md5 rather than a .sha256; the transfer is over
-    # HTTPS and the result is verified by running it, below.
-    http_download(url, archive, timeout=1800, max_bytes=MAX_BYTES)
+    # Verify against the checksum the publisher actually offers.
+    #
+    # This used to download with no check at all, on the reasoning that HTTPS
+    # covers the transfer and running the binary proves it works. Neither is a
+    # substitute: HTTPS says nothing about what sits on the server, and "it
+    # ran" is exactly what a replaced binary would also do.
+    #
+    # They publish MD5 and not SHA-256, so MD5 is what can be checked. It is
+    # not sound against a deliberately constructed collision; it does catch
+    # corruption and casual substitution. Pinning a digest here instead is not
+    # an option -- the URL has no version in it and is republished in place, so
+    # a pinned value would break on every upstream release.
+    try:
+        published = _fetch_text(url + ".md5").split()[0]
+    except Exception as exc:  # noqa: BLE001
+        raise RuntimeError(
+            "could not fetch the published checksum for ffmpeg, so the "
+            "download cannot be verified. Nothing was installed.") from exc
+    if not re.fullmatch(r"[0-9a-fA-F]{32}", published):
+        raise RuntimeError(
+            f"ffmpeg published a checksum that is not an MD5 "
+            f"({published[:32]!r}). Nothing was installed.")
+    http_download(url, archive, timeout=1800,
+                  expect_md5=published, max_bytes=MAX_BYTES)
 
     if on_progress:
         on_progress("Unpacking ffmpeg")
