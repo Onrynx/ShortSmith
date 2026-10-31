@@ -1,5 +1,51 @@
 # Changelog
 
+## 2.4.0
+
+**Mac**
+- Shortsmith works on a Mac now. It did not before: it would install, open,
+  let you download a writer model several gigabytes large, and then fail when
+  you pressed Make, because the part that actually assembles the video was
+  missing and the only advice it could offer was to go and install a developer
+  tool first. That part now comes inside the download, on every system.
+- One line installs it, and no warning appears. macOS blocks software that has
+  not been signed by a developer who pays Apple, and the block is set off by a
+  marker your browser attaches to anything it downloads. The command on the
+  download page fetches the same file without that marker, so there is nothing
+  to approve and nothing to undo afterwards.
+- If you do use the download button instead, the instructions now come in the
+  right order: the one step that prevents the warning comes before you open
+  Shortsmith, rather than after it has already been refused. They also say,
+  in capitals, not to press the highlighted button in that dialog — it is
+  "Move to Trash", and it deletes Shortsmith.
+- Older Intel Macs have their own download. They were being offered one built
+  for newer Macs, which cannot run on them at all: 109 MB, then an error.
+
+**Everywhere**
+- Nothing extra is fetched before your first video. What was previously a
+  separate download during setup now ships inside Shortsmith.
+- Updates come from published releases only. An update could previously pick
+  up whatever had been changed since the release was published, including
+  half-finished work. Now it delivers the release and nothing else, and if it
+  cannot confirm which release that is, it does nothing rather than guess.
+- Linux has its own launcher and its own instructions. It was being given the
+  Mac ones, which talked about Apple and about a file that does not exist on
+  Linux.
+
+**Safety**
+- Shortsmith checks everything it downloads against a known fingerprint before
+  using it, and stops if anything does not match. Previously some downloads
+  were trusted because they arrived over a secure connection, which proves who
+  sent a file but not what is in it.
+- The Windows version carried a copy of Python whose certificate had been
+  withdrawn after it was reported as possibly used to sign malicious software.
+  Windows may refuse to run it. Replaced.
+- The key your browser uses to talk to Shortsmith no longer appears in any
+  address. It used to travel in the links behind previews, which meant it was
+  written into your browser history and could be copied along with a link.
+- A web page in another tab can no longer reach Shortsmith, put it in a hidden
+  frame, or borrow a click from it.
+
 ## 2.3.0
 
 **New**

@@ -11,26 +11,36 @@ no cloud. Nothing you make is uploaded anywhere until you decide to post it.
 
 ## Get it
 
-### [⬇ Download for Windows](https://github.com/Onrynx/ShortSmith/releases/latest/download/Shortsmith-Windows.zip)
+The [download page](https://onrynx.github.io/ShortSmith/) picks the right one
+for the computer you are on. Or choose yourself:
 
-That link always gives you the newest release — it is not tied to a version
-number, so it keeps working after every update.
+**Windows** — [download it](https://github.com/Onrynx/ShortSmith/releases/latest/download/Shortsmith-Windows.zip),
+unzip it anywhere, double-click **Shortsmith**.
+
+**Mac** — paste this one line into Terminal (press Command and Space, type
+Terminal, press enter):
+
+```bash
+F=$( [ "$(uname -m)" = arm64 ] && echo Shortsmith-macOS.zip || echo Shortsmith-macOS-Intel.zip ); curl -fL -o ~/Downloads/Shortsmith.zip "https://github.com/Onrynx/ShortSmith/releases/latest/download/$F" && unzip -qo ~/Downloads/Shortsmith.zip -d ~/Desktop && open ~/Desktop/Shortsmith
+```
+
+It works out which Mac you have, puts Shortsmith on your Desktop and opens the
+folder. Double-click **Shortsmith.command** and it starts.
+
+Use the line rather than the button. macOS blocks software that has not been
+signed by a developer who pays Apple, and the block is triggered by a marker
+your browser adds to downloads. The command fetches the same file without one,
+so you never see the warning. If you do use the button, the
+[download page](https://onrynx.github.io/ShortSmith/) explains the extra step.
+
+**Linux** — [download it](https://github.com/Onrynx/ShortSmith/releases/latest/download/Shortsmith-Linux.zip),
+unzip it, and run **Shortsmith.sh**.
+
+These links always give you the newest version.
 [All versions](https://github.com/Onrynx/ShortSmith/releases).
 
-> **Windows, macOS and Linux all have downloads.** Four of them: Windows,
-> macOS on Apple Silicon, macOS on Intel, and Linux. Each is built on that
-> kind of machine, because a bundle carries compiled libraries and can only be
-> assembled where it will run.
->
-> **On a Mac, use the one-line install** on the
-> [download page](https://onrynx.github.io/ShortSmith/). macOS refuses
-> software that is not signed by a registered Apple developer, and the refusal
-> is triggered by a tag your browser attaches to downloads. That command
-> fetches the same file without one, so nothing is blocked and there is
-> nothing to undo. It also picks Apple Silicon or Intel for you.
->
-> **There is no phone version.** Shortsmith renders video on the machine it
-> runs on.
+> **There is no phone version.** Shortsmith makes the video on the machine it
+> runs on, and phones cannot do that part.
 
 Then, once:
 

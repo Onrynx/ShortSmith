@@ -6,16 +6,16 @@
    "size": 652
   },
   "CHANGELOG.md": {
-   "sha256": "5479630093359256e7a79883249b8b23ba3e4c37b986e2d3837b28f5b051d1ef",
-   "size": 15943
+   "sha256": "169cd6c4cb8bfef40ffd57e47e1ec537d919148b972a2694f9f6350f32f9c180",
+   "size": 18691
   },
   "COMPLIANCE.md": {
    "sha256": "bdc0e01c813fb017a96064964e42adac19be6eaeca6f946398fdb51e77eda258",
    "size": 3577
   },
   "README.md": {
-   "sha256": "81bc2be54f166ab72211500f279e444543c5c1fc421d1d7746a06edcd7c0cf58",
-   "size": 11673
+   "sha256": "5029ad0be37380f38003e84ef9d163563ef9accf50f7339cff0a65811135eb0f",
+   "size": 12208
   },
   "app/icon.icns": {
    "sha256": "76cad7283bcb0fdc20c74d5840eed6672842d591c0f063efe175a1fa288bdc09",
@@ -231,6 +231,6 @@
   }
  },
  "manifest_version": 1,
- "total_bytes": 661090,
+ "total_bytes": 664373,
  "version": "2.3.0"
 }
