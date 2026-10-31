@@ -1,5 +1,20 @@
 # Changelog
 
+## 2.4.1
+
+- Shortsmith said an update was waiting the moment you installed it. The 2.4.0
+  download carried the version number of the release before it, so the app
+  compared itself against the newest release, found something newer, and told
+  you so -- about the copy you had just downloaded. It will not do that again.
+- The Mac steps now use the words that are actually on your screen. macOS says
+  "Apple could not verify ... is free of malware", and the way through is a
+  button called Open Anyway in the **Security** section of Privacy & Security,
+  just above FileVault. The page said to scroll to the bottom, which takes you
+  straight past it.
+- The Mac download is a button again, the same as every other system. The
+  Terminal line is still there underneath for anyone who would rather skip the
+  approval, but you are no longer asked to paste anything to install this.
+
 ## 2.4.0
 
 **Mac**

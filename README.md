@@ -17,21 +17,26 @@ for the computer you are on. Or choose yourself:
 **Windows** — [download it](https://github.com/Onrynx/ShortSmith/releases/latest/download/Shortsmith-Windows.zip),
 unzip it anywhere, double-click **Shortsmith**.
 
-**Mac** — paste this one line into Terminal (press Command and Space, type
-Terminal, press enter):
+**Mac** — [Apple Silicon](https://github.com/Onrynx/ShortSmith/releases/latest/download/Shortsmith-macOS.zip) or
+[Intel](https://github.com/Onrynx/ShortSmith/releases/latest/download/Shortsmith-macOS-Intel.zip), unzip it, double-click
+**Shortsmith.command**.
+
+The first time only, macOS says it could not verify the app and offers just
+**Move to Trash** and **Done**. Click **Done**. Then open **Apple menu ›
+System Settings › Privacy & Security**, scroll down to **Security** near the
+bottom, and click **Open Anyway**. Shortsmith is not signed with a $99 Apple
+certificate, so macOS asks once; after that it never asks again.
+
+If you would rather not see that at all, paste this into Terminal instead
+(press Command and Space, type Terminal, press enter). It fetches the same
+file without the marker that triggers the block, so nothing is ever blocked:
 
 ```bash
 F=$( [ "$(uname -m)" = arm64 ] && echo Shortsmith-macOS.zip || echo Shortsmith-macOS-Intel.zip ); curl -fL -o ~/Downloads/Shortsmith.zip "https://github.com/Onrynx/ShortSmith/releases/latest/download/$F" && unzip -qo ~/Downloads/Shortsmith.zip -d ~/Desktop && open ~/Desktop/Shortsmith
 ```
 
-It works out which Mac you have, puts Shortsmith on your Desktop and opens the
-folder. Double-click **Shortsmith.command** and it starts.
-
-Use the line rather than the button. macOS blocks software that has not been
-signed by a developer who pays Apple, and the block is triggered by a marker
-your browser adds to downloads. The command fetches the same file without one,
-so you never see the warning. If you do use the button, the
-[download page](https://onrynx.github.io/ShortSmith/) explains the extra step.
+Shortsmith lands on your Desktop and the folder opens. Double-click
+**Shortsmith.command** and it starts.
 
 **Linux** — [download it](https://github.com/Onrynx/ShortSmith/releases/latest/download/Shortsmith-Linux.zip),
 unzip it, and run **Shortsmith.sh**.
