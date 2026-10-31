@@ -226,11 +226,11 @@
    "size": 22042
   },
   "shortsmith/webapp.py": {
-   "sha256": "3597c0500cd9a5cc21ee6f41c79db5a4b3edebe09e285af2c2c4eef8e707b717",
-   "size": 43312
+   "sha256": "e3a688494ae4bced5baa500b19e890521673963747135498e0617c83c3a8cde8",
+   "size": 44109
   }
  },
  "manifest_version": 1,
- "total_bytes": 652259,
+ "total_bytes": 653056,
  "version": "2.3.0"
 }

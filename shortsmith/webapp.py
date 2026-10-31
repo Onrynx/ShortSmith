@@ -531,8 +531,19 @@ class _Handler(BaseHTTPRequestHandler):
                          "default-src 'self'; script-src 'self' 'unsafe-inline'; "
                          "style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
                          "media-src 'self'; connect-src 'self'; "
-                         "object-src 'none'; base-uri 'none'; form-action 'none'")
+                         "object-src 'none'; base-uri 'none'; form-action 'none'; "
+                         # Nothing may put this page in a frame. A page in a
+                         # frame can be made invisible and positioned under
+                         # whatever the person thinks they are clicking, which
+                         # turns their clicks into clicks on this control panel
+                         # -- and this control panel starts renders and deletes
+                         # files. The session token stops a hostile page making
+                         # requests of its own; it does not stop it borrowing
+                         # clicks from a real session already open.
+                         "frame-ancestors 'none'")
         self.send_header("X-Content-Type-Options", "nosniff")
+        # frame-ancestors covers current browsers; this covers older ones.
+        self.send_header("X-Frame-Options", "DENY")
         self.send_header("Referrer-Policy", "no-referrer")
         self.end_headers()
         try:

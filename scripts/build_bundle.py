@@ -34,7 +34,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT / "build"
-PY_VERSION = "3.13.1"
+# 3.13.17, the same patch level the macOS and Linux runtimes use. Windows sat
+# on 3.13.1 -- sixteen patch releases behind -- purely because nothing had
+# moved it; the other platforms were updated and this constant was not.
+PY_VERSION = "3.13.17"
 
 # python.org's embeddable package: a complete interpreter in a zip, no
 # installer, no registry, no PATH. Exactly what a bundled runtime needs.
@@ -42,7 +45,15 @@ EMBED_URL = {
     ("Windows", "AMD64"): f"https://www.python.org/ftp/python/{PY_VERSION}/python-{PY_VERSION}-embed-amd64.zip",
     ("Windows", "ARM64"): f"https://www.python.org/ftp/python/{PY_VERSION}/python-{PY_VERSION}-embed-arm64.zip",
 }
-GET_PIP = "https://bootstrap.pypa.io/get-pip.py"
+# pip as a wheel from PyPI, not get-pip.py.
+#
+# bootstrap.pypa.io/get-pip.py is a rolling URL: its contents change whenever
+# pip releases, so there is no digest that stays true and it cannot be pinned.
+# A wheel at a fixed version can be, and a wheel can install itself -- running
+# pip out of the zip is the documented way to bootstrap it.
+PIP_WHEEL = ("https://files.pythonhosted.org/packages/3f/06/"
+             "3e4420302363fbb71be3c7f35ce042f54bfca330e3e66b3a2e3c4cca579f/"
+             "pip-26.2.2-py3-none-any.whl")
 
 # macOS has no equivalent of the Windows embeddable zip — python.org ships an
 # installer, not a folder you can carry. python-build-standalone publishes
@@ -65,16 +76,114 @@ def log(msg: str) -> None:
     print(f"  {msg}", flush=True)
 
 
-def fetch(url: str, dest: Path) -> Path:
+# What each download must hash to. Recorded from the official downloads; a
+# mismatch stops the build rather than quietly bundling something else.
+#
+# To move one: change the version, run the build, and it will tell you the
+# digest it received. Check that against upstream before pasting it in.
+PINS = {
+    f"https://www.python.org/ftp/python/{PY_VERSION}/python-{PY_VERSION}-embed-amd64.zip":
+        "9e35319bffedab8b36ad44d8f377cb4f1733bcec257a0b6d04d94f01486ddb38",
+    f"https://www.python.org/ftp/python/{PY_VERSION}/python-{PY_VERSION}-embed-arm64.zip":
+        "7b58787a047b400edbfcb539aa3cdb4e2ed77bf0f22cae42b7c01cedd7dd6614",
+    PIP_WHEEL:
+        "fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70",
+    PBS_URL.format(arch="aarch64"):
+        "9c985cbf327425873469896ce748c7134b6deca8edb81e93c589ad2fc5aff445",
+    PBS_URL.format(arch="x86_64"):
+        "b7d7c2dd63545cabe996191b6f20f0b652c7de123d9ca451dda7e5f1ebbcbbbc",
+    PBS_LINUX_URL.format(arch="x86_64"):
+        "cbda6f7767884fc456860b11fd184391a9320cae00a86c0f49a1c7ac6e236f7a",
+    PBS_LINUX_URL.format(arch="aarch64"):
+        "616ab0a31b2a3f28119582f4d1943e342f13bac2ec5a8dfe8572c3c0bcadb95a",
+}
+
+
+def unzip_into(archive: Path, target: Path) -> None:
+    """Extract a zip, refusing any member that would land outside target.
+
+    zipfile does not check this. A member named ../../something escapes the
+    directory you hand it, which is how an archive overwrites files elsewhere
+    on the machine -- and this runs on a build machine that then signs and
+    publishes what it produced.
+
+    The archives here are pinned by digest, so a hostile one would have to get
+    past that first. This is the second lock, not the first.
+    """
+    root = target.resolve()
+    with zipfile.ZipFile(archive) as z:
+        for member in z.infolist():
+            dest = (root / member.filename).resolve()
+            if dest != root and root not in dest.parents:
+                raise SystemExit(
+                    f"{archive.name} contains '{member.filename}', which would "
+                    f"be written outside {target}. Refusing to extract it.")
+        z.extractall(root)
+
+
+def _digest(path: Path) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        while chunk := f.read(1 << 20):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def fetch(url: str, dest: Path, sha256: str | None = None) -> Path:
+    """Download a file, and refuse it if it is not the file we expected.
+
+    HTTPS proves who served something, not what it is. Everything fetched here
+    -- the interpreter, pip, the relocatable runtimes -- goes straight into
+    binaries that other people download and run, so a bad day at any of those
+    hosts would be a bad day for everyone who installed afterwards. Pinning the
+    digest turns that from a silent substitution into a stopped build.
+
+    The pins are in PINS below, recorded from the official downloads. That
+    makes the build reproducible and detects any later change; it does not
+    prove the files were honest at the moment they were pinned, and nothing
+    short of upstream signing would.
+
+    A cached file is re-checked, not trusted: a half-written or tampered file
+    in build/_cache would otherwise be reused for every build after it.
+    """
+    want = sha256 or PINS.get(url)
     dest.parent.mkdir(parents=True, exist_ok=True)
+
     if dest.exists() and dest.stat().st_size > 0:
-        log(f"cached {dest.name}")
-        return dest
+        if want and _digest(dest) != want:
+            log(f"cached {dest.name} does not match its pin, discarding it")
+            dest.unlink()
+        else:
+            log(f"cached {dest.name}")
+            return dest
+
     log(f"downloading {url.rsplit('/', 1)[-1]} ...")
     req = urllib.request.Request(url, headers={"User-Agent": "Shortsmith-build"})
     tmp = dest.with_suffix(dest.suffix + ".part")
     with urllib.request.urlopen(req, timeout=300) as r, open(tmp, "wb") as out:
+        expect = int(r.headers.get("Content-Length") or 0)
         shutil.copyfileobj(r, out)
+    if expect and tmp.stat().st_size != expect:
+        tmp.unlink(missing_ok=True)
+        raise SystemExit(f"{dest.name}: download stopped early "
+                         f"({tmp.stat().st_size if tmp.exists() else 0} of {expect} bytes)")
+
+    if want:
+        got = _digest(tmp)
+        if got != want:
+            tmp.unlink(missing_ok=True)
+            raise SystemExit(
+                f"\n  {dest.name} is not the file this build expects.\n"
+                f"    from:     {url}\n"
+                f"    expected: {want}\n"
+                f"    received: {got}\n\n"
+                f"  Nothing has been written. Either upstream republished this\n"
+                f"  file, or it was changed in transit. Check which, then update\n"
+                f"  PINS in scripts/build_bundle.py deliberately.")
+        log(f"verified {dest.name}")
+    else:
+        log(f"WARNING: {dest.name} has no pin. Add one to PINS.")
+
     tmp.replace(dest)
     log(f"got {dest.name} ({dest.stat().st_size / 1024 ** 2:.1f} MB)")
     return dest
@@ -191,8 +300,7 @@ def build_windows(out: Path, arch: str, refresh_only: bool = False) -> Path:
     if runtime.exists():
         shutil.rmtree(runtime)
     runtime.mkdir(parents=True)
-    with zipfile.ZipFile(embed_zip) as z:
-        z.extractall(runtime)
+    unzip_into(embed_zip, runtime)
     log(f"runtime unpacked ({sum(f.stat().st_size for f in runtime.rglob('*') if f.is_file()) / 1024**2:.0f} MB)")
 
     # The embeddable build ships with site-packages disabled; the whole point
@@ -210,11 +318,25 @@ def build_windows(out: Path, arch: str, refresh_only: bool = False) -> Path:
         pth.write_text(text, encoding="utf-8")
         log(f"{pth.name}: site-packages on, app folder on the path")
 
-    get_pip = fetch(GET_PIP, cache / "get-pip.py")
+    # Unpack the pip wheel straight into site-packages.
+    #
+    # The obvious route -- run the pip inside the wheel and have it install the
+    # wheel -- is refused: pip detects it would be modifying itself and tells
+    # you to use `python -m pip` instead, which is circular when pip is what is
+    # missing.
+    #
+    # A pure-Python wheel is a zip whose layout IS the installed layout, so
+    # unpacking it into site-packages installs it. That is all pip would have
+    # done here. Unlike get-pip.py this is a fixed version with a digest that
+    # stays true, which is the point of the change.
+    wheel = fetch(PIP_WHEEL, cache / PIP_WHEEL.rsplit("/", 1)[-1])
     py = runtime / "python.exe"
+    site = runtime / "Lib" / "site-packages"
+    site.mkdir(parents=True, exist_ok=True)
     log("installing pip into the runtime ...")
-    subprocess.run([str(py), str(get_pip), "--no-warn-script-location", "-q"],
-                   check=True, cwd=str(runtime))
+    unzip_into(wheel, site)
+    subprocess.run([str(py), "-m", "pip", "--version"],
+                   check=True, cwd=str(runtime), stdout=subprocess.DEVNULL)
 
     install_dependencies(py, runtime)
     strip_build_tooling(runtime)
@@ -598,7 +720,10 @@ def build_linux(out: Path, arch: str, refresh_only: bool = False) -> Path:
         shutil.rmtree(runtime)
     out.mkdir(parents=True, exist_ok=True)
     with tarfile.open(tarball) as t:
-        t.extractall(out)
+        # filter="data" rejects absolute paths, ".." escapes, links
+        # pointing outside the tree, and device nodes. Python 3.14
+        # makes it the default; being explicit works on 3.12 too.
+        t.extractall(out, filter="data")
     (out / "python").rename(runtime)
     log(f"runtime unpacked ({sum(f.stat().st_size for f in runtime.rglob('*') if f.is_file()) / 1024**2:.0f} MB)")
 
@@ -639,7 +764,10 @@ def build_macos(out: Path, arch: str, refresh_only: bool = False) -> Path:
     out.mkdir(parents=True, exist_ok=True)
     with tarfile.open(tarball) as t:
         # The archive contains a top-level "python/" directory.
-        t.extractall(out)
+        # filter="data" rejects absolute paths, ".." escapes, links
+        # pointing outside the tree, and device nodes. Python 3.14
+        # makes it the default; being explicit works on 3.12 too.
+        t.extractall(out, filter="data")
     (out / "python").rename(runtime)
     log(f"runtime unpacked ({sum(f.stat().st_size for f in runtime.rglob('*') if f.is_file()) / 1024**2:.0f} MB)")
 

@@ -50,7 +50,7 @@ jobs:
 
     steps:
       - name: Check out the code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
 
       - name: Describe the machine
         run: |
@@ -306,7 +306,7 @@ jobs:
 
       - name: Attach the pictures
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
         with:
           name: what-a-mac-shows
           path: /tmp/shots
@@ -339,7 +339,7 @@ jobs:
       # sit open until the job cap.
       - name: Hand over the Mac
         if: ${{ inputs.hold }}
-        uses: mxschmitt/action-tmate@v3
+        uses: mxschmitt/action-tmate@35b54afac29c97fb54faba5b513f8fbd1882f113  # v3
         timeout-minutes: ${{ fromJSON(inputs.minutes) }}
         with:
           # Only the account that started the run can connect. This repository
