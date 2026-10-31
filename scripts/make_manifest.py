@@ -85,6 +85,7 @@ def check_line_endings(paths: list[Path], root: Path) -> None:
 SKIP_NAMES = {".env", ".env.example", "manifest.json", ".gitignore",
               "requirements.txt", "requirements-lock.txt",
               "requirements-build.txt", "requirements-build.in",
+              "requirements-intel-mac.txt", "requirements-intel-mac.in",
               ".DS_Store", "Thumbs.db", "Shortsmith.lnk", "Shortsmith.desktop"}
 SKIP_SUFFIXES = {".pyc", ".pyo", ".log", ".part", ".tmp"}
 

@@ -89,7 +89,25 @@ def shipped_files() -> list[str]:
     return sorted(json.loads(manifest.read_text(encoding="utf-8"))["files"])
 
 
-def install_dependencies(py: Path, runtime: Path) -> None:
+def dependency_lock(system: str | None = None,
+                    machine: str | None = None) -> Path:
+    """Which lockfile this platform installs from.
+
+    Intel Macs need their own. onnxruntime -- the engine the narration voice
+    runs on -- stopped publishing macOS wheels for Intel after 1.23.2, and
+    every release since is Apple Silicon only. pip --require-hashes will not
+    substitute anything, so the shared lockfile simply cannot be installed
+    there; the first Intel build failed on exactly that.
+    """
+    system = system or platform.system()
+    machine = (machine or platform.machine()).lower()
+    if system == "Darwin" and machine in INTEL_MAC:
+        return ROOT / "requirements-intel-mac.txt"
+    return ROOT / "requirements-lock.txt"
+
+
+def install_dependencies(py: Path, runtime: Path,
+                         lock: Path | None = None) -> None:
     """Install the locked dependencies into a runtime that has only pip.
 
     One package in the tree -- proxy-tools, which pywebview depends on -- has
@@ -114,7 +132,7 @@ def install_dependencies(py: Path, runtime: Path) -> None:
                     "--require-hashes", "--no-warn-script-location",
                     "-r", str(build_lock)], check=True, cwd=str(runtime))
 
-    lock = ROOT / "requirements-lock.txt"
+    lock = lock or dependency_lock()
     log(f"installing dependencies from {lock.name} (this is the slow part) ...")
     subprocess.run([str(py), "-m", "pip", "install", "-q",
                     "--require-hashes", "--no-build-isolation",
@@ -210,7 +228,8 @@ def _app_files_and_launchers(out: Path, mac: bool = False,
     # ON Shortsmith needs. Unzipping and finding four launchers and a pile of
     # build scripts is exactly the confusion this bundle exists to remove.
     DEV_ONLY = ("scripts/", "docs/", "requirements.txt", "requirements-lock.txt",
-                "requirements-build.txt", ".gitignore", ".env.example")
+                "requirements-build.txt", "requirements-intel-mac.txt",
+                "requirements-intel-mac.in", ".gitignore", ".env.example")
     copied = 0
     for rel in shipped_files():
         if rel.startswith(DEV_ONLY) or rel in DEV_ONLY:
