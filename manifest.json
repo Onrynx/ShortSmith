@@ -218,8 +218,8 @@
    "size": 12174
   },
   "shortsmith/updates.py": {
-   "sha256": "9f5e7125894bb37d6fa89116aa4ec81015fda0d02800afad2751b56340bf7593",
-   "size": 17716
+   "sha256": "26f61cf193054b180a3e6441d21da0f3ab70c26be5c1255d624e6d8b6405f8d1",
+   "size": 20336
   },
   "shortsmith/utils.py": {
    "sha256": "6c4fd302b98cb37207721666fcb6312fcd16f9a58fd166208304a19ee67274ff",
@@ -231,6 +231,6 @@
   }
  },
  "manifest_version": 1,
- "total_bytes": 655101,
+ "total_bytes": 657721,
  "version": "2.3.0"
 }

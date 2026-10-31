@@ -44,10 +44,50 @@ from .utils import (CREATE_NO_WINDOW, ROOT, STATE_DIR, http_download, log,
 REPO = "Onrynx/ShortSmith"
 BRANCH = "main"
 API = f"https://api.github.com/repos/{REPO}/commits?per_page=10"
-RAW_BASE = f"https://raw.githubusercontent.com/{REPO}/{BRANCH}/"
-RAW_CHANGELOG = RAW_BASE + "CHANGELOG.md"
-RAW_MANIFEST = RAW_BASE + "manifest.json"
-ZIP_URL = f"https://github.com/{REPO}/archive/refs/heads/{BRANCH}.zip"
+RELEASES_API = f"https://api.github.com/repos/{REPO}/releases/latest"
+ZIP_URL = f"https://github.com/{REPO}/releases/latest"
+
+# Updates come from the newest published RELEASE, not from the branch.
+#
+# They used to come from main. The version gate meant an update was only
+# offered when the published version number was ahead, which is right -- but
+# the files it then fetched were main at the moment of the click, not the
+# commit that version was cut from. Push anything to main after cutting a
+# release and the next person to update receives it, labelled as the release.
+# Fifteen commits landed on main between releases on one ordinary day here.
+#
+# A tag does not move. Resolving the release once and fetching every file from
+# that tag means an update delivers the release and nothing else.
+_ref_cache: dict = {}
+
+
+def release_ref() -> str | None:
+    """The tag of the newest published release, or None if it cannot be read.
+
+    None is a refusal, not a fallback. Falling back to the branch would
+    reintroduce exactly the problem this exists to remove, and it would do it
+    silently, at the one moment the check mattered.
+    """
+    if _ref_cache.get("tag") and (time.time() - _ref_cache.get("at", 0)) < CACHE_SECONDS:
+        return _ref_cache["tag"]
+    try:
+        data = json.loads(_fetch(RELEASES_API, timeout=20))
+        tag = str(data.get("tag_name") or "").strip()
+    except Exception as exc:  # noqa: BLE001
+        log("warn", f"could not read the latest release: {exc}")
+        return None
+    # A tag becomes part of a URL files are fetched from, so it has to look
+    # like a tag and nothing else.
+    if not tag or not re.fullmatch(r"[A-Za-z0-9._-]{1,64}", tag):
+        log("warn", f"the latest release has an unusable tag: {tag!r}")
+        return None
+    _ref_cache.update(tag=tag, at=time.time())
+    return tag
+
+
+def raw_base(ref: str | None = None) -> str | None:
+    ref = ref or release_ref()
+    return f"https://raw.githubusercontent.com/{REPO}/{ref}/" if ref else None
 PAGE = f"https://github.com/{REPO}"
 
 # Long enough that opening the Updates tab repeatedly does not hammer GitHub,
@@ -124,7 +164,10 @@ def _fetch(url: str, timeout: float = 8) -> str:
 def _published_version() -> tuple[str | None, list[str]]:
     """The newest version named in the published CHANGELOG, and its notes."""
     try:
-        text = _fetch(RAW_CHANGELOG)
+        base = raw_base()
+        if not base:
+            return None, []
+        text = _fetch(base + "CHANGELOG.md")
     except Exception as exc:  # noqa: BLE001
         log("warn", f"could not read the published changelog: {exc}")
         return None, []
@@ -298,7 +341,11 @@ def _local_digest(path: Path) -> str | None:
 def remote_manifest() -> dict | None:
     """The file list for the published version, or None if unavailable."""
     try:
-        data = json.loads(_fetch(RAW_MANIFEST, timeout=20))
+        base = raw_base()
+        if not base:
+            log("warn", "no published release to update from")
+            return {}
+        data = json.loads(_fetch(base + "manifest.json", timeout=20))
     except Exception as exc:  # noqa: BLE001
         log("warn", f"could not read the release manifest: {exc}")
         return None
@@ -355,6 +402,18 @@ def safe_target(rel: str) -> Path | None:
 
 def apply_incremental(progress=None) -> dict:
     """Fetch and install only the files that differ. Works for any install."""
+    # Resolve the release once and fetch every file from that one tag.
+    #
+    # Resolving per file would mean a release published midway through an
+    # update leaves the installation holding some files from one version and
+    # some from the next -- which is not either version, and nothing would
+    # report it, because every file still matched the hash it was fetched with.
+    ref = release_ref()
+    base = raw_base(ref)
+    if not base:
+        return {"ok": False, "error": "Could not find a published release to "
+                                      "update from. Nothing was changed."}
+
     manifest = remote_manifest()
     plan = plan_update(manifest)
     if not plan.get("ok"):
@@ -374,7 +433,7 @@ def apply_incremental(progress=None) -> dict:
             if progress:
                 progress(i, len(plan["files"]), rel)
             tmp = stage_dir / f"{i:04d}.part"
-            http_download(RAW_BASE + urllib.parse.quote(rel), tmp,
+            http_download(base + urllib.parse.quote(rel), tmp,
                           timeout=120, expect_sha256=item["sha256"],
                           max_bytes=MAX_FILE_BYTES)
             staged.append((tmp, target))
