@@ -214,7 +214,7 @@ def main() -> int:
     print(f"\nReleasing Shortsmith {version}\n")
 
     if args.dry_run:
-        print("  DRY RUN — nothing will be changed\n")
+        print("  DRY RUN: nothing will be changed\n")
         for n, line in enumerate([
                 "refuse to start on a dirty tree",
                 f"check CHANGELOG.md has a '## {version}' section",
