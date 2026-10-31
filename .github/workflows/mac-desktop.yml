@@ -83,6 +83,75 @@ jobs:
             && echo "launcher is marked as downloaded" \
             || echo "WARNING: launcher is NOT marked -- the test would be void"
 
+      # Everything below reports what it found twice: once to the log in full,
+      # and once as a ::notice::. GitHub makes you sign in to read a log, even
+      # on a public repo. It does not make you sign in to read annotations.
+      - name: Teach it to read the screen
+        shell: bash
+        run: |
+          set +e
+          cat > /tmp/readscreen.swift <<'SWIFT'
+          // Hands a screenshot to the recogniser that is already part of
+          // macOS and prints what it says. No network, no install, nothing
+          // to trust -- Vision ships with the system.
+          import Foundation
+          import Vision
+          import AppKit
+
+          let path = CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : ""
+          guard let image = NSImage(contentsOfFile: path),
+                let cg = image.cgImage(forProposedRect: nil, context: nil, hints: nil)
+          else {
+              print("could not open \(path)")
+              exit(0)
+          }
+          let request = VNRecognizeTextRequest()
+          request.recognitionLevel = .accurate
+          request.usesLanguageCorrection = false
+          try? VNImageRequestHandler(cgImage: cg, options: [:]).perform([request])
+          let lines = (request.results ?? []).compactMap {
+              $0.topCandidates(1).first?.string
+          }
+          print(lines.isEmpty ? "(nothing legible on screen)"
+                              : lines.joined(separator: " | "))
+          SWIFT
+
+          if swiftc -O -o /tmp/readscreen /tmp/readscreen.swift 2>/tmp/swift.log; then
+            echo "the screen reader is built"
+          else
+            echo "could not build the screen reader:"
+            sed 's/^/    /' /tmp/swift.log
+          fi
+
+          cat > /tmp/helpers.sh <<'HELPERS'
+          say_note () {
+            printf '::notice title=%s::%s\n' "$1" \
+              "$(printf '%s' "$2" | tr '\n\r' '  ' | sed 's/%/%25/g' | cut -c1-900)"
+          }
+
+          read_screen () {
+            png="$1"; label="$2"
+            if [ ! -s "$png" ]; then
+              say_note "$label" "no screenshot was taken"
+              echo "    no screenshot at $png"
+              return
+            fi
+            text=$(/tmp/readscreen "$png" 2>/dev/null)
+            [ -z "$text" ] && text="(the screen reader returned nothing)"
+            printf '%s\n' "$text" | fold -s -w 110 | sed 's/^/    /'
+            say_note "$label" "$text"
+          }
+          HELPERS
+
+          # Prove it works now, on a screen whose contents nobody is waiting
+          # on, rather than finding out two minutes later on the one screen
+          # this whole run exists to read.
+          . /tmp/helpers.sh
+          mkdir -p /tmp/shots
+          screencapture -x /tmp/shots/00-selftest.png
+          echo "> reading the empty desktop, as a test:"
+          read_screen /tmp/shots/00-selftest.png "Screen reader self-test"
+
       - name: Can the screen be photographed at all?
         id: canshoot
         shell: bash
@@ -118,7 +187,9 @@ jobs:
           sleep 12
 
           screencapture -x /tmp/shots/01-after-double-click.png
-          echo "captured the screen after the double-click"
+          echo "> and what it says, word for word:"
+          . /tmp/helpers.sh
+          read_screen /tmp/shots/01-after-double-click.png "What the refusal says"
 
           # Whatever may have started, stop it. Nothing may hold this step open.
           pkill -f "shortsmith.app"   >/dev/null 2>&1
@@ -126,22 +197,23 @@ jobs:
           osascript -e 'tell application "Terminal" to quit' >/dev/null 2>&1
           sleep 2
 
-      - name: Open Privacy & Security, and photograph that
+      - name: Open Privacy & Security, and read what is on it
         shell: bash
         run: |
           set +e
+          . /tmp/helpers.sh
 
           # Dismiss the refusal dialog by clicking its own Done button.
           #
           # killall CoreServicesUIAgent was tried and does not work: the agent
           # restarts and brings the message back, so the dialog stayed on top
-          # and the Page Down keys went to it instead of to System Settings.
+          # and the keys went to it instead of to System Settings.
           #
           # Click "Done" by name, never by position and never with Return --
           # the DEFAULT button on this dialog is "Move to Trash", so a stray
           # Return deletes the thing under test.
           echo "> dismissing the dialog by clicking Done"
-          osascript <<'APPLESCRIPT' 2>&1 | sed 's/^/    /'
+          DONE=$(osascript <<'APPLESCRIPT' 2>&1
           tell application "System Events"
             if not (exists process "CoreServicesUIAgent") then
               return "no dialog process running"
@@ -153,154 +225,48 @@ jobs:
                   set end of names to name of b
                 end repeat
                 click button "Done" of window 1
-                return "clicked Done. buttons were: " & (names as string)
+                return "clicked Done. the buttons offered were: " & (names as string)
               on error errMsg
                 return "could not click Done: " & errMsg
               end try
             end tell
           end tell
           APPLESCRIPT
+          )
+          printf '%s\n' "$DONE" | sed 's/^/    /'
+          say_note "The refusal dialog" "$DONE"
           sleep 2
           screencapture -x /tmp/shots/02-dialog-dismissed.png
 
-          open "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension" \
+          # Straight to the Security section by deep link.
+          #
+          # Three runs were spent trying to scroll there: the right-hand pane
+          # does not take keyboard focus just because the window is frontmost,
+          # so Page Down went nowhere, and driving the scroll bar needs a
+          # scroll area that this window does not expose. None of that was
+          # necessary -- the settings URL takes an anchor, and ?Security lands
+          # on the section directly.
+          echo "> opening Privacy & Security, straight to Security"
+          open "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Security" \
             </dev/null >/dev/null 2>&1 &
-          sleep 12
+          sleep 15
           osascript -e 'tell application "System Settings" to activate' >/dev/null 2>&1
-          sleep 2
-          screencapture -x /tmp/shots/03-privacy-and-security.png
+          sleep 3
+          screencapture -x /tmp/shots/03-security-section.png
 
-          # Getting to the Security section, which is the whole point.
+          # And now read it, rather than interrogating it.
           #
-          # Keystrokes alone have never worked: the right-hand pane does not
-          # have keyboard focus just because the window is frontmost, so Page
-          # Down and End went nowhere and every attempt photographed the
-          # Privacy list instead. Click inside the pane first, then scroll it
-          # directly rather than hoping a key reaches it.
-          echo "> scrolling to the Security section"
-          osascript <<'APPLESCRIPT' 2>&1 | sed 's/^/    /'
-          tell application "System Settings" to activate
-          delay 1
-          tell application "System Events"
-            tell process "System Settings"
-              try
-                -- Put the click in the middle of the right-hand pane so the
-                -- scroll area, not the sidebar, takes the focus.
-                set {w, h} to size of window 1
-                set {x, y} to position of window 1
-                click at {x + (w * 0.7), y + (h * 0.6)}
-                delay 1
-              end try
-              -- Drive the scrollbar straight to the bottom. This works whether
-              -- or not the click landed, and does not depend on key handling.
-              try
-                set sa to scroll area 1 of group 1 of group 1 of window 1
-                set value of scroll bar 1 of sa to 1.0
-                return "scrolled the pane to the bottom"
-              on error
-                repeat 12 times
-                  key code 121
-                  delay 0.3
-                end repeat
-                return "no scroll area found; fell back to Page Down"
-              end try
-            end tell
-          end tell
-          APPLESCRIPT
-          sleep 2
-          screencapture -x /tmp/shots/04-security-section.png
+          # Run 6 asked System Settings for the contents of its own window and
+          # got an empty list back -- no error, nothing there. Its interface is
+          # SwiftUI in an out-of-process view and it does not hand its contents
+          # to an ordinary AppleScript caller. So this reads the picture
+          # instead, which works whatever the window is made of.
+          echo "> what is actually on that screen:"
+          read_screen /tmp/shots/03-security-section.png "The Security section"
 
-          # Say it out loud, where it can be heard.
-          #
-          # GitHub makes you sign in to read a run's log. It does not make you
-          # sign in to read its annotations. Everything below therefore goes
-          # out twice: to the log for detail, and as a one-line notice that
-          # shows on the run page itself.
-          say_note () {
-            printf '::notice title=%s::%s\n' "$1" \
-              "$(printf '%s' "$2" | tr '\n\r' '  ' | sed 's/%/%25/g')"
-          }
-
-          echo "> is there an Open Anyway button?"
-          FOUND=$(osascript <<'APPLESCRIPT' 2>&1
-          tell application "System Events"
-            tell process "System Settings"
-              try
-                set hits to {}
-                repeat with e in (entire contents of window 1)
-                  try
-                    set n to name of e
-                    if n is not missing value then
-                      if n contains "Open Anyway" or n contains "was blocked" ¬
-                         or n contains "Shortsmith" then
-                        set end of hits to (class of e as text) & ": " & n
-                      end if
-                    end if
-                  end try
-                end repeat
-                if (count of hits) is 0 then
-                  return "NO -- nothing about Open Anyway or Shortsmith is on screen"
-                end if
-                return "YES -- " & (hits as string)
-              on error errMsg
-                return "could not read the window: " & errMsg
-              end try
-            end tell
-          end tell
-          APPLESCRIPT
-          )
-          printf '%s\n' "$FOUND" | sed 's/^/    /'
-          say_note "Open Anyway button" "$FOUND"
-
-          # A picture needs reading; this does not. Walk the accessibility tree
-          # and report every button name, plus any text mentioning Shortsmith
-          # or a block.
-          #
-          # An earlier attempt asked for "every button of entire contents of
-          # window 1", which is not valid: entire contents returns a flat list
-          # of elements, and you filter it by class rather than subscripting it
-          # by type. It failed with "Can't make ... into type specifier".
-          echo "--- what is actually in the Security window ---"
-          CONTENTS=$(osascript <<'APPLESCRIPT' 2>&1
-          tell application "System Events"
-            if not (exists process "System Settings") then
-              return "System Settings is not running"
-            end if
-            tell process "System Settings"
-              try
-                set btns to {}
-                set notes to {}
-                repeat with e in (entire contents of window 1)
-                  try
-                    if class of e is button then
-                      set nm to name of e
-                      if nm is not missing value then set end of btns to nm
-                    else if class of e is static text then
-                      set tx to name of e
-                      if tx is not missing value then
-                        if tx contains "block" or tx contains "Shortsmith" ¬
-                           or tx contains "Open Anyway" then
-                          set end of notes to tx
-                        end if
-                      end if
-                    end if
-                  end try
-                end repeat
-                return "BUTTONS: " & (btns as string) & " // RELEVANT TEXT: " ¬
-                       & (notes as string)
-              on error errMsg
-                return "could not read the window: " & errMsg
-              end try
-            end tell
-          end tell
-          APPLESCRIPT
-          )
-          printf '%s\n' "$CONTENTS" | sed 's/^/    /'
-          say_note "Security window" "$CONTENTS"
-
-          # Now do what the page tells people to do: click it. Finding the
-          # button is not the same as the button working, and the page should
-          # not promise a step nobody has ever completed.
+          # If the button is there, click it. Finding it is not the same as it
+          # working, and the download page should not promise a step that
+          # nobody has ever completed.
           echo "> clicking Open Anyway, the way a person would"
           CLICK=$(osascript <<'APPLESCRIPT' 2>&1
           tell application "System Events"
@@ -316,7 +282,7 @@ jobs:
                     end if
                   end try
                 end repeat
-                return "there was no Open Anyway button to click"
+                return "could not find a button to click (the window does not report its contents)"
               on error errMsg
                 return "could not click it: " & errMsg
               end try
@@ -327,40 +293,12 @@ jobs:
           printf '%s\n' "$CLICK" | sed 's/^/    /'
           say_note "Clicking it" "$CLICK"
           sleep 6
-          screencapture -x /tmp/shots/04b-after-open-anyway.png
-
-          # A password sheet here is the expected, ordinary thing -- it is the
-          # same one macOS puts up for any setting worth protecting, and the
-          # page already says to expect it. Anything else is news.
-          echo "> and then what happened?"
-          AFTER=$(osascript <<'APPLESCRIPT' 2>&1
-          tell application "System Events"
-            set out to {}
-            try
-              set end of out to "frontmost: " ¬
-                & (name of first process whose frontmost is true)
-            end try
-            try
-              tell process "System Settings"
-                if (count of sheets of window 1) is 0 then
-                  set end of out to "no password sheet came up"
-                else
-                  set end of out to "a password sheet came up, which is normal"
-                end if
-              end tell
-            on error
-              set end of out to "System Settings has closed"
-            end try
-            return out as string
-          end tell
-          APPLESCRIPT
-          )
-          printf '%s\n' "$AFTER" | sed 's/^/    /'
-          say_note "After the click" "$AFTER"
-
-          echo "--- end ---"
+          screencapture -x /tmp/shots/04-after-open-anyway.png
+          echo "> and the screen afterwards:"
+          read_screen /tmp/shots/04-after-open-anyway.png "After the click"
 
           osascript -e 'tell application "System Settings" to quit' >/dev/null 2>&1
+
 
       # The same bundle, fetched the way a one-line installer would fetch it.
       #
@@ -426,14 +364,11 @@ jobs:
           sleep 15
           screencapture -x /tmp/shots/05-opened-via-curl.png
 
-          # Same trick as the step above: the log needs a sign-in to read,
-          # an annotation does not.
-          say_note () {
-            printf '::notice title=%s::%s\n' "$1" \
-              "$(printf '%s' "$2" | tr '\n\r' '  ' | sed 's/%/%25/g')"
-          }
+          . /tmp/helpers.sh
           say_note "Marked as downloaded" \
             "files carrying the mark after curl: $MARKED (0 means curl set nothing)"
+          echo "> and what is on screen after the curl copy was opened:"
+          read_screen /tmp/shots/05-opened-via-curl.png "The curl path, on screen"
 
           echo "> did macOS put a dialog on screen?"
           DIALOG=$(osascript <<'APPLESCRIPT' 2>&1
