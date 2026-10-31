@@ -34,9 +34,20 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT / "build"
-# 3.13.17, the same patch level the macOS and Linux runtimes use. Windows sat
-# on 3.13.1 -- sixteen patch releases behind -- purely because nothing had
-# moved it; the other platforms were updated and this constant was not.
+# Do not put this back to 3.13.1.
+#
+# python.org revoked the Windows code signing certificate for 3.12.8 and
+# 3.13.1 after reports it may have been used to sign malicious code. There is
+# no way to un-revoke it, so those binaries stay invalid for good, and Windows
+# may warn about or refuse to run them. Every Windows bundle built before
+# 2026-10-31 carried that interpreter.
+#
+#   https://www.python.org/downloads/release/python-3131/
+#   https://discuss.python.org/t/windows-code-signing-certificates-for-python-3-12-8-3-13-1-revoked/103356
+#
+# 3.13.17 is the newest embeddable build published, and the same patch level
+# the macOS and Linux runtimes already used -- this constant was simply left
+# behind when those were updated.
 PY_VERSION = "3.13.17"
 
 # python.org's embeddable package: a complete interpreter in a zip, no
