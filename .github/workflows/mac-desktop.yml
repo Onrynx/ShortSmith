@@ -235,18 +235,48 @@ jobs:
       #
       # That would make the Mac instructions one paste instead of three steps,
       # so it is worth proving rather than assuming.
-      - name: The same download, fetched by curl instead of a browser
+      - name: Run the exact command the download page gives people
         shell: bash
         run: |
           set +e
-          DESK="$HOME/Desktop"
-          URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${{ inputs.tag }}/Shortsmith-macOS.zip"
 
-          # Note what is missing: no xattr -w. Nothing pretends to be Safari.
-          curl -fL -s -o "$DESK/viacurl.zip" "$URL"
-          ditto -x -k "$DESK/viacurl.zip" "$DESK/viacurl" \
-            || unzip -q "$DESK/viacurl.zip" -d "$DESK/viacurl"
-          APP2="$DESK/viacurl/Shortsmith"
+          # Lifted out of docs/index.html rather than written again here.
+          #
+          # The previous version of this step used its own curl line, which
+          # differed from the published one in three ways: it named the Apple
+          # Silicon file directly instead of choosing by processor, it used a
+          # tag instead of /releases/latest/, and it unpacked somewhere else.
+          # So it tested something nobody is told to run. Reading the page
+          # means this can never drift from it again -- change the page and
+          # the test changes with it.
+          CMD=$(python3 - <<'PY'
+          import html, pathlib, re
+          page = pathlib.Path("docs/index.html").read_text(encoding="utf-8")
+          block = re.search(r"<pre[^>]*><code>(.*?)</code></pre>", page, re.S)
+          print(html.unescape(block.group(1)).strip() if block else "")
+          PY
+          )
+          if [ -z "$CMD" ]; then
+            echo "could not find the install command on the download page"
+            exit 0
+          fi
+          echo "> the page says to run:"
+          echo "    $CMD"
+          echo
+
+          # Nothing here pretends to be a browser: no xattr -w anywhere. That
+          # is the whole point -- curl does not attach the mark Safari does.
+          echo "> running it, exactly as written"
+          ( cd "$HOME" && eval "$CMD" ) </dev/null 2>&1 | tail -3 | sed 's/^/    /'
+
+          APP2="$HOME/Desktop/Shortsmith"
+          if [ ! -d "$APP2" ]; then
+            echo "  the command did not produce $APP2"
+            ls -la "$HOME/Desktop" | sed 's/^/    /'
+            exit 0
+          fi
+          echo "  it produced: $APP2"
+          echo "  which build did it choose? $(ls "$APP2/runtime/bin/python3" >/dev/null 2>&1 && echo "$(uname -m)")"
 
           echo "> is anything marked as downloaded?"
           MARKED=$(find "$APP2" -type f -print0 \
