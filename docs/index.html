@@ -212,6 +212,12 @@
     // Order matters: "android" contains "linux", and an iPad reports as a Mac.
     if (p.indexOf('android') >= 0) return 'phone';
     if (p.indexOf('iphone') >= 0 || p.indexOf('ipad') >= 0 || p.indexOf('ipod') >= 0) return 'phone';
+    // An iPad does not say "iPad": since iPadOS 13 it claims to be a Mac,
+    // word for word. The one signal it cannot hide is the touch screen --
+    // real Macs report no touch points. Without this, iPad users get the
+    // Mac download tagged "looks like your computer" and a zip that
+    // nothing on the device can run.
+    if (p.indexOf('mac') >= 0 && navigator.maxTouchPoints > 1) return 'phone';
     if (p.indexOf('win') >= 0) return 'windows';
     if (p.indexOf('mac') >= 0 || p.indexOf('darwin') >= 0) return 'macos';
     if (p.indexOf('linux') >= 0 || p.indexOf('x11') >= 0) return 'linux';
