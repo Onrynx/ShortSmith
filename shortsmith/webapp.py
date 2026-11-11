@@ -831,6 +831,15 @@ class _Handler(BaseHTTPRequestHandler):
             message, code = body
             return self._json({"error": message}, code)
 
+        if p == "/api/boot/retry":
+            # Startup can fail for reasons the person then fixes without
+            # closing the window -- installing Ollama, downloading a model.
+            # start() only restarts from idle or failed, so pressing this
+            # mid-boot does nothing rather than starting a second boot.
+            from .boot import start as boot_start, state as boot_state
+            boot_start()
+            return self._json(boot_state())
+
         if p == "/api/make":
             count = body.get("count") or 1
             try:

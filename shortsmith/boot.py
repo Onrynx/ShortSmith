@@ -164,7 +164,7 @@ def _run() -> None:
                 with _lock:
                     BOOT.update(stage="failed", error=(
                         "Ollama is not installed. Get it from ollama.com/download, "
-                        "then reopen Shortsmith."), message="Ollama not found")
+                        "then press Try again."), message="Ollama not found")
                 return
             _set("starting", 12, "Starting the AI engine")
             kw = {"creationflags": CREATE_NO_WINDOW} if os.name == "nt" else {}

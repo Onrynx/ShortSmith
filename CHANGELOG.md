@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.4.2
+
+- The screen that says Shortsmith could not start was a dead end. It told you
+  to open Settings, or to install something and come back, and then gave you
+  no way to do either: it covered the whole window, and the only thing on it
+  you could click was Snake. It has two buttons now. **Open Settings** takes
+  you to the list of writer models -- the one that checks your memory and disk
+  before it offers you anything. **Try again** starts Shortsmith without
+  closing and reopening it.
+- When a writer model finishes downloading, Shortsmith starts by itself. If it
+  had stopped because there was no model, you no longer have to work out what
+  to press next.
+
 ## 2.4.1
 
 - Shortsmith said an update was waiting the moment you installed it. The 2.4.0

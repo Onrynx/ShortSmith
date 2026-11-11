@@ -16,4 +16,4 @@ There are no cloud APIs. Earlier versions had several, each reachable from a
 line in a config file; none of them survive.
 """
 
-__version__ = "2.4.1"
+__version__ = "2.4.2"

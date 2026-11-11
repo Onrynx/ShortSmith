@@ -322,6 +322,16 @@ tr.dis{opacity:.42}
     <div class="bootbar"><i id="bootFill"></i></div>
     <div class="bootpct"><span id="bootStage">starting</span><span id="bootNum">0%</span></div>
 
+    <!-- Only when startup fails. The error texts tell people to open
+         Settings or try again, and for two released versions there was no
+         way to do either from here: this overlay covers the whole app and
+         offered nothing but Snake. The instructions pointed at a door that
+         did not exist. These are the door. -->
+    <div id="bootActs" style="display:none;margin:18px 0 2px">
+      <button class="btn g" onclick="bootSettings()">Open Settings</button>
+      <button class="btn" onclick="bootRetry()" style="margin-left:8px">Try again</button>
+    </div>
+
     <div class="gamewrap">
       <div class="gamehead">
         <b>Snake</b><span>while you wait</span>
@@ -1556,6 +1566,9 @@ function paintPull(p){
       paintPull._told = true;
       notify('Ready to make videos', 'The writer, the voice and the caption '
              + 'timing are all installed.', 'good');
+      // If startup failed for want of this download, finish the journey:
+      // start again without making the person find the button.
+      if(paintBoot.failed) bootRetry();
     }
     host.innerHTML = '<b class="ok">Everything is ready.</b>'
       + '<div class="muted">' + esc(p.model || '') + ', the video encoder, the narration voice '
@@ -1693,8 +1706,13 @@ function paintBoot(b){
     $('#bootTitle').textContent = 'Shortsmith could not start';
     $('#bootMsg').innerHTML = '<span class="bad">' + esc(b.error || 'Unknown problem') + '</span>';
     $('#bootStage').textContent = 'stopped';
+    $('#bootActs').style.display = 'block';
+    paintBoot.failed = true;
     return;
   }
+  $('#bootActs').style.display = 'none';
+  paintBoot.failed = false;
+  $('#bootTitle').textContent = 'Starting Shortsmith';
   $('#bootMsg').textContent = b.message || 'Starting…';
   $('#bootStage').textContent = b.stage || '';
   $('#bootFill').style.width = (b.percent || 0) + '%';
@@ -1706,6 +1724,25 @@ async function pollBoot(){
     paintBoot(b);
     if(!b.ready && b.stage !== 'failed') setTimeout(pollBoot, 600);
   }catch(e){ setTimeout(pollBoot, 1200); }
+}
+
+// The two buttons on the failed screen.
+//
+// Settings works without a booted engine -- it is local pages talking to the
+// local server -- and it is where the model table lives, the one that checks
+// your memory and disk before offering a download. So when startup fails for
+// want of a model, the person goes there, presses Download, and the finished
+// download brings them back by itself (see paintPull).
+function bootSettings(){
+  $('#boot').classList.remove('on');
+  stopSnake();
+  go('machine');
+}
+async function bootRetry(){
+  $('#boot').classList.add('on');
+  paintBoot({stage:'checking', message:'Trying again…', percent:0});
+  try{ await api('/api/boot/retry', {}); }catch(e){}
+  pollBoot();
 }
 
 // ---------- Snake ----------
