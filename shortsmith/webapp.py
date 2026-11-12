@@ -29,6 +29,7 @@ import mimetypes
 import os
 import secrets
 import socket
+import sys
 import threading
 from email.utils import formatdate
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -215,15 +216,28 @@ def app_state() -> dict:
         "queue": _queue_state(),
         "gate": _gate_state(),
         "resume": _resume_state(),
+        "leftovers": _leftovers(),
     }
+
+
+def _leftovers() -> dict:
+    """Video files with no record, for the Library to own up to."""
+    try:
+        return control.leftover_summary()
+    except Exception:  # noqa: BLE001
+        return {"count": 0, "mb": 0}
 
 
 def installed_models() -> list[str]:
     """Models Ollama already has, so the menu can say Download vs Ready."""
     import json as _json
     import urllib.request
+    from .llm import ollama_base_url
     try:
-        with urllib.request.urlopen("http://localhost:11434/api/tags", timeout=4) as r:
+        # The configured engine, not a fixed address: with OLLAMA_BASE_URL set,
+        # this asked one Ollama which models it had while everything else
+        # talked to another, and Settings marked the wrong ones "ready".
+        with urllib.request.urlopen(f"{ollama_base_url()}/api/tags", timeout=4) as r:
             data = _json.loads(r.read().decode("utf-8", "replace"))
         return [m.get("name", "") for m in data.get("models", [])]
     except Exception:  # noqa: BLE001
@@ -661,21 +675,38 @@ class _Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Disposition",
                              f'attachment; filename="{path.name}"')
         self.end_headers()
+        # The file is opened, read and closed for every piece, and is never
+        # open while a piece is being sent.
+        #
+        # A video player does not read a file, it sips it: a few seconds of
+        # video, then nothing until the buffer runs low. For all of that
+        # "nothing" the send below is blocked -- and this used to sit there
+        # with the file held open. On Windows an open file cannot be deleted
+        # or moved, so every video was locked for as long as its player
+        # existed, and Delete and Approve failed on precisely the video the
+        # person was looking at. Reopening costs a few microseconds a piece;
+        # holding on cost the feature.
+        pos, remaining = start, length
         try:
-            with path.open("rb") as fh:
-                fh.seek(start)
-                remaining = length
-                while remaining > 0:
+            while remaining > 0:
+                with path.open("rb") as fh:
+                    fh.seek(pos)
                     chunk = fh.read(min(256 * 1024, remaining))
-                    if not chunk:
-                        break
-                    self.wfile.write(chunk)
-                    remaining -= len(chunk)
+                if not chunk:
+                    break
+                self.wfile.write(chunk)
+                pos += len(chunk)
+                remaining -= len(chunk)
         except OSError:
             # Browsers abort video streams constantly — every seek, and again
             # when <video preload> has read enough. On Windows that surfaces as
             # ConnectionAbortedError, which is not an error condition here.
+            # A file deleted mid-stream lands here too, as FileNotFoundError.
             pass
+        if remaining:
+            # Fewer bytes went out than the headers promised. The connection
+            # cannot carry another response after that.
+            self.close_connection = True
 
     # ---- routes ---- #
     def _guard(self, fn, label: str) -> None:
@@ -920,7 +951,7 @@ class _Handler(BaseHTTPRequestHandler):
             action = str(body.get("action") or "")
             if action not in ("approve", "reject", "delete"):
                 return self._json({"error": "unknown action"}, 400)
-            done, failed = [], []
+            done, failed, why = [], [], ""
             for iid in ids:
                 try:
                     if action == "approve":
@@ -930,10 +961,18 @@ class _Handler(BaseHTTPRequestHandler):
                     else:
                         r = control.delete_item(iid, "approved")
                     (done if r.get("ok") else failed).append(iid)
-                except Exception:  # noqa: BLE001
+                    if not r.get("ok"):
+                        why = why or str(r.get("error") or "")
+                except Exception as exc:  # noqa: BLE001
+                    log("warn", f"{action} failed for {iid}: {exc}")
                     failed.append(iid)
+            # The reason travels with the count. "1 failed" tells a person
+            # that something is wrong; only the reason tells them what to do.
             return self._json({"ok": not failed, "done": len(done),
-                               "failed": len(failed)})
+                               "failed": len(failed), "error": why or None})
+
+        if p == "/api/leftovers/remove":
+            return self._json(control.remove_leftovers())
 
         if p == "/api/pull":
             model = str(body.get("model") or "").strip()
@@ -993,16 +1032,27 @@ class _Handler(BaseHTTPRequestHandler):
             from .hardware import rescan
             return self._json(rescan())
         if p == "/api/reveal":
-            # open the output folder in the OS file manager
+            # Show the video in the OS file manager -- the video, not just the
+            # folder it is in. This used to open the folder and leave the
+            # person to find one file among every video they had made, all
+            # named with the same prefix and a timestamp.
+            import subprocess
             target = control.media_path(str(body.get("id") or ""), "video")
             folder = str(Path(target).parent) if target else str(ROOT / "output")
             try:
                 if os.name == "nt":
-                    os.startfile(folder)  # noqa: S606
+                    if target:
+                        # explorer.exe returns 1 even when it works, so the
+                        # exit code is not checked.
+                        subprocess.Popen(["explorer", "/select,", str(target)])
+                    else:
+                        os.startfile(folder)  # noqa: S606
+                elif os.uname().sysname == "Darwin":
+                    subprocess.Popen(["open", "-R", str(target)] if target
+                                     else ["open", folder])
                 else:
-                    import subprocess
-                    subprocess.Popen(
-                        ["open" if os.uname().sysname == "Darwin" else "xdg-open", folder])
+                    # No file manager on Linux agrees on a "select" flag.
+                    subprocess.Popen(["xdg-open", folder])
                 return self._json({"ok": True})
             except Exception as exc:  # noqa: BLE001
                 return self._json({"ok": False, "error": str(exc)})
@@ -1037,6 +1087,15 @@ class _Server(ThreadingHTTPServer):
     allow_reuse_address = os.name != "nt"
     daemon_threads = True
     request_queue_size = 32
+
+    def handle_error(self, request, client_address):
+        # A browser dropping a connection is the normal end of most video
+        # requests, not a fault. The default handler prints a 25-line
+        # traceback for each one, and the app log had become mostly those:
+        # anything that actually went wrong was buried under them.
+        if isinstance(sys.exc_info()[1], (ConnectionError, TimeoutError)):
+            return
+        super().handle_error(request, client_address)
 
 
 def serve(port: int | None = None, background: bool = False):

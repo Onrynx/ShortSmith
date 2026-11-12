@@ -1,5 +1,42 @@
 # Changelog
 
+## 2.4.3
+
+**Deleting**
+- Deleting a video you had open did not delete it. It removed the video's
+  entry and its thumbnail, failed on the video itself, and said nothing -- so
+  the video vanished from Shortsmith and stayed on your disk at full size,
+  where nothing could show it or remove it. It deletes the video now, whether
+  or not it is playing.
+- If you have deleted videos before, some may still be there. The Library now
+  tells you how many leftover files there are and how much room they take,
+  with a button to remove them.
+- Approving a video while it was playing could split it in two: the Library
+  got an entry with nothing to play, and the video stayed behind in the review
+  folder. Fixed the same way.
+- When a video really cannot be deleted -- it is open in another program, or
+  being uploaded -- Shortsmith says so and leaves it whole, instead of telling
+  you it was deleted.
+- Deleting one video now tells you it worked. It used to say nothing either
+  way.
+
+**Confirming**
+- Every "are you sure?" is now Shortsmith's own. They used to be a grey box
+  titled "127.0.0.1:8765 says" with an OK button, which looked like an error
+  and did not say what OK would do. The new ones name the video, say what will
+  happen, and put the action on the button. The safe answer is the one already
+  selected, so pressing Enter by accident keeps your video.
+
+**Also**
+- Settings showed how much disk space you had weeks ago, not now. It checked
+  once, remembered the answer, and went on using it to decide which writer
+  models would fit. Free disk and free memory are now read fresh every time.
+- "Show in folder" highlights the video, instead of opening the folder and
+  leaving you to find it.
+- The Backgrounds count in the sidebar said 0 until you opened that tab.
+- Release notes under Updates use the width of the window, instead of
+  stopping every line two-thirds of the way across.
+
 ## 2.4.2
 
 - The screen that says Shortsmith could not start was a dead end. It told you

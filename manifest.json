@@ -6,8 +6,8 @@
    "size": 652
   },
   "CHANGELOG.md": {
-   "sha256": "576c48a8a631a6ae31699e63d943816e9c7399ce58b3b364793b670b283eb4e8",
-   "size": 19947
+   "sha256": "9ee29b97e5dbd3ec9301b663bcc2cb96afbaee723084693453df7bd54f864271",
+   "size": 21853
   },
   "COMPLIANCE.md": {
    "sha256": "bdc0e01c813fb017a96064964e42adac19be6eaeca6f946398fdb51e77eda258",
@@ -30,8 +30,8 @@
    "size": 9844
   },
   "app/index.html": {
-   "sha256": "c61c2211892817eca7d913d08d70872507af05c183f2172ac701b194dfde17c4",
-   "size": 89089
+   "sha256": "a400a99a50d3b2bf8719c5605456b7aab3fd68ae0af1cf239247018434464996",
+   "size": 95921
   },
   "assets/backgrounds/README.txt": {
    "sha256": "f42e1d43e60fd499669f7ab8030aba1c4cd048146123858310fa2e65e997093a",
@@ -50,7 +50,7 @@
    "size": 5889
   },
   "shortsmith/__init__.py": {
-   "sha256": "73b13b514b5ebf746e34378bca2dda1d6d8e2015aefa3adfb0a7c8d5899d92f7",
+   "sha256": "34087b46f63fa5377358e147bd064a2137e9b5052565fd5e863abb54b0473250",
    "size": 906
   },
   "shortsmith/app.py": {
@@ -62,8 +62,8 @@
    "size": 10516
   },
   "shortsmith/clips.py": {
-   "sha256": "4f61bd804e9bcd3f41e6709a53010ecdc1570430d5d9fc500e6bffba4bb3a9b0",
-   "size": 10315
+   "sha256": "09685ec5e2ffa1d91485ca6e1744c930a76f50d87f0261b4684482a24e3e2592",
+   "size": 10832
   },
   "shortsmith/config.py": {
    "sha256": "c533b35c7f2534eef05eb7982dc67c217d8b30fdf078dea2d56ad394f1c9e950",
@@ -74,8 +74,8 @@
    "size": 10954
   },
   "shortsmith/control.py": {
-   "sha256": "477ed4134710f1131a417dc5ecf9a2f972f4ae036169aa2c01c11882707fb2c5",
-   "size": 19622
+   "sha256": "a3f5c0a06f89be678173b145eade585249c8abe0323d10d4d696bf3dae35067f",
+   "size": 25653
   },
   "shortsmith/crews/__init__.py": {
    "sha256": "36c06d0ac873cce77be2aec67ee9ef8125a3e83f51475bac28e8b111950109ad",
@@ -102,8 +102,8 @@
    "size": 9228
   },
   "shortsmith/hardware.py": {
-   "sha256": "6c873c8f379db678abc710da6d791c9857240c02f7b0c27452182c2c15fb457b",
-   "size": 11298
+   "sha256": "281dc7dc2d527d735998d6f484a0fe5c4c968a26e8525e7c6ba9fb5096f83cc5",
+   "size": 12300
   },
   "shortsmith/llm.py": {
    "sha256": "df22579a98dd705746c7dd753343fab0d902f6f1cf0fbd6f71b50a3ddc42a9bd",
@@ -226,11 +226,11 @@
    "size": 22345
   },
   "shortsmith/webapp.py": {
-   "sha256": "1c1b92522bb60a681437cb501132825ccd938be7bf14f1531e70c99297e46119",
-   "size": 47459
+   "sha256": "532f26201c9d8c74c1931cb89caa3a139ae4204792e3ad4f00f06b69f1eb95f7",
+   "size": 50612
   }
  },
  "manifest_version": 1,
- "total_bytes": 667871,
- "version": "2.4.2"
+ "total_bytes": 687312,
+ "version": "2.4.3"
 }

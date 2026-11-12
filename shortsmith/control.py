@@ -88,11 +88,24 @@ def approve(item_id: str) -> dict:
     if not m:
         return {"ok": False, "error": "not found"}
     dst_dir = approved_dir(m.get("channel"))
+    item_id = m["id"]
+    # Same trap as deleting, same answer: the video moves first. Approving a
+    # video while its player was open used to move the thumbnail and the
+    # record, fail on the locked video and raise -- leaving a Library entry
+    # with nothing to play and the video stranded in the review folder.
+    files = _item_files(m, item_id)
+    videos = [p for p in files if p.suffix.lower() == ".mp4"]
+    record = [p for p in files if p.suffix.lower() == ".json"]
+    others = [p for p in files if p not in videos and p not in record]
     moved = []
-    for p in Path(m["_dir"]).glob(f"{item_id}.*"):
-        dst = dst_dir / p.name
-        p.replace(dst)
-        moved.append(dst.name)
+    for p in videos:
+        if not _move(p, dst_dir / p.name):
+            log("warn", f"could not approve {p.name}: the file is in use")
+            return {"ok": False, "error": _in_use("approve")}
+        moved.append(p.name)
+    for p in others + record:
+        if _move(p, dst_dir / p.name):
+            moved.append(p.name)
     jp = dst_dir / f"{item_id}.json"
     if jp.exists():
         meta = read_json(jp, {})
@@ -103,17 +116,11 @@ def approve(item_id: str) -> dict:
 
 
 def reject(item_id: str) -> dict:
+    """Delete a video that is waiting for review."""
     m = find_item(item_id, "pending")
     if not m:
         return {"ok": False, "error": "not found"}
-    deleted = []
-    for p in Path(m["_dir"]).glob(f"{item_id}.*"):
-        try:
-            p.unlink()
-            deleted.append(p.name)
-        except Exception:
-            pass
-    return {"ok": True, "deleted": deleted}
+    return _remove_item(m, m["id"])
 
 
 def get_item(item_id: str) -> dict | None:
@@ -168,14 +175,153 @@ def delete_item(item_id: str, where: str = "pending") -> dict:
     m = find_item(item_id, where)
     if not m:
         return {"ok": False, "error": "not found"}
-    deleted = []
-    for p in Path(m["_dir"]).glob(f"{item_id}.*"):
+    return _remove_item(m, m["id"])
+
+
+# What a person is told when a video will not delete. The operating system's
+# own wording for this is "[WinError 32] The process cannot access the file
+# because it is being used by another process", followed by a path.
+def _in_use(verb: str) -> str:
+    return ("That video is open in another program. Close whatever is "
+            f"playing or uploading it, then {verb} it again.")
+
+
+IN_USE = _in_use("delete")
+
+
+def _unlink(p: Path, tries: int = 5) -> bool:
+    """Delete one file, waiting out a lock that is about to let go.
+
+    On Windows a file that anything has open cannot be deleted. The app's own
+    player lets go of a video between reads (see webapp._file), so a short
+    wait is nearly always enough. Whatever is still holding on after that is
+    another program, and the caller says so instead of pretending.
+    """
+    for attempt in range(tries):
         try:
             p.unlink()
-            deleted.append(p.name)
-        except Exception:  # noqa: BLE001
+            return True
+        except FileNotFoundError:
+            return True
+        except OSError:
+            time.sleep(0.15 * (attempt + 1))
+    return False
+
+
+def _move(src: Path, dst: Path, tries: int = 5) -> bool:
+    """Move one file, with the same patience as _unlink and for the same reason."""
+    for attempt in range(tries):
+        try:
+            src.replace(dst)
+            return True
+        except FileNotFoundError:
+            return False
+        except OSError:
+            time.sleep(0.15 * (attempt + 1))
+    return False
+
+
+def _remove_item(m: dict, item_id: str) -> dict:
+    """Delete every file of one video, the video itself first.
+
+    The order is the whole point. This used to walk the files alphabetically
+    and swallow every error: thumbnail, then the record, then the video. The
+    video is the only one of those that is ever locked -- it is the only one
+    anything plays -- so deleting a video while it was open removed its
+    thumbnail and its record, failed on the video, and reported success. The
+    video vanished from the app and stayed on the disk at full size, with
+    nothing left that could ever show it or remove it.
+
+    Video first means a refusal leaves the item whole and still listed, and
+    the answer that comes back is the true one.
+    """
+    files = _item_files(m, item_id)
+    videos = [p for p in files if p.suffix.lower() == ".mp4"]
+    record = [p for p in files if p.suffix.lower() == ".json"]
+    others = [p for p in files if p not in videos and p not in record]
+
+    for p in videos:
+        if not _unlink(p):
+            log("warn", f"could not delete {p.name}: the file is in use")
+            return {"ok": False, "error": IN_USE}
+
+    # The video is gone, so the item is gone: finish the job, record last, so
+    # that anything refusing here still has an entry pointing at it.
+    left = [p.name for p in others + record if not _unlink(p)]
+    deleted = [p.name for p in files if p.name not in left]
+    if left:
+        log("warn", f"deleted {item_id} but could not remove: {', '.join(left)}")
+    return {"ok": True, "deleted": deleted, "left": left}
+
+
+# --------------------------------------------------------------------------- #
+# Leftovers
+# --------------------------------------------------------------------------- #
+# Files in pending/ or approved/ with no record beside them. Nothing in the
+# app can show one or delete one, and the delete bug above made them: every
+# video removed while its player was open left its .mp4 behind.
+#
+# They are reported, not swept. A file with no record might be exactly what
+# someone asked to delete -- or it might be the only copy of a video whose
+# record was lost some other way, and telling those apart is not possible
+# from here. So the Library says how many there are and how much room they
+# take, and removing them is a button a person presses.
+LEFTOVER_MIN_AGE = 600      # a render writes its video before its record
+
+
+def leftovers() -> list[Path]:
+    found = []
+    now = time.time()
+    for where in ("pending", "approved"):
+        for folder in OUTPUT_DIR.glob(f"*/{where}"):
+            try:
+                files = [p for p in folder.iterdir() if p.is_file()]
+            except OSError:
+                continue
+            stems = [p.stem for p in files if p.suffix.lower() == ".json"]
+            for p in files:
+                if p.suffix.lower() == ".json":
+                    continue
+                if any(p.name.startswith(s + ".") for s in stems):
+                    continue                    # belongs to a listed video
+                try:
+                    if now - p.stat().st_mtime < LEFTOVER_MIN_AGE:
+                        continue                # may be a render mid-write
+                except OSError:
+                    continue
+                if inside(p, folder):
+                    found.append(p)
+    return found
+
+
+def leftover_summary() -> dict:
+    total = 0
+    files = leftovers()
+    for p in files:
+        try:
+            total += p.stat().st_size
+        except OSError:
             pass
-    return {"ok": True, "deleted": deleted}
+    return {"count": len(files), "mb": round(total / 1024 ** 2)}
+
+
+def remove_leftovers() -> dict:
+    removed, freed, left = 0, 0, 0
+    for p in leftovers():
+        try:
+            size = p.stat().st_size
+        except OSError:
+            continue
+        if _unlink(p):
+            removed += 1
+            freed += size
+        else:
+            left += 1
+    if removed:
+        log("info", f"removed {removed} leftover file(s), {freed / 1024 ** 2:.0f} MB")
+    return {"ok": left == 0, "removed": removed, "left": left,
+            "freed_mb": round(freed / 1024 ** 2),
+            "error": IN_USE if left else None}
 
 
 # --------------------------------------------------------------------------- #

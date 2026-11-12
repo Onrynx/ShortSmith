@@ -243,8 +243,17 @@ def remove(name: str) -> dict:
         return {"ok": False, "error": "no such clip"}
     try:
         clip.unlink()
+    except FileNotFoundError:
+        pass
     except OSError as exc:
-        return {"ok": False, "error": str(exc)}
+        # The raw text here is "[WinError 32] The process cannot access the
+        # file because it is being used by another process" and a full path.
+        # A clip is in use for one ordinary reason: a video is being made
+        # with it at this moment.
+        log("warn", f"could not remove background clip {clip.name}: {exc}")
+        return {"ok": False, "error": (
+            "That clip is in use. If a video is being made right now it is "
+            "probably using it, so try again when that finishes.")}
     for t in THUMB_DIR.glob(f"{clip.stem}_*.jpg"):
         try:
             t.unlink()

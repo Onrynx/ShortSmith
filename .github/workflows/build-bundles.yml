@@ -9,8 +9,17 @@ name: Build bundles
 # results to the release, so no one has to own three computers.
 
 on:
+  # The normal path: push a version tag. All four are built, and only then is
+  # the release created, already carrying its downloads and its notes.
+  #
+  # Publishing by hand came first and still works (below), but it publishes
+  # before anything is built -- so for a quarter of an hour the newest release
+  # has no downloads on it, and the download page says so to everyone who
+  # arrives in that window.
+  push:
+    tags: ["v*"]
   release:
-    types: [published]        # the normal path: publish a release, get bundles
+    types: [published]        # a release made by hand on GitHub: get bundles
   workflow_dispatch:          # and a manual button, for trying it without a release
     inputs:
       tag:
@@ -70,6 +79,33 @@ jobs:
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
         with:
           python-version: "3.13"
+
+      # 2.4.0 went out carrying the version number 2.3.0. The app compares the
+      # number in its own files against the newest release, so every copy of
+      # 2.4.0 announced that an update was waiting -- for itself, permanently.
+      # Nothing checked that the tag and the code agreed. This does, before
+      # anything is built, and it also wants the notes to exist: the app shows
+      # the changelog section for its version, and the release is created
+      # from that same section.
+      - name: The tag and the code must agree
+        if: github.event_name != 'workflow_dispatch'
+        shell: bash
+        env:
+          TAG: ${{ github.event.release.tag_name || github.ref_name }}
+        run: |
+          # tr: Python on the Windows runner ends its line with a carriage
+          # return, which $( ) keeps, and "2.4.3\r" equals nothing.
+          CODE=$(python -c "import re, pathlib; print(re.search(r'__version__\s*=\s*\"([^\"]+)\"', pathlib.Path('shortsmith/__init__.py').read_text(encoding='utf-8')).group(1))" | tr -d '\r')
+          echo "tag: $TAG   code: v$CODE"
+          if [ "v$CODE" != "$TAG" ]; then
+            echo "::error::The tag is $TAG but shortsmith/__init__.py says $CODE. Bump the version, or tag the right commit."
+            exit 1
+          fi
+          if ! grep -Eq "^## v?${CODE}[[:space:]]*$" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has no '## $CODE' section. The app and the release page both read it."
+            exit 1
+          fi
+          echo "version and changelog agree with the tag"
 
       - name: Refresh the manifest
         shell: bash
@@ -299,7 +335,7 @@ jobs:
   attach:
     name: Attach the downloads to the release
     needs: build
-    if: github.event_name == 'release' || inputs.tag != ''
+    if: github.event_name == 'release' || github.event_name == 'push' || inputs.tag != ''
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -315,10 +351,44 @@ jobs:
       - name: Attach them
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.event.release.tag_name || inputs.tag }}
+          TAG: ${{ github.event.release.tag_name || inputs.tag || github.ref_name }}
         shell: bash
         run: |
           set -e
           ls -la build/ | sed 's/^/  /'
-          gh release upload "$TAG" build/Shortsmith-*.zip --clobber --repo "$GITHUB_REPOSITORY"
-          echo "Attached $(ls build/Shortsmith-*.zip | wc -l) downloads to $TAG"
+          COUNT=$(ls build/Shortsmith-*.zip | wc -l | tr -d ' ')
+          if [ "$COUNT" != "4" ]; then
+            echo "::error::Expected 4 downloads, found $COUNT. Not publishing a release that is missing a platform."
+            exit 1
+          fi
+
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            # The release was made by hand; it only needs its downloads.
+            gh release upload "$TAG" build/Shortsmith-*.zip --clobber --repo "$GITHUB_REPOSITORY"
+            echo "Attached $COUNT downloads to the existing release $TAG"
+            exit 0
+          fi
+
+          # A tag was pushed and there is no release yet. Create it now, with
+          # the downloads already on it, so it never exists without them.
+          #
+          # The notes are that version's section of the changelog -- the same
+          # text the app shows under Updates. One file is fetched for that;
+          # this job still checks out no code and runs none.
+          VER="${TAG#v}"
+          gh api "repos/$GITHUB_REPOSITORY/contents/CHANGELOG.md?ref=$TAG" \
+             -H "Accept: application/vnd.github.raw" > CHANGELOG.md
+          awk -v want="## $VER" '
+            /^## /  { if (on) exit; line = $0; sub(/[[:space:]]+$/, "", line); sub(/^## v/, "## ", line)
+                      if (line == want) { on = 1; next } }
+            on      { print }' CHANGELOG.md > notes.md
+          if [ ! -s notes.md ]; then
+            echo "::error::No '## $VER' section in CHANGELOG.md at $TAG."
+            exit 1
+          fi
+          echo "--- release notes ---"; cat notes.md; echo "---------------------"
+
+          gh release create "$TAG" build/Shortsmith-*.zip \
+             --title "Shortsmith $VER" --notes-file notes.md \
+             --verify-tag --repo "$GITHUB_REPOSITORY"
+          echo "Published $TAG with $COUNT downloads"

@@ -187,7 +187,7 @@ def scan(use_cache: bool = True) -> dict:
         # that was for the wrong computer.
         same_machine = (cached.get("platform_key") == _platform_key())
         if cached.get("scan_version") == _SCAN_VERSION and same_machine:
-            return cached
+            return _with_live_numbers(cached)
 
     total_ram, free_ram = _ram()
     system = platform.system()           # Windows | Darwin | Linux
@@ -229,6 +229,30 @@ def scan(use_cache: bool = True) -> dict:
     except Exception as exc:  # noqa: BLE001
         log("warn", f"could not cache hardware scan: {exc}")
     return info
+
+
+def _with_live_numbers(info: dict) -> dict:
+    """The remembered scan, with the two numbers that are not facts about
+    the machine read again.
+
+    A processor, a graphics card and installed memory do not change, and
+    finding them out is slow (it means running nvidia-smi or wmic), so those
+    are remembered. Free memory and free disk were being remembered with
+    them: one install reported 68.4 GB free for three weeks while the disk
+    filled to 18.9. Those two numbers are what decides whether a writer model
+    "fits", so the app was recommending downloads against a disk that no
+    longer existed. Both are instant to read, so they are simply read.
+    """
+    out = dict(info)
+    try:
+        out["ram_free_gb"] = _ram()[1]
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        out["disk_free_gb"] = round(shutil.disk_usage(str(ROOT)).free / 1024 ** 3, 1)
+    except Exception:  # noqa: BLE001
+        pass
+    return out
 
 
 def rescan() -> dict:

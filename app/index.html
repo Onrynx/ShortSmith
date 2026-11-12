@@ -260,6 +260,22 @@ tr.dis{opacity:.42}
 .metafield .lbl .copy{margin-left:auto}
 
 /* ---- notifications: gold, high contrast, unmissable ---- */
+/* ---- the app's own confirmation ---- */
+#ask{position:fixed;inset:0;z-index:92;display:none;align-items:center;
+  justify-content:center;background:rgba(6,8,11,.66);padding:24px}
+#ask.on{display:flex}
+.askbox{width:min(440px,100%);background:var(--panel);border:1px solid var(--line);
+  border-radius:14px;padding:22px 22px 18px;box-shadow:0 24px 70px rgba(0,0,0,.55)}
+.askbox h3{margin:0;font-size:17px;color:var(--txt);letter-spacing:-.1px}
+.askbox .askd{color:var(--dim);font-size:13.5px;line-height:1.55;margin-top:8px;
+  white-space:pre-line;overflow-wrap:anywhere}
+.askrow{display:flex;justify-content:flex-end;gap:10px;margin-top:20px}
+.btn.del{background:var(--bad);color:#2a0808}
+.btn:focus-visible{outline:2px solid var(--info);outline-offset:2px}
+.leftover{margin-top:18px;padding:12px 14px;border:1px solid var(--line);
+  border-left:3px solid var(--accent2);border-radius:10px;background:var(--panel);
+  font-size:13px;color:var(--dim);display:none;align-items:center;gap:14px}
+.leftover b{color:var(--txt)}
 #toasts{position:fixed;top:18px;right:18px;z-index:80;display:flex;
   flex-direction:column;gap:10px;max-width:380px;pointer-events:none}
 .toast{pointer-events:auto;display:flex;gap:11px;align-items:flex-start;
@@ -314,6 +330,18 @@ tr.dis{opacity:.42}
 </div>
 
 <div id="toasts"></div>
+
+<div id="ask" role="dialog" aria-modal="true" aria-labelledby="askTitle"
+     onclick="if(event.target===this) answer(false)">
+  <div class="askbox">
+    <h3 id="askTitle"></h3>
+    <div class="askd" id="askDetail"></div>
+    <div class="askrow">
+      <button class="btn g" id="askNo" onclick="answer(false)">Cancel</button>
+      <button class="btn" id="askYes" onclick="answer(true)">OK</button>
+    </div>
+  </div>
+</div>
 
 <div id="boot">
   <div class="bootbox">
@@ -481,7 +509,8 @@ tr.dis{opacity:.42}
           </span>
         </div>
         <div id="lList" class="grid-files"></div>
-        <p class="muted" style="margin-top:14px">Click to select &middot; double-click to open &middot; the ⋮ menu has more.</p>
+        <p class="muted" id="lHint" style="margin-top:14px">Click to select &middot; double-click to open &middot; the ⋮ menu has more.</p>
+        <div class="leftover" id="lLeft"></div>
       </div>
 
       <!-- BACKGROUNDS -->
@@ -522,8 +551,8 @@ tr.dis{opacity:.42}
         <h2>Your computer</h2>
         <div class="hw" id="hw"></div>
         <p class="muted" style="margin-top:10px">
-          Checked once and remembered &mdash; never re-scanned on startup.
-          Read locally, sent nowhere.
+          Your hardware is checked once and remembered. Free memory and free
+          disk are read fresh every time. Read locally, sent nowhere.
           <button class="btn g sm" style="margin-left:8px" onclick="rescan()">Re-scan</button>
           <div id="connLine" style="margin-top:10px;font-size:12.5px">&nbsp;</div>
         </p>
@@ -630,7 +659,6 @@ async function makeVideo(){
 }
 async function cancelRender(){ await api('/api/cancel', {}); refresh(); }
 async function approve(id){ await api('/api/approve', {id}); refresh(); }
-async function reject(id){ if(confirm('Delete this video permanently?')){ await api('/api/reject',{id}); refresh(); } }
 async function reveal(id){ await api('/api/reveal', {id}); }
 async function rescan(){
   const btn = event && event.target;
@@ -711,7 +739,9 @@ async function resumeRun(){
 async function discardRun(){
   const r = (LASTSTATE && LASTSTATE.resume) || null;
   if(!r) return;
-  if(!confirm('Throw away the unfinished video and its working files?')) return;
+  if(!await ask({title: 'Throw away the unfinished video?',
+                 detail: 'Its working files are deleted, and it cannot be picked up again.',
+                 yes: 'Throw it away', no: 'Keep it', danger: true})) return;
   const res = await api('/api/discard', {run_id: r.run_id});
   if(res.error) return notify('Could not discard', res.error, 'bad');
   notify('Thrown away', (res.freed_mb || 0) + ' MB of working files removed.', 'good');
@@ -788,7 +818,9 @@ async function gateDo(action){
   const note = (($('#gNote') || {}).value || '').trim();
   if(action === 'rewrite' && !note)
     return notify('Say what to change', 'The rewrite note is empty.', 'bad');
-  if(action === 'drop' && !confirm('Throw this script away and stop the render?')) return;
+  if(action === 'drop' && !await ask({title: 'Throw this script away?',
+        detail: 'The render stops here and no video is made from it.',
+        yes: 'Throw it away', no: 'Keep it', danger: true})) return;
   const r = await api('/api/gate', {run_id: g.run_id, action: action, note: note});
   if(r.error) return notify('Could not do that', r.error, 'bad');
   if(action === 'go')      notify('Approved', 'Rendering it now — about 12 minutes.', 'good');
@@ -820,7 +852,10 @@ function renderQueue(q){
 }
 
 async function dropQueue(){
-  if(!confirm('Cancel every version that has not started yet?')) return;
+  if(!await ask({title: 'Cancel the waiting versions?',
+                 detail: 'Every version that has not started yet is dropped. '
+                       + 'Anything already being made carries on.',
+                 yes: 'Cancel them', no: 'Keep them', danger: true})) return;
   const r = await api('/api/queue/cancel', {});
   notify('Queue cleared', (r.cancelled || 0) + ' waiting version(s) dropped.', 'good');
   refresh();
@@ -909,7 +944,7 @@ function cardHTML(it, pane){
           <button class="btn no sm" onclick="one('reject','${jsq(it.id)}')">Delete</button>`
           :`<button class="btn no sm" onclick="one('delete','${jsq(it.id)}')">Delete</button>`}
           <button class="btn g sm" onclick="showScript('${jsq(it.id)}',this)">Read script</button>
-          <button class="btn g sm" onclick="reveal('${jsq(it.id)}')">Open folder</button>
+          <button class="btn g sm" onclick="reveal('${jsq(it.id)}')">Show in folder</button>
         </div>
         <div class="script" id="sc-${esc(it.id)}"></div>
       </div></div></div>`;
@@ -966,6 +1001,20 @@ let LAST = {review:[], library:[]}, LASTSIG = {review:null, library:null};
 //
 // So only repaint when something actually changed, and never while a video in
 // that pane is playing.
+// Let a pane redraw after its contents changed.
+//
+// paint() will not touch a list while a video in it is playing, which is
+// right while you are only watching and wrong the moment the video you are
+// watching is the one you just approved or deleted: its card stayed on screen
+// until it finished, with buttons that had nothing left to act on.
+function releasePane(pane){
+  const host = pane==='review' ? $('#rList') : $('#lList');
+  host.querySelectorAll('video').forEach(v => {
+    try { v.pause(); v.removeAttribute('src'); v.load(); } catch(e){}
+  });
+  LASTSIG[pane] = null;
+}
+
 function paint(pane, items, force){
   LAST[pane] = items;
   const host = pane==='review' ? $('#rList') : $('#lList');
@@ -981,33 +1030,63 @@ function paint(pane, items, force){
     host.innerHTML = '<div class="empty">'+(pane==='review'
       ? 'No videos waiting. Make one from the Make tab.'
       : 'Nothing approved yet. Approve a video and it lands here.')+'</div>';
-    if(pane==='library') host.classList.remove('grid-files');
+    if(pane==='library'){ host.classList.remove('grid-files'); $('#lHint').style.display='none'; }
     bar.style.display='none'; return;
   }
   bar.style.display='flex';
+  if(pane==='library') $('#lHint').style.display='';
   if(pane==='library') host.classList.add('grid-files');
   host.innerHTML = items.map(it => pane==='library' ? fileHTML(it)
                                                      : cardHTML(it,pane)).join('');
 }
 
 async function one(action, id){
-  const word = action==='approve' ? null : 'Delete this video permanently?';
-  if(word && !confirm(word)) return;
-  await api('/api/bulk', {action, ids:[id]});
-  SEL.review.delete(id); SEL.library.delete(id);
-  if(SHEET_ID === id) closeSheet();
+  const approving = action === 'approve';
+  const name = titleOf(id);
+  if(!approving && !await ask({title: 'Delete this video?',
+        detail: name + '\n\nThe video is removed from this computer. '
+              + 'This cannot be undone.',
+        yes: 'Delete', no: 'Keep it', danger: true})) return;
+  if(SHEET_ID === id) closeSheet();          // let go of the player first
+  let r;
+  try { r = await api('/api/bulk', {action, ids:[id]}); } catch(e){ r = null; }
+  // This used to ignore the answer. A delete that failed looked exactly like
+  // a delete that had not been pressed.
+  if(!r || r.failed || r.error){
+    notify(approving ? 'Could not approve it' : 'Could not delete it',
+           (r && r.error) || 'Shortsmith did not answer. Try again.', 'bad');
+  } else {
+    notify(approving ? 'Approved' : 'Deleted', name, 'good');
+    SEL.review.delete(id); SEL.library.delete(id);
+    releasePane('review'); releasePane('library');
+  }
   syncBar('library'); refresh();
 }
 
 async function bulk(action, pane){
   const ids = [...SEL[pane]];
   if(!ids.length) return;
-  if(action!=='approve' && !confirm(`Delete ${ids.length} video${ids.length>1?'s':''} permanently?`)) return;
-  const r = await api('/api/bulk', {action, ids});
-  if(SHEET_ID && ids.includes(SHEET_ID)) closeSheet();
-  const word = action === 'approve' ? 'Approved' : 'Deleted';
-  if(r && r.failed) notify(word + ' with problems', `${r.done} done, ${r.failed} failed.`, 'bad');
-  else notify(word, `${ids.length} video${ids.length>1?'s':''}.`, 'good');
+  const k = ids.length, approving = action === 'approve';
+  if(!approving && !await ask({
+        title: k === 1 ? 'Delete this video?' : `Delete ${k} videos?`,
+        detail: (k === 1 ? titleOf(ids[0]) + '\n\nThe video is'
+                         : 'The videos are')
+              + ' removed from this computer. This cannot be undone.',
+        yes: k === 1 ? 'Delete' : `Delete ${k} videos`,
+        no: k === 1 ? 'Keep it' : 'Keep them', danger: true})) return;
+  if(SHEET_ID && ids.includes(SHEET_ID)) closeSheet();   // let go of the player
+  let r;
+  try { r = await api('/api/bulk', {action, ids}); } catch(e){ r = null; }
+  const word = approving ? 'Approved' : 'Deleted';
+  if(!r){
+    notify('Nothing happened', 'Shortsmith did not answer. Try again.', 'bad');
+  } else if(r.failed){
+    notify(r.done ? word + ', with problems' : 'Could not ' + (approving ? 'approve' : 'delete'),
+           (r.done ? `${r.done} done, ${r.failed} not. ` : '') + (r.error || ''), 'bad');
+  } else {
+    notify(word, k === 1 ? titleOf(ids[0]) : `${k} videos.`, 'good');
+  }
+  if(r && r.done) releasePane(pane);
   SEL[pane].clear(); syncBar(pane); refresh();
 }
 
@@ -1157,7 +1236,13 @@ function openSheet(id){
 
 function closeSheet(){
   $('#sheet').classList.remove('on');
-  $('#sheetBox').innerHTML = '';      // stops the player
+  // Stop the player properly. Removing a <video> from the page does not end
+  // its download -- the browser keeps the connection until the element is
+  // garbage-collected, whenever that is. Dropping the source ends it now.
+  $('#sheetBox').querySelectorAll('video').forEach(v => {
+    try { v.pause(); v.removeAttribute('src'); v.load(); } catch(e){}
+  });
+  $('#sheetBox').innerHTML = '';
   SHEET_ID = null;
 }
 
@@ -1355,7 +1440,9 @@ function sendClip(file, onProgress){
 }
 
 async function removeClip(name){
-  if(!confirm('Remove ' + name + ' from the backgrounds folder?\n\nThe file is deleted.')) return;
+  if(!await ask({title: 'Remove this background?',
+                 detail: name + '\n\nThe file is deleted from the backgrounds folder.',
+                 yes: 'Remove', no: 'Keep it', danger: true})) return;
   const r = await api('/api/clips/delete', {name: name});
   if(r.error) return notify('Could not remove it', r.error, 'bad');
   notify('Removed', name, 'good');
@@ -1385,6 +1472,31 @@ function renderLibrary(items){
 // commits", so a ZIP install was told to download forever and a checkout with
 // one local commit of its own was told an update was waiting that did not
 // exist. What is shown now follows the state the checker worked out.
+// Release notes, as HTML.
+//
+// The changelog is wrapped at 78 columns so it reads well in a text editor.
+// Drawn as it stands in a wide window, every line stopped two-thirds of the
+// way across and left the rest empty. A bullet's continuation lines are
+// joined back into one paragraph and the window does the wrapping.
+//
+// Escape FIRST, then add the bits of markup we want. Going the other way
+// round pastes a file straight into the page as HTML.
+function notesHTML(lines){
+  const out = [];
+  for(const raw of lines || []){
+    const line = String(raw).replace(/\s+$/, '');
+    const last = out.length ? out[out.length - 1] : '';
+    if(/^\s{2,}\S/.test(line) && last !== '') out[out.length - 1] = last + ' ' + line.trim();
+    else out.push(line);
+  }
+  return esc(out.join(String.fromCharCode(10)))
+      .replace(/ -- /g, ' — ')
+      .replace(/^# .*$/m, '')
+      .replace(/^## *(.+)$/gm, '<b class="ok">Version $1</b>')
+      .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
+      .trim();
+}
+
 async function loadUpdates(force){
   const u = await api('/api/updates' + (force ? '?force=1' : ''));
   $('#uSub').textContent = 'You are on v' + u.version;
@@ -1444,20 +1556,14 @@ async function loadUpdates(force){
 
   if((u.whats_new || []).length){
     head += '<div class="metafield"><div class="lbl">What you would get</div>'
-      + '<div class="val">' + esc(u.whats_new.join(String.fromCharCode(10))) + '</div></div>';
+      + '<div class="val">' + notesHTML(u.whats_new) + '</div></div>';
   }
 
   $('#uCard').innerHTML = head;
   // The badge means "there is something to install", nothing else.
   $('#ucnt').style.display = (u.state === 'behind') ? '' : 'none';
 
-  // Escape FIRST, then add the one bit of markup we want. Going the other way
-  // round pastes a file straight into the page as HTML.
-  $('#uLog').innerHTML = esc((u.changelog || []).join(String.fromCharCode(10)))
-      .replace(/^# .*$/m, '')
-      .replace(/^## *(.+)$/gm, '<b class="ok">Version $1</b>')
-      .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
-      .trim() || 'No changelog in this copy.';
+  $('#uLog').innerHTML = notesHTML(u.changelog) || 'No changelog in this copy.';
   $('#uCommits').innerHTML = (u.commits || []).map(c =>
     `<div class="commit"><span class="sha">${esc(c.sha)}</span>
        <span>${esc(c.message)}</span><span class="when">${esc(c.when)}</span></div>`
@@ -1530,8 +1636,9 @@ async function previewVoice(){
 async function pullModel(tag){
   let r = await api('/api/pull', {model: tag});
   if(r && r.needs_confirm){
-    if(!confirm(r.message + String.fromCharCode(10) + String.fromCharCode(10)
-                + 'Nothing is downloaded unless you say yes.')) {
+    if(!await ask({title: 'Download on this connection?',
+                   detail: r.message + '\n\nNothing is downloaded unless you say yes.',
+                   yes: 'Download', no: 'Not now'})) {
       notify('Download cancelled', 'Nothing was downloaded.');
       return;
     }
@@ -1621,8 +1728,42 @@ async function refresh(){
   announce(s);
   renderReview(s.pending || []);
   renderLibrary(s.approved || []);
+  paintLeftovers(s.leftovers);
   $('#mini').innerHTML = 'Local only · nothing leaves this computer<br><b>'
     + (s.pending_count||0) + '</b> waiting for review';
+}
+// Video files with no entry in the app. Earlier versions made them: a video
+// deleted while it was playing lost its entry and kept its file. Nothing can
+// show them, so the Library owns up to them and offers to finish the job.
+function paintLeftovers(l){
+  const el = $('#lLeft');
+  if(!l || !l.count){ el.style.display = 'none'; return; }
+  const sig = l.count + ':' + l.mb;
+  if(el.dataset.sig === sig && el.style.display === 'flex') return;
+  el.dataset.sig = sig;
+  el.style.display = 'flex';
+  el.innerHTML = '<span><b>' + l.count + ' leftover ' + plural(l.count, 'file')
+    + '</b> from earlier deletes ' + plural(l.count, 'is', 'are') + ' still using '
+    + megs(l.mb) + '. ' + plural(l.count, 'It has', 'They have')
+    + ' no entry here, so nothing else can remove ' + plural(l.count, 'it', 'them')
+    + '.</span><button class="btn g sm" style="margin-left:auto;flex:none" '
+    + 'onclick="clearLeftovers()">Remove ' + plural(l.count, 'it', 'them') + '</button>';
+}
+async function clearLeftovers(){
+  const l = (LASTSTATE && LASTSTATE.leftovers) || {count: 0, mb: 0};
+  if(!l.count) return;
+  if(!await ask({title: 'Remove the leftover ' + plural(l.count, 'file') + '?',
+        detail: l.count + ' video ' + plural(l.count, 'file') + ', ' + megs(l.mb)
+              + ', with no entry in Shortsmith. '
+              + plural(l.count, 'It is what was left when a video was deleted while it was open.',
+                                'They are what was left when videos were deleted while they were open.')
+              + ' This cannot be undone.',
+        yes: 'Remove', no: 'Leave ' + plural(l.count, 'it', 'them'), danger: true})) return;
+  const r = await api('/api/leftovers/remove', {});
+  if(r && r.removed) notify('Removed', r.removed + ' ' + plural(r.removed, 'file')
+                            + ', ' + megs(r.freed_mb) + ' freed.', 'good');
+  if(r && r.left) notify('Some are still in use', r.error || '', 'bad');
+  refresh();
 }
 $('#rAll').onchange = e => selectAll('review', e.target.checked, LAST.review);
 $('#lAll').onchange = e => selectAll('library', e.target.checked, LAST.library);
@@ -1651,6 +1792,14 @@ document.addEventListener('click', e => {
 });
 window.addEventListener('keydown', e => {
   if($('#boot').classList.contains('on')) return;
+  if(ASK){
+    if(e.key === 'Escape'){ e.preventDefault(); answer(false); }
+    if(e.key === 'Tab'){           // two buttons: keep the focus on them
+      e.preventDefault();
+      (document.activeElement === $('#askYes') ? $('#askNo') : $('#askYes')).focus();
+    }
+    return;
+  }
   if(e.key === 'Escape'){
     if(MENU) return closeMenu();
     if(SHEET_ID) return closeSheet();
@@ -1661,6 +1810,37 @@ window.addEventListener('keydown', e => {
   if(e.key === 'Enter' && SEL.library.size === 1 && !SHEET_ID
      && $('#library').classList.contains('on')) openSelected('library');
 });
+// ---------- asking ----------
+// One question at a time, drawn by the app. Returns a promise of true/false.
+//
+//   danger: the action destroys something. The confirm button turns red and
+//           the keyboard focus starts on the OTHER one, so a stray Enter
+//           keeps things as they are.
+let ASK = null;
+function ask(o){
+  if(ASK) ASK(false);
+  closeMenu();
+  $('#askTitle').textContent = o.title;
+  $('#askDetail').textContent = o.detail || '';
+  $('#askDetail').style.display = o.detail ? 'block' : 'none';
+  const yes = $('#askYes'), no = $('#askNo');
+  yes.textContent = o.yes || 'Yes';
+  no.textContent = o.no || 'Cancel';
+  yes.className = 'btn' + (o.danger ? ' del' : '');
+  $('#ask').classList.add('on');
+  (o.danger ? no : yes).focus();
+  return new Promise(done => {
+    ASK = v => { ASK = null; $('#ask').classList.remove('on'); done(v); };
+  });
+}
+function answer(v){ if(ASK) ASK(v); }
+const plural = (n, one, many) => n === 1 ? one : (many || one + 's');
+const megs = mb => mb ? mb + ' MB' : 'under 1 MB';
+const titleOf = id => {
+  const it = (LAST.library || []).concat(LAST.review || []).find(x => x.id === id);
+  return (it && it.title) || 'this video';
+};
+
 // ---------- notifications ----------
 // Gold by default so they read as "something happened" at a glance, red for
 // problems, green for a completed action.
@@ -1808,6 +1988,7 @@ resetSnake();
 
 pollBoot();
 loadUpdates();
+loadClips();        // the sidebar count said 0 until this tab was first opened
 refresh(); POLL = setInterval(refresh, 3000);
 </script>
 </body>
