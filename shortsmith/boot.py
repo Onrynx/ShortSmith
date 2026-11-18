@@ -288,7 +288,10 @@ def restart() -> None:
         return
     from . import writer
     online = writer.ready()
-    if online and BOOT.get("model") and not BOOT.get("online"):
+    # The model loaded now is freed whenever it will not be the next one:
+    # switching to online, or to another model on this computer.
+    if (BOOT.get("model") and not BOOT.get("online")
+            and (online or writer.local_choice() not in ("", BOOT.get("model")))):
         try:
             from .llm import unload
             unload({"backend": "ollama", "model": BOOT["model"], "base_url": _base_url()})

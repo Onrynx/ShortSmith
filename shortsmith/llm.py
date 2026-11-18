@@ -66,6 +66,15 @@ def select_model(mock: bool = False) -> dict:
     if host_reachable(f"{base}/api/tags", timeout=4):
         installed = _installed_ollama_models(base)
         override = env("OLLAMA_MODEL")
+        # The model the person chose in Settings, when it is still installed,
+        # wins over everything else. There used to be no way to choose: an
+        # OLLAMA_MODEL line in a .env file pinned one model no matter what was
+        # downloaded, and without that line free memory decided alone. The
+        # .env line now applies only when nothing has been chosen.
+        chosen = writer.local_choice()
+        if chosen and chosen in installed:
+            return {"backend": "ollama", "model": chosen, "base_url": base,
+                    "reason": f"Ollama up; using {chosen}, chosen in Settings"}
         prefs = ([override] if override else []) + (BIG_PREFS if free >= 16 else SMALL_PREFS)
         size_note = f"{free}GB free / {total}GB total -> {'14B-class' if free >= 16 else '3B/8B-class'}"
         # first preferred that is actually installed

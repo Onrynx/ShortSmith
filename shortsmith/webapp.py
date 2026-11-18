@@ -113,6 +113,7 @@ def _host_is_loopback(value: str) -> bool:
 
 def render_state() -> dict:
     """Current render, in the shape the progress screen wants."""
+    control.render_in_progress()        # notices a render that died, and says so
     st = read_status(control.RENDER_SLOT) or {}
     stage = str(st.get("stage") or "").lower()
     done = st.get("pct") == 100.0 or "pending/" in str(st.get("message") or "")
@@ -218,8 +219,17 @@ def app_state() -> dict:
         "gate": _gate_state(),
         "resume": _resume_state(),
         "leftovers": _leftovers(),
-        "writer": writer.summary(),
+        "writer": _writer_summary(),
     }
+
+
+def _writer_summary() -> dict:
+    """Where the writing happens, and with which model -- for the sidebar."""
+    s = writer.summary()
+    if not s["online"]:
+        from .boot import BOOT
+        s["model"] = BOOT.get("model") or ""
+    return s
 
 
 def _leftovers() -> dict:
@@ -228,6 +238,59 @@ def _leftovers() -> dict:
         return control.leftover_summary()
     except Exception:  # noqa: BLE001
         return {"count": 0, "mb": 0}
+
+
+def _using() -> str:
+    """The model on this computer that writing uses now."""
+    from .boot import BOOT
+    return "" if BOOT.get("online") else (BOOT.get("model") or "")
+
+
+def _installed_detail() -> list[dict]:
+    """Every model Ollama has, with its size, so it can be shown and managed."""
+    import json as _json
+    import urllib.request
+    from .llm import ollama_base_url
+    try:
+        with urllib.request.urlopen(f"{ollama_base_url()}/api/tags", timeout=4) as r:
+            data = _json.loads(r.read().decode("utf-8", "replace"))
+    except Exception:  # noqa: BLE001
+        return []
+    out = []
+    for m in data.get("models", []):
+        name = str(m.get("name") or "")
+        if not name:
+            continue
+        out.append({"name": name, "gb": round(float(m.get("size") or 0) / 1e9, 1),
+                    "params": str((m.get("details") or {}).get("parameter_size") or ""),
+                    "writer": "embed" not in name.lower()})
+    return out
+
+
+def _ollama_delete(name: str) -> str | None:
+    """Remove a model from Ollama. None when it is gone, else why not."""
+    import json as _json
+    import urllib.error
+    import urllib.request
+    from .llm import ollama_base_url
+    req = urllib.request.Request(
+        f"{ollama_base_url()}/api/delete",
+        data=_json.dumps({"model": name, "name": name}).encode("utf-8"),
+        headers={"Content-Type": "application/json"}, method="DELETE")
+    try:
+        with urllib.request.urlopen(req, timeout=60):
+            return None
+    except urllib.error.HTTPError as exc:
+        return "Ollama does not have it any more" if exc.code == 404 else f"Ollama said {exc.code}"
+    except Exception as exc:  # noqa: BLE001
+        return f"Ollama did not answer ({exc})"
+
+
+# What may be downloaded by name: an Ollama library name, optionally with a
+# tag ("qwen3:14b", "hf.co/someone/model:Q4_K_M"). Nothing that could be a
+# path or an address.
+import re as _re
+_MODEL_NAME = _re.compile(r"^[A-Za-z0-9][A-Za-z0-9._\-/]{0,120}(:[A-Za-z0-9._\-]{1,60})?$")
 
 
 def installed_models() -> list[str]:
@@ -269,6 +332,10 @@ def machine_info() -> dict:
         "options": catalog_for(hw),
         "base_install_gb": BASE_INSTALL_GB,
         "installed": installed_models(),
+        "installed_detail": _installed_detail(),
+        "using": _using(),
+        "chosen": writer.local_choice(),
+        "online": writer.summary()["online"],
         "connection": _connection(),
         "pull": pull_state(),
     }
@@ -1006,16 +1073,47 @@ class _Handler(BaseHTTPRequestHandler):
         if p == "/api/leftovers/remove":
             return self._json(control.remove_leftovers())
 
+        if p in ("/api/model/use", "/api/model/delete"):
+            name = str(body.get("model") or "").strip()
+            if name not in installed_models():
+                return self._json({"error": "That model is not on this computer."})
+            if control.render_in_progress():
+                return self._json({"error": "A video is being made right now. Change "
+                                            "models after it finishes."})
+            from .boot import BOOT, restart as boot_restart
+            if p == "/api/model/use":
+                writer.set_local_choice(name)
+                log("info", f"writer model chosen in Settings: {name}")
+                boot_restart()
+                return self._json({"ok": True, **machine_info()})
+            from .setup_models import state as setup_state
+            ss = setup_state()
+            if ss.get("status") == "running" and ss.get("model") == name:
+                return self._json({"error": "It is downloading right now. Delete it "
+                                            "after the download finishes."})
+            why = _ollama_delete(name)
+            if why:
+                return self._json({"error": f"Could not delete {name}: {why}."})
+            log("info", f"deleted model {name} from Ollama")
+            if writer.local_choice() == name:
+                writer.set_local_choice("")
+            if BOOT.get("model") == name:
+                boot_restart()
+            return self._json({"ok": True, **machine_info()})
+
         if p == "/api/pull":
             model = str(body.get("model") or "").strip()
             if not model:
                 return self._json({"error": "no model given"}, 400)
-            # Only tags from our own menu. Downloading is a multi-gigabyte,
-            # long-running action and the name should never be free text.
+            # Tags from our own menu, or -- when the person asks for one by
+            # name -- any Ollama library name that looks like one. Nothing
+            # that could be a path or an address reaches Ollama.
             from .model_profiles import CATALOG
             entry = next((e for e in CATALOG if e["tag"] == model), None)
-            if entry is None:
-                return self._json({"error": "unknown model"}, 400)
+            if entry is None and not (body.get("custom") and _MODEL_NAME.match(model)
+                                      and ".." not in model):
+                return self._json({"error": "That is not a model name Ollama would "
+                                            "know, for example qwen3:8b."}, 400)
             # The warning covers everything that will be fetched, not only the
             # part the user picked. The voice and caption models used to go out
             # over a metered connection without being counted or mentioned.

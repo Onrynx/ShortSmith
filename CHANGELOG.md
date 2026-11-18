@@ -1,5 +1,37 @@
 # Changelog
 
+## 2.4.6
+
+**Choose, add and remove writer models in Settings**
+- You can now choose which model writes. Every model you have downloaded has
+  a Use this button, and the one in use is marked. Shortsmith used to decide
+  for you from free memory alone -- and on some copies a leftover setting
+  pinned one model no matter what you downloaded or picked.
+- Every downloaded model can be deleted from Settings, which says how much
+  space it frees.
+- Models that are not in Shortsmith's list -- downloaded by name, or with
+  Ollama itself -- appear under Also on this computer, and can be used or
+  deleted the same way.
+- You can download any model from Ollama's library by typing its name.
+- The sidebar says which model is writing.
+
+**A video that stopped is not shown as still being made**
+- If a video stopped partway -- Shortsmith was closed, or the computer
+  restarted -- the progress screen went on showing the step it stopped at,
+  for hours or days, and Make stayed blocked behind it. Shortsmith now checks
+  that the video is really still being made. If it is not, it says where it
+  stopped and why, and you can start another straight away.
+
+**Deleted videos stay deleted**
+- When a story could not be written, Shortsmith used to make a video from
+  its one built-in sample story instead -- the same story every time, so the
+  same video kept coming back after you deleted it. A video is now only ever
+  made from a real story: if the writer fails, it stops and says why.
+- Delete no longer says "Deleted" unless the video's entry is really gone.
+  When Windows refuses, it says whether the file is open in another program
+  or access was denied, which need different fixes. Every delete is now
+  recorded in the app's log.
+
 ## 2.4.5
 
 **Updates you can see**

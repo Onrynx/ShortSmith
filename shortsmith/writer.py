@@ -654,6 +654,22 @@ def save(form: dict) -> dict:
     return public_state()
 
 
+def local_choice() -> str:
+    """The model on this computer the person chose, or "" for automatic."""
+    return str(load().get("local_model") or "")
+
+
+def set_local_choice(tag: str) -> None:
+    """Remember the chosen local model. Choosing one means writing locally."""
+    cfg = load()
+    if tag:
+        cfg["local_model"] = tag
+        cfg["mode"] = "local"
+    else:
+        cfg.pop("local_model", None)
+    _write(cfg)
+
+
 def forget() -> dict:
     """Remove the key and go back to writing on this computer."""
     cfg = load()

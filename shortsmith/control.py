@@ -189,7 +189,10 @@ def _in_use(verb: str) -> str:
 IN_USE = _in_use("delete")
 
 
-def _unlink(p: Path, tries: int = 5) -> bool:
+_last_unlink_error: dict = {"exc": None}
+
+
+def _unlink(p: Path, tries: int = 8) -> bool:
     """Delete one file, waiting out a lock that is about to let go.
 
     On Windows a file that anything has open cannot be deleted. The app's own
@@ -203,9 +206,26 @@ def _unlink(p: Path, tries: int = 5) -> bool:
             return True
         except FileNotFoundError:
             return True
-        except OSError:
+        except OSError as exc:
+            _last_unlink_error["exc"] = exc
             time.sleep(0.15 * (attempt + 1))
     return False
+
+
+def _refusal(verb: str = "delete") -> str:
+    """What Windows actually said, in words a person can act on.
+
+    "In use" and "access denied" are different problems with different fixes,
+    and both used to come out as "open in another program".
+    """
+    exc = _last_unlink_error.get("exc")
+    win = getattr(exc, "winerror", None)
+    if win == 5 or (isinstance(exc, PermissionError) and win != 32):
+        return ("Windows would not let Shortsmith " + verb + " that file (access "
+                "denied). Security software can do this -- for example Windows' "
+                "Controlled folder access. Allow Shortsmith there, or " + verb +
+                " the file from its folder.")
+    return _in_use(verb)
 
 
 def _move(src: Path, dst: Path, tries: int = 5) -> bool:
@@ -242,15 +262,24 @@ def _remove_item(m: dict, item_id: str) -> dict:
 
     for p in videos:
         if not _unlink(p):
-            log("warn", f"could not delete {p.name}: the file is in use")
-            return {"ok": False, "error": IN_USE}
+            log("warn", f"could not delete {p.name}: {_last_unlink_error.get('exc')}")
+            return {"ok": False, "error": _refusal()}
 
-    # The video is gone, so the item is gone: finish the job, record last, so
-    # that anything refusing here still has an entry pointing at it.
-    left = [p.name for p in others + record if not _unlink(p)]
+    # Then the record. While it exists the video is still listed, so a record
+    # that would not go is a delete that did not happen: saying "Deleted" there
+    # is how a deleted video comes back on the next refresh. Report it, and a
+    # second press finishes the job (there is no video left to block it).
+    for p in record:
+        if not _unlink(p):
+            log("warn", f"deleted the video of {item_id} but not its record: "
+                        f"{_last_unlink_error.get('exc')}")
+            return {"ok": False, "error": "The video was deleted, but its entry could "
+                    "not be removed. " + _refusal() + " Then press Delete again."}
+
+    left = [p.name for p in others if not _unlink(p)]
     deleted = [p.name for p in files if p.name not in left]
-    if left:
-        log("warn", f"deleted {item_id} but could not remove: {', '.join(left)}")
+    log("info", f"deleted {item_id} ({len(deleted)} file(s)"
+                f"{', left behind: ' + ', '.join(left) if left else ''})")
     return {"ok": True, "deleted": deleted, "left": left}
 
 
@@ -572,12 +601,76 @@ def discard_resumable(run_id: str = "") -> dict:
 
 
 def render_in_progress() -> bool:
-    """True only while a render is actually between script and herald (not done)."""
+    """True only while a render is actually between script and herald (not done).
+
+    The status file is written by the render itself, so it can only ever say
+    what the render was doing last. When the render dies -- the window is
+    closed, the computer restarts, the process is killed -- the file goes on
+    saying "step 3" for good, and this used to believe it: the progress screen
+    showed a render that did not exist and Make stayed disabled behind it, for
+    hours or days. So the file is checked against the process. A render that
+    is gone is marked as stopped, with the reason, and nothing is blocked.
+    """
     st = read_status(RENDER_SLOT) or {}
     stage = str(st.get("stage") or "").lower()
     if stage in ("", "idle", "failed", "cancelled"):
         return False
-    return not (st.get("pct") == 100.0 or "pending/" in str(st.get("message") or ""))
+    if st.get("pct") == 100.0 or "pending/" in str(st.get("message") or ""):
+        return False
+    alive = _render_alive()
+    if alive is False or (alive is None and _status_age(st) > _STALE_SECONDS):
+        _mark_stopped(st, stage)
+        return False
+    return True
+
+
+# With no process record to check (a render started from a terminal rather
+# than the app), a status this old with no update means nothing is working.
+_STALE_SECONDS = 15 * 60
+
+_STAGE_WORDS = {
+    "script": "writing the story", "approve": "waiting for you to read the script",
+    "awaiting": "waiting for you to read the script", "voice": "recording the voice",
+    "canvas": "building the visuals", "cutter": "putting the video together",
+    "herald": "finishing the video",
+}
+
+
+def _render_alive():
+    """True or False when it can be told; None when there is nothing to go on."""
+    if _recently_launched():
+        return True
+    try:
+        pid = int((_PIDFILE.read_text().strip() or "0"))
+    except (OSError, ValueError):
+        pid = 0
+    if not pid:
+        return None
+    try:
+        import psutil  # type: ignore  # noqa: F401
+    except ImportError:
+        return None
+    return _is_our_render(pid)
+
+
+def _status_age(st: dict) -> float:
+    from datetime import datetime, timezone
+    try:
+        when = datetime.fromisoformat(str(st.get("updated")))
+        return (datetime.now(timezone.utc) - when).total_seconds()
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _mark_stopped(st: dict, stage: str) -> None:
+    what = _STAGE_WORDS.get(stage, stage)
+    write_status(RENDER_SLOT, {
+        **st, "stage": "failed",
+        "message": (f"Stopped while {what}: the program making this video closed "
+                    "before it finished -- Shortsmith was closed, or the computer "
+                    "restarted. Nothing is running now.")})
+    log("warn", f"render {st.get('run_id')} stopped during {stage} without finishing; "
+                "marked as stopped")
 
 
 def _is_our_render(pid: int) -> bool:

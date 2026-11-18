@@ -99,6 +99,7 @@ textarea:focus,select:focus{border-color:var(--accent)}
 .mode .m .d{font-size:11.5px;color:var(--faint);margin-top:5px;line-height:1.5}
 .mode.two{grid-template-columns:1fr 1fr}
 #wKeyNote a{color:var(--accent2)}
+.mbtns{display:flex;gap:6px;justify-content:flex-end;align-items:center;white-space:nowrap}
 .mode .m.sel .d{color:#d9b7a4}
 .flow{font-size:10.5px;color:var(--faint);margin-top:8px;
   font-family:ui-monospace,Menlo,Consolas,monospace}
@@ -597,8 +598,21 @@ tr.dis{opacity:.42}
         </div>
         <div id="wLocal">
         <h2>Writer model</h2>
+        <div class="muted" id="mUsing" style="margin-bottom:10px"></div>
         <div class="card" id="pullBox" style="display:none;margin-bottom:12px"></div>
         <div class="card"><table id="models"></table></div>
+        <div id="mOthers"></div>
+        <div class="card" style="margin-top:12px">
+          <label for="mName">Download another model by name</label>
+          <div class="row">
+            <input id="mName" placeholder="for example qwen3:14b or gemma3:4b" autocomplete="off"
+                   spellcheck="false" style="flex:1">
+            <button class="btn g sm" onclick="pullByName()">Download</button>
+          </div>
+          <div class="muted" style="margin-top:6px;font-size:12.5px">Any model in
+            <a href="https://ollama.com/library" target="_blank" rel="noopener">Ollama's library</a>.
+            Shortsmith uses it once you press Use this.</div>
+        </div>
         <p class="muted" style="margin-top:10px">Only the model you choose is downloaded. Nothing else is fetched.</p>
         </div>
       </div>
@@ -1682,20 +1696,47 @@ async function loadMachine(){
     ['Processor', (h.cpu_cores||'?')+' cores', ''],
     ['Free disk', (h.disk_free_gb||'?')+' GB', ''],
   ].map(([k,v,s])=>`<div class="b"><div class="k">${k}</div><div class="v">${esc(v)}<small>${esc(s)}</small></div></div>`).join('');
-  const have = new Set((m.installed||[]).map(x=>x.split(':').length>1?x:x+':latest'));
-  const isHere = t => have.has(t) || have.has(t+':latest') || [...have].some(h=>h.split(':')[0]===t.split(':')[0] && h.split(':')[1]===t.split(':')[1]);
+  MACHINE = m;
+  const names = m.installed || [];
+  const nameOf = t => names.find(h => h === t || h === t + ':latest');
+  // In use, or a button to use it; and a way to delete it. Every downloaded
+  // model gets both -- choosing and removing models used to mean a terminal.
+  const manage = (name, writes) => {
+    const q = '&quot;' + jsq(name) + '&quot;';
+    const use = !writes ? '<span class="muted">not a writer</span>'
+      : (!m.online && name === m.using) ? '<span class="badge ok">in use</span>'
+      : '<button class="btn sm" onclick="useModel(' + q + ')">Use this</button>';
+    return '<span class="mbtns">' + use
+      + '<button class="btn no sm" onclick="deleteModel(' + q + ')">Delete</button></span>';
+  };
+  $('#mUsing').innerHTML = m.online
+    ? 'Writing online right now. The models below are used if you switch back to this computer.'
+    : m.using ? 'Writing with <b>' + esc(m.using) + '</b>'
+        + (m.chosen === m.using ? ', which you chose.' : ', picked automatically. Press '
+           + 'Use this on any model you have to choose it yourself.')
+    : 'No model is loaded yet. Download one, or press Use this on one you have.';
+  const known = new Set();
   $('#models').innerHTML =
     '<tr><th>Model</th><th>Download</th><th>Total</th><th>What you get</th><th></th></tr>' +
     (m.options||[]).map(o=>{
-      const here = isHere(o.tag);
-      const btn = !o.runnable ? ''
-        : here ? '<span class="badge ok">ready</span>'
+      const name = nameOf(o.tag);
+      if(name) known.add(name);
+      const btn = name ? manage(name, true)
+        : !o.runnable ? ''
         : `<button class="btn g sm" onclick="pullModel('${o.tag}')">Download</button>`;
       return `<tr class="${o.tag===m.recommended?'pick':(o.runnable?'':'dis')}">
       <td><b>${esc(o.label)}</b>${o.tag===m.recommended?' <span class="badge best">recommended</span>':''}</td>
       <td>${o.download_gb} GB</td><td>${o.total_install_gb} GB</td>
       <td>${o.runnable?esc(o.blurb):'<span class="badge no">'+esc(o.reason)+'</span>'}</td>
       <td>${btn}</td></tr>`;}).join('');
+  // Models Ollama has that are not in the list above: downloaded by name, or
+  // from outside Shortsmith. They can be used and deleted the same way.
+  const others = (m.installed_detail || []).filter(x => !known.has(x.name));
+  $('#mOthers').innerHTML = !others.length ? '' :
+    '<h2 style="margin-top:18px">Also on this computer</h2><div class="card"><table>'
+    + others.map(x => '<tr><td><b>' + esc(x.name) + '</b></td><td>' + esc(x.params || '')
+      + '</td><td>' + (x.gb ? x.gb + ' GB' : '') + '</td><td>' + manage(x.name, x.writer)
+      + '</td></tr>').join('') + '</table></div>';
   paintPull(m.pull);
 }
 
@@ -1818,8 +1859,37 @@ async function previewVoice(){
 // On Wi-Fi or a cable this just downloads. On a metered connection — mobile
 // data, a phone hotspot, roaming — it asks first, because the person clicking
 // Download is looking at a model name, not at their data plan.
-async function pullModel(tag){
-  let r = await api('/api/pull', {model: tag});
+let MACHINE = null;
+async function useModel(name){
+  const r = await api('/api/model/use', {model: name});
+  if(!r || r.error) return notify('Could not switch', (r && r.error) || 'Shortsmith did not answer.', 'bad');
+  notify('Now writing with ' + name, 'It is loading now; the first video may take a moment longer.', 'good');
+  WPICK = 'local';
+  loadMachine(); pollBoot(); refresh();
+}
+async function deleteModel(name){
+  const x = ((MACHINE && MACHINE.installed_detail) || []).find(i => i.name === name) || {};
+  if(!await ask({title: 'Delete ' + name + '?',
+        detail: (x.gb ? 'It frees about ' + x.gb + ' GB. ' : '')
+          + 'It is removed from Ollama, so any other app that uses it loses it too. '
+          + 'You can download it again later.',
+        yes: 'Delete it', no: 'Keep it', danger: true})) return;
+  const r = await api('/api/model/delete', {model: name});
+  if(!r || r.error) return notify('Could not delete it', (r && r.error) || 'Shortsmith did not answer.', 'bad');
+  notify('Deleted', name + ' is gone from this computer.', 'good');
+  loadMachine(); pollBoot(); refresh();
+}
+async function pullByName(){
+  const name = $('#mName').value.trim();
+  if(!name) return notify('Type a model name', 'For example qwen3:14b.', 'bad');
+  if(!await ask({title: 'Download ' + name + '?',
+        detail: 'Its size is not known until the download starts; writer models are '
+              + 'usually 2 to 20 GB. It comes from Ollama\u2019s library.',
+        yes: 'Download', no: 'Cancel'})) return;
+  pullModel(name, true);
+}
+async function pullModel(tag, custom){
+  let r = await api('/api/pull', {model: tag, custom: !!custom});
   if(r && r.needs_confirm){
     if(!await ask({title: 'Download on this connection?',
                    detail: r.message + '\n\nNothing is downloaded unless you say yes.',
@@ -1827,7 +1897,7 @@ async function pullModel(tag){
       notify('Download cancelled', 'Nothing was downloaded.');
       return;
     }
-    r = await api('/api/pull', {model: tag, confirm: true});
+    r = await api('/api/pull', {model: tag, custom: !!custom, confirm: true});
   }
   if(!r || r.error){ notify('Download not started', (r && r.error) || 'Unknown problem', 'bad'); return; }
   notify('Getting everything ready',
@@ -1919,7 +1989,8 @@ async function refresh(){
   const w = s.writer || {};
   $('#mini').innerHTML = (w.online
       ? 'Writing online with ' + esc(w.label) + ' &middot; scripts are sent there'
-      : 'Local only &middot; nothing leaves this computer')
+      : 'Writing on this computer' + (w.model ? ' with ' + esc(w.model) : '')
+        + ' &middot; nothing leaves it')
     + '<br><b>' + (s.pending_count||0) + '</b> waiting for review';
 }
 // Video files with no entry in the app. Earlier versions made them: a video

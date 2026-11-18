@@ -58,6 +58,7 @@ def node_script(state: dict) -> dict:
     source = None
     plan = None
     t = None
+    failure = ""
 
     if not mock and model_info["backend"] != "mock":
         progress(state, "script", "developing the idea into a story plan")
@@ -106,7 +107,17 @@ def node_script(state: dict) -> dict:
             # would have made a video nobody asked for.
             raise
         except Exception as exc:  # noqa: BLE001
-            add_fallback(state, "script", f"planned generation failed ({exc}); using canned script")
+            failure = str(exc)
+
+    # A real render never makes the built-in sample story. It used to, every
+    # time the writer failed -- and since the sample is one fixed story, it
+    # came back as the same video ("My Sister Wore White to My Wedding")
+    # again and again: deleted, and back with the next failure. The sample
+    # is for --mock only. A real render stops and says why.
+    if script is None and not mock:
+        why = failure or model_info.get("reason") or "no writer is available"
+        raise RuntimeError(f"The story could not be written ({why[:200]}). Nothing "
+                           "was made. Try again, or choose another writer in Settings.")
 
     if script is None:
         raw = mock_script(cfg, lane, topic, hero_budget)
