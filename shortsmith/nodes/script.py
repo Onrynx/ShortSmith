@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from ..config import format_spec, lane_budget
 from ..crews.story_crew import generate_script, mock_script
+from ..writer import WriterUnavailable
 from ..llm import select_model
 from ..schema import (clamp_heroes, ensure_disclosure, normalize_script,
                       validate_script)
@@ -88,8 +89,22 @@ def node_script(state: dict) -> dict:
                 voice_style=style_name, want_visuals=want_visuals,
                 on_plan=_published_plan, on_progress=_published_progress,
             )
-            script = _finalize(script_raw, hero_budget, (t["scene_lo"], t["scene_hi"]))
+            # A finished story that came out a few scenes short is still a
+            # finished story. Rejecting it on the count alone threw away
+            # everything the model had written and put the built-in sample
+            # story in its place. The length is fitted against the real audio
+            # later, so the count is not what decides whether it is usable.
+            have = len(script_raw.get("scenes") or [])
+            floor = t["scene_lo"]
+            if have >= max(3, floor // 2):
+                floor = min(floor, have)
+            script = _finalize(script_raw, hero_budget, (floor, t["scene_hi"]))
             source = "plan"
+        except WriterUnavailable:
+            # A key that stopped working, an allowance used up: the person
+            # can fix these, and needs to be told. The sample story below
+            # would have made a video nobody asked for.
+            raise
         except Exception as exc:  # noqa: BLE001
             add_fallback(state, "script", f"planned generation failed ({exc}); using canned script")
 

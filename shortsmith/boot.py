@@ -147,6 +147,21 @@ def _warm_model(model: str) -> None:
 def _run() -> None:
     t0 = time.time()
     try:
+        # ---- 0. writing online? then there is nothing to start -------- #
+        # Ollama is not started at all: on a small laptop that chose online
+        # writing, its memory is better left to the video stages.
+        from . import writer
+        if writer.ready():
+            w = writer.load()
+            with _lock:
+                BOOT.update(stage="ready", percent=100.0, ready=True, error=None,
+                            reason=None, online=True, model=w.get("model"),
+                            message=f"Writing online with {writer.label_of(w)}",
+                            elapsed=round(time.time() - t0, 1))
+            log("info", f"startup: writing online with {writer.label_of(w)} "
+                        f"({w.get('model')}); Ollama not needed")
+            return
+
         # ---- 1. is it already up? ------------------------------------- #
         _set("checking", 4, "Looking for the AI engine")
         already = _get("/api/tags", timeout=2) is not None
@@ -162,9 +177,12 @@ def _run() -> None:
             binary = _ollama_binary()
             if not binary:
                 with _lock:
-                    BOOT.update(stage="failed", error=(
-                        "Ollama is not installed. Get it from ollama.com/download, "
-                        "then press Try again."), message="Ollama not found")
+                    BOOT.update(stage="choose", reason="no_ollama", error=None,
+                                message=(
+                        "To write on this computer, Shortsmith needs Ollama, a free "
+                        "app from ollama.com/download, and one writer download. Or "
+                        "write online with your own key, which is much faster on "
+                        "most laptops."))
                 return
             _set("starting", 12, "Starting the AI engine")
             kw = {"creationflags": CREATE_NO_WINDOW} if os.name == "nt" else {}
@@ -204,9 +222,10 @@ def _run() -> None:
         have = [m.get("name", "") for m in tags.get("models", [])]
         if not have:
             with _lock:
-                BOOT.update(stage="failed", message="No model installed",
-                            error=("No writer model is installed yet. Open "
-                                   "Settings and download one."))
+                BOOT.update(stage="choose", reason="no_model", error=None,
+                            message=("Ollama is installed, but there is no writer on "
+                                     "this computer yet. Download one in Settings, or "
+                                     "write online with your own key."))
             return
 
         # ---- 4. load it into memory ----------------------------------- #
@@ -249,10 +268,39 @@ def _run() -> None:
 
 def start() -> None:
     """Kick off startup in the background. Safe to call more than once."""
-    if BOOT.get("stage") not in ("idle", "failed"):
+    if BOOT.get("stage") not in ("idle", "failed", "choose"):
         return
-    BOOT.update(stage="checking", percent=0.0, ready=False, error=None)
+    BOOT.update(stage="checking", percent=0.0, ready=False, error=None,
+                reason=None, online=False)
     threading.Thread(target=_run, daemon=True).start()
+
+
+def restart() -> None:
+    """Start again because the writer setting changed.
+
+    A start already under way is left to finish. Switching to online frees
+    the local writer from memory -- an 8 GB laptop that just chose online
+    writing should not keep the old model loaded for nothing. The online
+    path needs no network and no Ollama, so it runs here and is finished
+    before the Settings page asks how it went.
+    """
+    if BOOT.get("stage") in ("checking", "starting", "model", "warming"):
+        return
+    from . import writer
+    online = writer.ready()
+    if online and BOOT.get("model") and not BOOT.get("online"):
+        try:
+            from .llm import unload
+            unload({"backend": "ollama", "model": BOOT["model"], "base_url": _base_url()})
+        except Exception:  # noqa: BLE001
+            pass
+    with _lock:
+        BOOT.update(stage="idle", ready=False)
+    if online:
+        BOOT.update(stage="checking", percent=0.0, error=None, reason=None, online=False)
+        _run()
+    else:
+        start()
 
 
 def state() -> dict:

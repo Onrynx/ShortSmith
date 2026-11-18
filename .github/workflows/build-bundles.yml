@@ -135,6 +135,9 @@ jobs:
           h = scan()
           print('hardware scan on this runner:', h['os'], h['arch'])
           "
+          # Each system keeps a computer awake its own way, and only this
+          # runner can show that its way does not crash.
+          "$PY" -c "from shortsmith import awake; print('keep-awake on this system:', awake.hold()); awake.release()"
 
       # The app opens in a real window via pywebview, which needs a different
       # backend on each platform. If that backend is missing, nothing crashes --

@@ -12,6 +12,7 @@ from __future__ import annotations
 import random
 from pathlib import Path
 
+from ..config import format_spec
 from ..utils import ASSETS_DIR, ffprobe_duration, read_json, run_ffmpeg, write_json
 from .base import ProviderError, VisualProvider
 
@@ -32,6 +33,16 @@ class BackgroundProvider(VisualProvider):
 
     def available(self) -> bool:
         return len(background_clips()) > 0
+
+    def _fit(self) -> list[str]:
+        """Filter arguments that scale and crop to the video's frame."""
+        try:
+            spec = format_spec(self.cfg)
+            w, h = int(spec["width"]), int(spec["height"])
+        except Exception:  # noqa: BLE001
+            return []
+        return ["-vf", f"scale={w}:{h}:force_original_aspect_ratio=increase,"
+                       f"crop={w}:{h},setsar=1"]
 
     def _state(self, workdir: str) -> dict:
         return read_json(Path(workdir) / "bg_state.json", {}) or {}
@@ -56,9 +67,15 @@ class BackgroundProvider(VisualProvider):
             cursor = 0.5
 
         out = Path(workdir) / f"bg_{idx:02d}.mp4"
+        # Cut it at the size the video will be. This used to re-encode the
+        # clip at its own resolution -- every frame of 4K footage compressed
+        # at 4K, only for the next stage to shrink it to 1080 wide and
+        # compress it again. Four times the pixels, for a file that is
+        # deleted when the render ends. crf 18 because this is an
+        # intermediate: it is encoded once more, so it should lose little.
         ok, err = run_ffmpeg(["-ss", f"{cursor:.2f}", "-i", str(clip.resolve()),
-                              "-t", f"{seconds + 0.3:.2f}", "-an",
-                              "-c:v", "libx264", "-preset", "veryfast", "-crf", "22",
+                              "-t", f"{seconds + 0.3:.2f}", "-an", *self._fit(),
+                              "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
                               str(out.resolve())], cwd=workdir, timeout=300)
         if not ok or not out.exists():
             raise ProviderError(f"background cut failed: {err[-120:]}")

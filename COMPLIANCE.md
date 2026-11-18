@@ -37,5 +37,6 @@ and it is designed to stay.
 
 - The narrator voice is **Kokoro** (kokoro-onnx, open weights, commercial-safe) — a
   synthetic cinematic narrator, **not** a clone of any real person.
-- The story writer runs locally via Ollama; an optional backend (Gemini)
-  are LLM backends only and never appear in a produced video.
+- The story writer runs locally via Ollama by default, or, only if the user
+  chooses it, an online model through the user's own API key. Either way it
+  writes text only and never appears in a produced video.

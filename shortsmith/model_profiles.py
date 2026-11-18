@@ -175,6 +175,14 @@ def profile_for(tag: str, hw: dict | None = None) -> dict:
     work is affordable on top. `quality_passes` is what the pipeline consults
     before spending a call on anything that is not strictly required.
     """
+    # A model at an online service is large and fast whatever this laptop
+    # is like, so it gets the big model's settings and every quality pass.
+    # Its name says nothing reliable about its size ("gemini-2.5-flash").
+    from .writer import is_online_model
+    if is_online_model(tag):
+        return {"tier": "xl", "model": tag, **TIERS["xl"], "timeout": 300,
+                "machine_speed": 2.0, "quality_passes": "full",
+                "always_continuity": True}
     tier = tier_for_params(params_of(tag))
     prof = {"tier": tier, "model": tag, **TIERS[tier]}
     speed = machine_speed(hw)

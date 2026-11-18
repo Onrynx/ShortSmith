@@ -37,6 +37,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
 from . import control
+from . import writer
 from .config import default_channel, list_channels, load_channel
 from .utils import ROOT, STATE_DIR, ensure_dir, log, read_status
 
@@ -217,6 +218,7 @@ def app_state() -> dict:
         "gate": _gate_state(),
         "resume": _resume_state(),
         "leftovers": _leftovers(),
+        "writer": writer.summary(),
     }
 
 
@@ -751,6 +753,8 @@ class _Handler(BaseHTTPRequestHandler):
         if p == "/api/queue":
             from .queue import state as queue_state
             return self._json(queue_state())
+        if p == "/api/writer":
+            return self._json(writer.public_state())
         if p == "/api/boot":
             from .boot import state as boot_state
             return self._json(boot_state())
@@ -862,6 +866,24 @@ class _Handler(BaseHTTPRequestHandler):
             message, code = body
             return self._json({"error": message}, code)
 
+        # Choosing how stories are written. The key arrives here once, from
+        # this app's own window (the session token and the same-origin check
+        # apply), and is never sent back: the answers carry its last four
+        # characters at most.
+        if p == "/api/writer/check":
+            return self._json(writer.check(body))
+        if p == "/api/writer/save":
+            r = writer.save(body)
+            if not r.get("error"):
+                from .boot import restart as boot_restart
+                boot_restart()
+            return self._json(r)
+        if p == "/api/writer/forget":
+            r = writer.forget()
+            from .boot import restart as boot_restart
+            boot_restart()
+            return self._json(r)
+
         if p == "/api/boot/retry":
             # Startup can fail for reasons the person then fixes without
             # closing the window -- installing Ollama, downloading a model.
@@ -872,6 +894,16 @@ class _Handler(BaseHTTPRequestHandler):
             return self._json(boot_state())
 
         if p == "/api/make":
+            # Nothing to write with, nothing to make. This used to go ahead
+            # anyway and quietly make the built-in sample story.
+            from .boot import state as boot_state
+            b = boot_state()
+            if not b.get("ready"):
+                starting = b.get("stage") in ("checking", "starting", "model", "warming")
+                return self._json({"needs_writer": not starting, "error": (
+                    "Shortsmith is still starting. Try again in a moment." if starting
+                    else "Shortsmith has nothing to write with yet. In Settings, "
+                         "choose this computer or an online AI, then try again.")})
             count = body.get("count") or 1
             try:
                 count = max(1, min(10, int(count)))

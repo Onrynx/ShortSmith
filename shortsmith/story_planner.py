@@ -35,6 +35,7 @@ import json
 import re
 
 from .llm import complete
+from .writer import WriterUnavailable
 from .timing import words_for_seconds
 from .utils import log
 
@@ -279,11 +280,37 @@ def _normalize_plan(plan: dict, target_seconds: float, scene_bounds: tuple,
     return plan
 
 
+def _plan_shape(lo: int, hi: int, want_visuals: bool) -> dict:
+    """The plan's own outline: every field present, and lo..hi beats."""
+    text = {"type": "string"}
+    beat = {"purpose": text, "what_happens": text, "why_it_matters": text,
+            "seconds": {"type": "number"}}
+    if want_visuals:
+        beat["visual"] = text
+    top = {k: text for k in ("premise", "logline", "setting", "narrator", "theme",
+                             "structure", "why_structure", "tone", "ending_kind",
+                             "title_idea")}
+    top["cast"] = {"type": "array", "items": {
+        "type": "object", "required": ["name", "role"],
+        "properties": {"name": text, "role": text}}}
+    top["beats"] = {"type": "array", "minItems": int(lo), "maxItems": int(hi),
+                    "items": {"type": "object", "required": list(beat),
+                              "properties": beat}}
+    return {"type": "object", "required": list(top), "properties": top}
+
+
 def build_plan(brief: str, cfg: dict, model_info: dict, *, target_seconds: float,
                scene_bounds: tuple, wpm: float, calibration: float = 1.0,
-               avoid: str = "", seed: str = "", narrator_gender: str = "male") -> dict:
+               avoid: str = "", seed: str = "", narrator_gender: str = "male",
+               want_visuals: bool = True) -> dict:
     """Develop a brief into a full story plan. One model call. Never raises."""
     lo, hi = scene_bounds
+    # With gameplay footage behind the story, nothing ever reads a beat's
+    # "visual" -- but the model still had to write one for every beat, and on
+    # a slow machine every written word is seconds.
+    visual_line = ("  visual       what is literally ON SCREEN for this beat\n"
+                   if want_visuals else "")
+    visual_field = ',"visual":"..."' if want_visuals else ""
     mode = cfg.get("story_mode", "real_life_drama")
     guide = _brief_instruction(brief)
     kind = classify_brief(brief)["kind"]
@@ -377,19 +404,20 @@ For EACH beat give:
   what_happens the concrete events of this beat (specific, not abstract)
   why_it_matters what the viewer now understands or feels that they did not before
   seconds      how many seconds this beat deserves (they should sum to ~{int(target_seconds)})
-  visual       what is literally ON SCREEN for this beat
-
+{visual_line}
 Return ONLY strict JSON:
 {{"premise":"...","logline":"one sentence","setting":"...","narrator":"who is telling it ({narrator_gender}, first person)",
  "cast":[{{"name":"...","role":"..."}}],"theme":"what it's really about",
  "structure":"chosen shape","why_structure":"why this shape suits this idea",
  "tone":"...","ending_kind":"...","title_idea":"...",
- "beats":[{{"purpose":"...","what_happens":"...","why_it_matters":"...","seconds":0,"visual":"..."}}]}}"""
+ "beats":[{{"purpose":"...","what_happens":"...","why_it_matters":"...","seconds":0{visual_field}}}]}}"""
 
     try:
         raw = complete(_SYS, user, model_info, json_mode=True, temperature=0.9,
-                       timeout=600)
+                       timeout=600, schema=_plan_shape(lo, hi, want_visuals))
         plan = _extract_json(raw)
+    except WriterUnavailable:
+        raise                   # say why, rather than write from a stock plan
     except Exception as exc:  # noqa: BLE001
         log("warn", f"planner failed ({exc}); using fallback plan")
         plan = _fallback_plan(brief, cfg, target_seconds)

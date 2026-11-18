@@ -94,6 +94,8 @@ textarea:focus,select:focus{border-color:var(--accent)}
 .mode .m.sel{border-color:var(--accent);background:rgba(255,122,61,.08)}
 .mode .m .t{font-weight:650;font-size:13.5px}
 .mode .m .d{font-size:11.5px;color:var(--faint);margin-top:5px;line-height:1.5}
+.mode.two{grid-template-columns:1fr 1fr}
+#wKeyNote a{color:var(--accent2)}
 .mode .m.sel .d{color:#d9b7a4}
 .flow{font-size:10.5px;color:var(--faint);margin-top:8px;
   font-family:ui-monospace,Menlo,Consolas,monospace}
@@ -419,7 +421,7 @@ tr.dis{opacity:.42}
             <div class="d">No stops. It checks its own work and files what passed.</div>
             <div class="flow">write &rarr; render &rarr; <b>self-check</b> &rarr; library</div></div>
         </div>
-        <p class="muted" style="margin-top:9px">Nothing is ever uploaded anywhere, in any mode.</p>
+        <p class="muted" style="margin-top:9px">Nothing is ever posted anywhere, in any mode.</p>
 
         <div class="grid2" style="margin-top:16px">
           <div class="card">
@@ -556,10 +558,46 @@ tr.dis{opacity:.42}
           <button class="btn g sm" style="margin-left:8px" onclick="rescan()">Re-scan</button>
           <div id="connLine" style="margin-top:10px;font-size:12.5px">&nbsp;</div>
         </p>
+        <h2>How it writes</h2>
+        <div class="mode two" id="wMode">
+          <div class="m" data-w="local" onclick="pickWriter('local')">
+            <div class="t">On this computer</div>
+            <div class="d">Free and private: nothing leaves this computer. Needs Ollama
+              and one writer download, and is slow on older laptops.</div></div>
+          <div class="m" data-w="online" onclick="pickWriter('online')">
+            <div class="t">Online, with your own key</div>
+            <div class="d">Fast on any laptop. Your story idea and script go to the AI
+              company you choose. Groq and Google Gemini give free keys.</div></div>
+        </div>
+        <div class="card" id="wOnline" style="display:none;margin-top:12px">
+          <div class="grid2">
+            <div><label for="wProv">Company</label>
+              <select id="wProv" onchange="paintProvider()"></select></div>
+            <div id="wBaseBox" style="display:none"><label for="wBase">Its address</label>
+              <input id="wBase" placeholder="https://api.example.com/v1"
+                     autocomplete="off" spellcheck="false"></div>
+          </div>
+          <label for="wKey" style="margin-top:12px">Your key</label>
+          <input id="wKey" type="password" autocomplete="off" spellcheck="false"
+                 placeholder="Paste your key here">
+          <div class="muted" id="wKeyNote" style="margin-top:6px;font-size:12.5px"></div>
+          <label for="wModel" style="margin-top:12px">Model</label>
+          <input id="wModel" list="wModels" autocomplete="off" spellcheck="false"
+                 placeholder="Press Check key to see the list">
+          <datalist id="wModels"></datalist>
+          <div class="row" style="margin-top:14px">
+            <button class="btn g sm" id="wCheck" onclick="checkWriter()">Check key</button>
+            <button class="btn sm" id="wSave" onclick="saveWriter()">Save and use it</button>
+            <span class="muted" id="wMsg"></span>
+          </div>
+          <p class="muted" id="wPrivacy" style="margin-top:12px;font-size:12.5px"></p>
+        </div>
+        <div id="wLocal">
         <h2>Writer model</h2>
         <div class="card" id="pullBox" style="display:none;margin-bottom:12px"></div>
         <div class="card"><table id="models"></table></div>
         <p class="muted" style="margin-top:10px">Only the model you choose is downloaded. Nothing else is fetched.</p>
+        </div>
       </div>
     </div>
   </div>
@@ -650,7 +688,7 @@ function staleSession(){
 async function makeVideo(){
   const r = await api('/api/make', {brief:$('#brief').value, seconds:SECS||null,
                                     voice:VOICE, mode:MODE, count:COUNT});
-  if(r.error){ notify('Could not start', r.error, 'bad'); return; }
+  if(r.error){ notify('Could not start', r.error, 'bad'); if(r.needs_writer) go('machine'); return; }
   notify(COUNT > 1 ? `Queued ${COUNT} versions` : 'Making your Short',
          COUNT > 1 ? 'They render one after another — about '
                      + (COUNT*13) + ' minutes in total.'
@@ -1584,6 +1622,7 @@ async function applyUpdate(){
 }
 
 async function loadMachine(){
+  loadWriter();
   const m = await api('/api/machine');
   $('#mSum').textContent = m.summary || '';
   paintConnection(m.connection);
@@ -1611,6 +1650,104 @@ async function loadMachine(){
       <td>${btn}</td></tr>`;}).join('');
   paintPull(m.pull);
 }
+
+// ---------- who writes ----------
+// This computer, or an online AI with the person's own key. The key goes to
+// Shortsmith once, when it is saved, and is never sent back to this page.
+let WRITER = null, WPICK = null;
+async function loadWriter(){
+  try { WRITER = await api('/api/writer'); } catch(e){ return; }
+  if(!WPICK) WPICK = WRITER.mode === 'online' ? 'online' : 'local';
+  const sel = $('#wProv');
+  if(!sel.options.length){
+    sel.innerHTML = WRITER.presets.map(p => '<option value="' + esc(p.id) + '">'
+      + esc(p.label) + (p.free ? ' (free allowance)' : '') + '</option>').join('');
+  }
+  if(WRITER.provider) sel.value = WRITER.provider;
+  if(WRITER.provider === 'other' && !$('#wBase').value) $('#wBase').value = WRITER.base_url;
+  if(WRITER.model && !$('#wModel').value) $('#wModel').value = WRITER.model;
+  paintWriter();
+}
+function pickWriter(which){
+  WPICK = which;
+  paintWriter();
+  if(which === 'local' && WRITER && WRITER.mode === 'online') useLocal();
+}
+function paintWriter(){
+  document.querySelectorAll('#wMode .m').forEach(m =>
+    m.classList.toggle('sel', m.dataset.w === WPICK));
+  $('#wOnline').style.display = WPICK === 'online' ? 'block' : 'none';
+  $('#wLocal').style.display = WPICK === 'online' ? 'none' : 'block';
+  paintProvider();
+}
+function presetOf(id){ return ((WRITER && WRITER.presets) || []).find(p => p.id === id) || {}; }
+function paintProvider(){
+  const p = presetOf($('#wProv').value);
+  const other = p.id === 'other';
+  $('#wBaseBox').style.display = other ? 'block' : 'none';
+  const saved = WRITER && WRITER.has_key && WRITER.provider === p.id;
+  $('#wKey').placeholder = saved ? 'Saved, ending in ' + WRITER.key_hint
+                                   + '. Paste a new one to replace it.'
+                                 : 'Paste your key here';
+  $('#wKeyNote').innerHTML = (p.key_url ? 'No key yet? <a href="' + esc(p.key_url)
+      + '" target="_blank" rel="noopener">Get one from ' + esc(p.label) + '</a>. ' : '')
+    + (saved ? '<a href="#" onclick="forgetWriter();return false">Remove the saved key</a>.' : '');
+  const who = other ? 'that service' : (p.label || 'that company');
+  $('#wPrivacy').textContent = 'When this is on, your story idea and the script are sent '
+    + 'to ' + who + ' to be written. The voice, the captions, the video and your '
+    + 'gameplay footage are still all made on this computer. Your key is kept on this '
+    + 'computer only' + (WRITER && WRITER.encrypted ? ', locked to your Windows account' : '')
+    + ', and is never shown again once saved.';
+}
+function writerForm(){
+  return {provider: $('#wProv').value, base_url: $('#wBase').value.trim(),
+          key: $('#wKey').value.trim(), model: $('#wModel').value.trim()};
+}
+function writerSays(text, good){
+  $('#wMsg').innerHTML = '<span class="' + (good ? 'ok' : 'bad') + '">' + esc(text) + '</span>';
+}
+async function checkWriter(){
+  const b = $('#wCheck'); b.disabled = true; $('#wMsg').textContent = 'Checking\u2026';
+  let r; try { r = await api('/api/writer/check', writerForm()); } catch(e){ r = null; }
+  b.disabled = false;
+  if(r && r.models && r.models.length)
+    $('#wModels').innerHTML = r.models.map(m => '<option value="' + esc(m) + '">').join('');
+  if(!r || !r.ok) return writerSays((r && r.error) || 'Shortsmith did not answer.', false);
+  if(r.model) $('#wModel').value = r.model;
+  writerSays(r.message, true);
+}
+async function saveWriter(){
+  const b = $('#wSave'); b.disabled = true; $('#wMsg').textContent = 'Checking and saving\u2026';
+  let r; try { r = await api('/api/writer/save', {mode: 'online', ...writerForm()}); } catch(e){ r = null; }
+  b.disabled = false;
+  if(!r || r.error) return writerSays((r && r.error) || 'Shortsmith did not answer.', false);
+  $('#wKey').value = '';
+  WRITER = r; WPICK = 'online';
+  if(r.model) $('#wModel').value = r.model;
+  paintWriter();
+  writerSays('Saved. Shortsmith now writes with ' + r.label + '.', true);
+  writerChanged();
+}
+async function useLocal(){
+  const r = await api('/api/writer/save', {mode: 'local'});
+  if(!r || r.error) return;
+  WRITER = r;
+  notify('Writing on this computer', 'Nothing is sent online.', 'good');
+  writerChanged();
+}
+async function forgetWriter(){
+  if(!await ask({title: 'Remove the saved key?',
+        detail: 'Shortsmith goes back to writing on this computer. You can paste a key again at any time.',
+        yes: 'Remove it', no: 'Keep it', danger: true})) return;
+  const r = await api('/api/writer/forget', {});
+  if(!r || r.error) return;
+  WRITER = r; WPICK = 'local';
+  $('#wModel').value = '';
+  paintWriter();
+  notify('Key removed', 'Writing is back on this computer.', 'good');
+  writerChanged();
+}
+function writerChanged(){ pollBoot(); refresh(); }
 
 let PREVIEW_PLAYING = false;
 async function previewVoice(){
@@ -1729,8 +1866,13 @@ async function refresh(){
   renderReview(s.pending || []);
   renderLibrary(s.approved || []);
   paintLeftovers(s.leftovers);
-  $('#mini').innerHTML = 'Local only · nothing leaves this computer<br><b>'
-    + (s.pending_count||0) + '</b> waiting for review';
+  // Where the writing happens, said where it is always visible. Online
+  // writing sends the script out, and the sidebar should never claim it does not.
+  const w = s.writer || {};
+  $('#mini').innerHTML = (w.online
+      ? 'Writing online with ' + esc(w.label) + ' &middot; scripts are sent there'
+      : 'Local only &middot; nothing leaves this computer')
+    + '<br><b>' + (s.pending_count||0) + '</b> waiting for review';
 }
 // Video files with no entry in the app. Earlier versions made them: a video
 // deleted while it was playing lost its entry and kept its file. Nothing can
@@ -1878,14 +2020,32 @@ function announce(s){
 let BOOTED = false;
 function paintBoot(b){
   if(b.ready || b.stage === 'ready'){
-    if(!BOOTED){ BOOTED = true; $('#boot').classList.remove('on'); stopSnake(); refresh(); }
+    // Lift the screen every time, not only the first: it also comes back
+    // when the writer is changed in Settings.
+    $('#boot').classList.remove('on');
+    stopSnake();
+    paintBoot.failed = false;
+    if(!BOOTED){ BOOTED = true; refresh(); }
     return;
   }
+  const choose = b.stage === 'choose';
+  // Someone who already stepped past the choice, and is in Settings making
+  // it, should not have it put back over the page they are using.
+  if(choose && BOOTSKIP){
+    // A moment ago this may have been showing "Starting"; take it down.
+    $('#boot').classList.remove('on'); stopSnake();
+    paintBoot.failed = true; return;
+  }
   $('#boot').classList.add('on');
-  if(b.stage === 'failed'){
-    $('#bootTitle').textContent = 'Shortsmith could not start';
-    $('#bootMsg').innerHTML = '<span class="bad">' + esc(b.error || 'Unknown problem') + '</span>';
-    $('#bootStage').textContent = 'stopped';
+  $('.bootbar').style.display = choose ? 'none' : '';
+  $('.bootpct').style.display = choose ? 'none' : '';
+  if(choose || b.stage === 'failed'){
+    $('#bootTitle').textContent = choose ? 'How should Shortsmith write your stories?'
+                                         : 'Shortsmith could not start';
+    $('#bootMsg').innerHTML = choose ? esc(b.message || '')
+      : '<span class="bad">' + esc(b.error || 'Unknown problem') + '</span>';
+    $('#bootStage').textContent = choose ? '' : 'stopped';
+    $('#bootActs').innerHTML = choose ? BOOT_CHOOSE : BOOT_FAILED;
     $('#bootActs').style.display = 'block';
     paintBoot.failed = true;
     return;
@@ -1902,7 +2062,7 @@ async function pollBoot(){
   try{
     const b = await api('/api/boot');
     paintBoot(b);
-    if(!b.ready && b.stage !== 'failed') setTimeout(pollBoot, 600);
+    if(!b.ready && b.stage !== 'failed' && b.stage !== 'choose') setTimeout(pollBoot, 600);
   }catch(e){ setTimeout(pollBoot, 1200); }
 }
 
@@ -1913,12 +2073,31 @@ async function pollBoot(){
 // your memory and disk before offering a download. So when startup fails for
 // want of a model, the person goes there, presses Download, and the finished
 // download brings them back by itself (see paintPull).
-function bootSettings(){
+let BOOTSKIP = false;
+const BOOT_FAILED = '<button class="btn g" onclick="bootSettings()">Open Settings</button>'
+  + '<button class="btn" onclick="bootRetry()" style="margin-left:8px">Try again</button>';
+// The first thing a new copy shows when nothing can write yet. Neither way
+// is pushed: both cards lead into Settings, and either can be changed later.
+const BOOT_CHOOSE = '<div class="mode two" style="text-align:left">'
+  + '<div class="m" onclick="bootLocal()"><div class="t">On this computer</div>'
+  + '<div class="d">Free and private: nothing leaves this computer. Needs Ollama, a '
+  + 'free app, and one writer download. Slow on older laptops.</div></div>'
+  + '<div class="m" onclick="bootOnline()"><div class="t">Online, with your own key</div>'
+  + '<div class="d">Fast on any laptop. Your story idea and script go to the AI company '
+  + 'you pick. Groq and Google Gemini give free keys.</div></div></div>'
+  + '<div style="margin-top:12px"><button class="btn g sm" onclick="bootRetry()">'
+  + 'Try again</button></div>';
+function bootLocal(){ bootSettings('local'); }
+function bootOnline(){ bootSettings('online'); }
+function bootSettings(which){
+  BOOTSKIP = true;
+  if(which) WPICK = which;
   $('#boot').classList.remove('on');
   stopSnake();
   go('machine');
 }
 async function bootRetry(){
+  BOOTSKIP = false;
   $('#boot').classList.add('on');
   paintBoot({stage:'checking', message:'Trying again…', percent:0});
   try{ await api('/api/boot/retry', {}); }catch(e){}

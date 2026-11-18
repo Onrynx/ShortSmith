@@ -25,6 +25,7 @@ import re
 
 from ..config import format_spec
 from ..llm import complete
+from ..writer import WriterUnavailable
 from ..model_profiles import profile_for
 from ..story_doctrine import DOCTRINE, FACTUAL_CRAFT, violations
 from ..timing import (estimate_seconds, load_calibration, plan_revisions,
@@ -200,6 +201,31 @@ def _pacing_note(beats: list) -> str:
             "viewer did not already know.")
 
 
+def _scene_shape(count: int, want_visuals: bool, with_meta: bool) -> dict:
+    """Exactly `count` scenes, each with its narration. See llm.complete."""
+    props = {"narration": {"type": "string"}}
+    if want_visuals:
+        props["image_prompt"] = {"type": "string"}
+    shape = {"type": "object", "required": ["scenes"], "properties": {
+        "scenes": {"type": "array", "minItems": count, "maxItems": count,
+                   "items": {"type": "object", "required": list(props),
+                             "properties": props}}}}
+    if with_meta:
+        shape["properties"].update(
+            title={"type": "string"}, description={"type": "string"},
+            tags={"type": "array", "items": {"type": "string"}})
+        shape["required"] += ["title", "description", "tags"]
+    return shape
+
+
+def _revision_shape(count: int) -> dict:
+    return {"type": "object", "required": ["scenes"], "properties": {
+        "scenes": {"type": "array", "minItems": count, "maxItems": count,
+                   "items": {"type": "object", "required": ["index", "narration"],
+                             "properties": {"index": {"type": "integer"},
+                                            "narration": {"type": "string"}}}}}}
+
+
 def write_script(plan: dict, cfg: dict, model_info: dict, t: dict, *,
                  want_visuals: bool = True, on_progress=None) -> dict:
     """Write the full script from a plan. Chunked, plan-faithful, continuity-safe.
@@ -270,7 +296,16 @@ named character the plan never mentioned.{visual_rule}"""
     scenes: list = []
     meta: dict = {}
 
-    for start in range(0, len(beats), CHUNK):
+    # The cursor moves on by what was actually written. A reply that came
+    # back short used to be accepted and the loop went on to the NEXT group,
+    # so the beats it left out were never written at all: one render asked
+    # for sixteen, got ten, spent two hours on continuity and length fixes,
+    # and was then thrown away for having too few scenes. Now the missing
+    # beats are simply asked for again.
+    start, calls = 0, 0
+    max_calls = -(-len(beats) // CHUNK) + 4
+    while start < len(beats) and calls < max_calls:
+        calls += 1
         group = beats[start:start + CHUNK]
         if scenes:
             so_far = "\n".join(f"{i+1}. {s.get('narration','')}"
@@ -295,9 +330,12 @@ named character the plan never mentioned.{visual_rule}"""
                 + visual_field + "}]" + (', "title":"...","description":"...","tags":["..."]'
                                          if not scenes else "") + "}")
         try:
-            part = extract_json(complete(_SYS_WRITE, user, model_info,
-                                         json_mode=True, temperature=0.85,
-                                         timeout=600))
+            part = extract_json(complete(
+                _SYS_WRITE, user, model_info, json_mode=True, temperature=0.85,
+                timeout=600,
+                schema=_scene_shape(len(group), want_visuals, not scenes)))
+        except WriterUnavailable:
+            raise
         except Exception as exc:  # noqa: BLE001
             log("warn", f"beat chunk {start//CHUNK + 1} failed ({exc})")
             break
@@ -318,7 +356,11 @@ named character the plan never mentioned.{visual_rule}"""
             if not sc.get("image_prompt"):
                 vis = b.get("visual") or plan.get("setting") or ""
                 sc["image_prompt"] = f"{vis}, {style}".strip(", ")
-        scenes.extend(got[:len(group)])
+        took = got[:len(group)]
+        scenes.extend(took)
+        if len(took) < len(group):
+            log("warn", f"asked for {len(group)} beats and got {len(took)}; "
+                        "asking again for the rest")
         written = sum(len(str(s.get("narration", "")).split()) for s in scenes)
         log("info", f"wrote beats {start+1}-{start+len(got)} ({written} words so far)")
         if on_progress:
@@ -329,6 +371,7 @@ named character the plan never mentioned.{visual_rule}"""
                              "opening": scenes[0].get("narration", "")[:300]})
             except Exception:  # noqa: BLE001
                 pass
+        start += len(took)
 
     if not scenes:
         raise ValueError("writer produced no scenes")
@@ -418,7 +461,8 @@ def revise_for_duration(script: dict, revisions: dict, model_info: dict,
         try:
             out = extract_json(complete(_SYS_REVISE, user, model_info,
                                         json_mode=True, temperature=0.6,
-                                        timeout=600))
+                                        timeout=600,
+                                        schema=_revision_shape(len(group))))
         except Exception as exc:  # noqa: BLE001
             log("warn", f"duration revision batch failed ({exc}); skipping batch")
             continue
@@ -528,6 +572,7 @@ def generate_script(cfg: dict, topic: str, hero_budget: tuple[int, int],
         seed=story_memory.seed_prompt() if not topic else "",
         avoid=story_memory.avoid_list() if not topic else "",
         narrator_gender=narrator_gender,
+        want_visuals=want_visuals,
     )
     if on_plan:
         try:

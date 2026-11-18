@@ -4,8 +4,10 @@ Make YouTube Shorts on your own laptop. You type an idea — or nothing at all �
 and a few minutes later a finished vertical video is waiting for you to approve:
 original story, AI narration, gameplay background, word-by-word captions.
 
-**Everything runs on your computer.** No account, no subscription, no API keys,
-no cloud. Nothing you make is uploaded anywhere until you decide to post it.
+**Everything runs on your computer by default.** No account, no subscription,
+no cloud. If your laptop is slow at writing, you can choose to have just the
+story written online instead, with your own free key. Nothing you make is
+posted anywhere until you decide to post it.
 
 ---
 
@@ -50,9 +52,12 @@ These links always give you the newest version.
 Then, once:
 
 1. **Unzip it** anywhere (your Desktop is fine) and double-click **Shortsmith**.
-2. **Install Ollama** from [ollama.com/download](https://ollama.com/download).
-   That is the engine that writes the stories. It installs itself like any
-   normal app, and Shortsmith starts and stops it for you.
+2. **Choose how it writes.** The first time it opens, Shortsmith asks.
+   **On this computer** is free and private: install
+   [Ollama](https://ollama.com/download) and download one writer from Settings.
+   **Online, with your own key** is much faster on older laptops; Groq and
+   Google Gemini give free keys, and only the story text is sent. You can
+   switch at any time in Settings.
 
 That is the whole install. **There is no Python to install and nothing to
 type** — the download carries its own copy of everything it needs.
@@ -173,7 +178,13 @@ shortcut, and uninstall Ollama like any other app.
 
 ## Your privacy
 
-- Everything happens on your computer. There is no server and no account.
+- By default everything happens on your computer. There is no server and no
+  account.
+- If you choose online writing, your story idea and script go to the company
+  you picked, using your own key. Nothing else does: the voice, the captions,
+  the video and your footage are always made here. The key is kept on this
+  computer only, outside the Shortsmith folder, so sharing the folder never
+  shares it; on Windows it is also locked to your account.
 - The app window talks to `127.0.0.1` — your own machine only. Nothing on your
   Wi-Fi and nothing on the internet can reach it.
 - The hardware check reads your RAM, CPU and graphics card to recommend a model.
@@ -287,8 +298,9 @@ prints what the hardware scan sees.
 
 There is no Discord bot any more, and no remote control of any kind.
 Shortsmith runs in its own window on this machine and talks to nothing but
-Ollama on localhost — plus a version check against GitHub, and a one-time
-download of the voice model.
+Ollama on localhost — plus a version check against GitHub, a one-time
+download of the voice model, and, only if you turn on online writing, the AI
+company you chose.
 
 ---
 

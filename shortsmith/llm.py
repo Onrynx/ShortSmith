@@ -12,10 +12,15 @@ Gemini whenever Ollama was down and an API key happened to be present, which
 meant the brief and every draft went to Google because of a line in a config
 file — while the app told the user nothing leaves this computer.
 
+Online writing (writer.py) is not a fallback either. It is used only when
+the person chose it in Settings and gave their own key, and a failure there
+stops the render and says why rather than quietly writing somewhere else.
+
 --mock forces the mock backend with zero network calls.
 """
 from __future__ import annotations
 
+import time
 from typing import Optional
 
 from .config import detect_free_ram_gb, detect_total_ram_gb
@@ -43,6 +48,16 @@ def select_model(mock: bool = False) -> dict:
     """Return {backend, model, base_url, reason}. Never raises."""
     if mock:
         return {"backend": "mock", "model": "mock", "base_url": "", "reason": "--mock: canned generator, zero network"}
+
+    # Online, when the person chose it and gave a key that works. A choice
+    # that is missing its key falls through to this computer, which is the
+    # more private of the two, not to anywhere else.
+    from . import writer
+    if writer.ready():
+        w = writer.load()
+        return {"backend": "openai", "model": w["model"], "base_url": w["base_url"],
+                "reason": f"writing online with {writer.label_of(w)} ({w['model']}), "
+                          "as chosen in Settings"}
 
     free = detect_free_ram_gb()
     total = detect_total_ram_gb()
@@ -76,17 +91,45 @@ def select_model(mock: bool = False) -> dict:
                       "install a model"}
 
 
+def unload(model_info: dict) -> None:
+    """Ask Ollama to drop the writer from memory now.
+
+    It otherwise stays loaded for five minutes after its last request, which
+    is exactly while the voice, the captions and the video encoder all want
+    memory of their own. On an 8 GB laptop that is the difference between
+    working and swapping.
+    """
+    if (model_info or {}).get("backend") != "ollama":
+        return
+    try:
+        http_post_json(f"{model_info['base_url']}/api/generate",
+                       {"model": model_info["model"], "keep_alive": 0}, timeout=20)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 # --------------------------------------------------------------------------- #
 # Direct completion (single-shot fallback path, no CrewAI needed)
 # --------------------------------------------------------------------------- #
 def complete(system: str, user: str, model_info: dict,
              json_mode: bool = False, temperature: float = 0.7,
-             timeout: float = 180.0) -> str:
-    """Chat-complete against the selected backend. Raises on failure."""
+             timeout: float = 180.0, schema: dict | None = None) -> str:
+    """Chat-complete against the selected backend. Raises on failure.
+
+    `schema` is a JSON Schema the reply must fit. Ollama compiles it into a
+    grammar and the model cannot write anything that breaks it -- so "exactly
+    four scenes" stops being a request and becomes a fact. Small models
+    ignore counts written in words all the time; asked in words for one scene
+    and given a four-scene shape, an 8B wrote four.
+    """
     backend = model_info.get("backend")
     # Context/output limits are per-model, not global — see model_profiles.
     from .model_profiles import profile_for
     _prof = profile_for(model_info.get("model", ""))
+    if backend == "openai":
+        from .writer import chat
+        return chat(system, user, model_info, json_mode=json_mode or bool(schema),
+                    temperature=temperature, timeout=timeout)
     if backend == "ollama":
         payload = {
             "model": model_info["model"],
@@ -105,11 +148,24 @@ def complete(system: str, user: str, model_info: dict,
                         "num_ctx": int(env("OLLAMA_NUM_CTX", "") or _prof["num_ctx"]),
                         "num_predict": int(env("OLLAMA_NUM_PREDICT", "") or _prof["num_predict"])},
         }
-        if json_mode:
+        if schema:
+            payload["format"] = schema
+        elif json_mode:
             payload["format"] = "json"
         if model_info["model"].startswith(("qwen3", "deepseek-r1")):
             payload["think"] = False  # thinking mode is 10x slower; not needed here
-        data = http_post_json(f"{model_info['base_url']}/api/chat", payload, timeout=timeout)
+        url = f"{model_info['base_url']}/api/chat"
+        began = time.time()
+        try:
+            data = http_post_json(url, payload, timeout=timeout)
+        except Exception:
+            # An Ollama too old to take a shape refuses at once. Anything that
+            # took longer than that failed for another reason, and asking
+            # again would only double the wait.
+            if not schema or time.time() - began > 20:
+                raise
+            payload["format"] = "json"
+            data = http_post_json(url, payload, timeout=timeout)
         if isinstance(data, dict):
             return (data.get("message", {}) or {}).get("content", "") or ""
         return str(data)

@@ -1,5 +1,47 @@
 # Changelog
 
+## 2.4.4
+
+**Write online, with your own key**
+- If your laptop is slow at writing, Shortsmith can now have just the story
+  written by an online AI, with your own key. Any company works: Groq, Google
+  Gemini, OpenRouter, OpenAI, Mistral, DeepSeek, or any other service that
+  offers "OpenAI-compatible" access. Groq and Google Gemini give free keys,
+  and Settings links to where each company makes them.
+- Only the writing goes online: your idea, the plan and the script. The
+  voice, the captions, the video and your gameplay footage are still all made
+  on your computer, and the sidebar always says which way it is writing.
+- Your key is kept on your computer only, outside the Shortsmith folder, so
+  sharing the folder never shares the key. On Windows it is also locked to
+  your account. Shortsmith checks that the key works before saving it, and
+  never shows it again afterwards.
+- If a free allowance runs out partway through, Shortsmith waits when the
+  wait is short. When it is not, it stops and says so, instead of making a
+  video from its built-in sample story.
+
+**Nothing is forced on a new copy**
+- Shortsmith no longer insists on Ollama and a writer download before it
+  will open. The first time, it asks how you want stories written: on this
+  computer, or online with your own key. Either can be changed in Settings.
+
+**Faster, without changing what the story says**
+- Your computer no longer falls asleep in the middle of making a video. It
+  used to, and the video simply stopped until you came back -- which looked
+  like a video that took two hours.
+- A finished story is never thrown away. Smaller writer models often hand
+  back fewer scenes than they were asked for; Shortsmith used to discover
+  that at the very end, discard the whole story and use a built-in sample
+  instead. It now asks again for just the missing part, straight away.
+- The writer is given the exact outline to fill in, so it cannot come back
+  short in the first place.
+- On computers with 16 GB of memory or less, the writer is put away before
+  the voice and the video are made, instead of sitting in memory through the
+  part where everything else needs the room.
+- Background footage is cut at the size of the finished video. It was being
+  recompressed at its full size first -- for 4K footage, four times the work.
+- The story plan no longer describes pictures for every beat when your own
+  gameplay footage is what goes on screen.
+
 ## 2.4.3
 
 **Deleting**

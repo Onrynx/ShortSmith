@@ -16,6 +16,7 @@ import shutil
 from pathlib import Path
 
 from .config import load_channel
+from . import awake
 from .gate import node_gate
 from .llm import select_model
 from .nodes import node_canvas, node_cutter, node_herald, node_script, node_voice
@@ -136,14 +137,42 @@ def run_lite(state: PipelineState, resume: bool = True) -> PipelineState:
         if name in completed:
             log("info", f"skip {name} (checkpointed)")
             continue
+        # Waiting for a person to read a script is not work: let the
+        # computer sleep through that, and hold it awake again afterwards.
+        if name == "approve":
+            awake.release()
         update = fn(state) or {}
+        if name == "approve":
+            awake.hold()
         state.update(update)
         completed.add(name)
+        if name == "voice":
+            _free_writer(state)
         try:
             write_json(ckpt, {"completed": sorted(completed), "state": state})
         except Exception as exc:  # noqa: BLE001
             log("warn", f"could not write checkpoint: {exc}")
     return state
+
+
+def _free_writer(state: dict) -> None:
+    """Drop the writer model before the video stages, where memory is short.
+
+    The writing is finished by now and the next stages each want memory of
+    their own. Ollama would keep the model loaded for five more minutes --
+    on a machine with 16 GB or less, that is the stretch where everything
+    slows down. Machines with room to spare keep it loaded, since the
+    metadata at the end reuses it.
+    """
+    try:
+        from .hardware import scan
+        if float(scan().get("ram_total_gb") or 0) > 16:
+            return
+        from .llm import unload
+        unload(state.get("model_info") or {})
+        log("info", "writer unloaded to free memory for the video stages")
+    except Exception:  # noqa: BLE001
+        pass
 
 
 # --------------------------------------------------------------------------- #
@@ -158,6 +187,7 @@ def run_pipeline(state: PipelineState) -> PipelineState:
     notify("info", lane, channel, "pipeline",
            f"starting {'MOCK ' if state.get('mock') else ''}run {state['run_id']} "
            f"(engine={'langgraph' if use_lg else 'lite'})", push=False)
+    awake.hold()
     try:
         if use_lg:
             try:
@@ -174,6 +204,7 @@ def run_pipeline(state: PipelineState) -> PipelineState:
         state.setdefault("errors", []).append(str(exc))
         write_status(lane, {"stage": "failed", "message": str(exc),
                             "run_id": state.get("run_id"), "channel": channel, "lane": lane})
+        awake.release()
         return state
 
     if not state.get("final_video_path"):
@@ -181,6 +212,7 @@ def run_pipeline(state: PipelineState) -> PipelineState:
                "render produced ZERO output (no final video)")
     else:
         cleanup_workdir(state)
+    awake.release()
     return state
 
 
