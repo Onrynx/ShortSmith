@@ -1,5 +1,22 @@
 # Changelog
 
+## 2.4.5
+
+**Updates you can see**
+- The Updates page now says when Shortsmith last checked with GitHub and
+  whether GitHub answered, so "you have the latest version" can no longer
+  hide a check that never got through. When a check fails, the page says why
+  and the Updates button in the sidebar turns red.
+- Shortsmith tells you how the check went each time it opens, and each time
+  you press Check again: up to date, an update is ready, or it could not
+  check.
+- Installing an update now reads every file back and compares it with the
+  release before calling it installed, and says how many files it replaced.
+  If anything goes wrong partway -- a file in use, a full disk -- every file
+  is put back as it was, and it tells you nothing was changed.
+- One kind of failed check used to end in "could not tell whether this copy
+  is current", with the reason thrown away. It now says what went wrong.
+
 ## 2.4.4
 
 **Write online, with your own key**

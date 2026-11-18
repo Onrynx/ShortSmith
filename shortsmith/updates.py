@@ -59,6 +59,9 @@ ZIP_URL = f"https://github.com/{REPO}/releases/latest"
 # A tag does not move. Resolving the release once and fetching every file from
 # that tag means an update delivers the release and nothing else.
 _ref_cache: dict = {}
+# Why the last check could not finish, kept so the Updates page can say so
+# rather than settling on "could not tell".
+_problem: dict = {}
 
 
 def release_ref() -> str | None:
@@ -75,11 +78,13 @@ def release_ref() -> str | None:
         tag = str(data.get("tag_name") or "").strip()
     except Exception as exc:  # noqa: BLE001
         log("warn", f"could not read the latest release: {exc}")
+        _problem["release"] = str(exc)[:200]
         return None
     # A tag becomes part of a URL files are fetched from, so it has to look
     # like a tag and nothing else.
     if not tag or not re.fullmatch(r"[A-Za-z0-9._-]{1,64}", tag):
         log("warn", f"the latest release has an unusable tag: {tag!r}")
+        _problem["release"] = "the newest release has an unusable name"
         return None
     _ref_cache.update(tag=tag, at=time.time())
     return tag
@@ -170,6 +175,7 @@ def _published_version() -> tuple[str | None, list[str]]:
         text = _fetch(base + "CHANGELOG.md")
     except Exception as exc:  # noqa: BLE001
         log("warn", f"could not read the published changelog: {exc}")
+        _problem["changelog"] = str(exc)[:200]
         return None, []
     m = _HEADING_RE.search(text)
     if not m:
@@ -188,8 +194,10 @@ def check(force: bool = False) -> dict:
     """What version we are on, and whether the published one has moved ahead."""
     global _cache_at
     if _cache and not force and (time.time() - _cache_at) < CACHE_SECONDS:
-        return _cache
+        # Said, not hidden: the page shows how old this answer is.
+        return {**_cache, "cached": True, "age": round(time.time() - _cache_at)}
 
+    _problem.clear()
     version = installed_version()
     out = {
         "version": version,
@@ -207,6 +215,12 @@ def check(force: bool = False) -> dict:
         "page": PAGE,
         "changelog": local_changelog(),
         "whats_new": [],
+        # When this copy last went online to ask, and whether GitHub answered.
+        # Without these the page could not tell "up to date" from "never
+        # actually asked".
+        "checked_at": time.time(),
+        "reached": False,
+        "cached": False,
     }
 
     try:
@@ -221,7 +235,9 @@ def check(force: bool = False) -> dict:
         out["error"] = f"Could not reach GitHub ({exc})"
         out["state"] = "error"
         _cache.clear()
+        log("warn", f"update check failed: {out['error']}")
         return out
+    out["reached"] = True
 
     # The published version number is what makes a ZIP install answerable at
     # all, and it is the tiebreaker when the commit history cannot decide.
@@ -258,7 +274,21 @@ def check(force: bool = False) -> dict:
     else:
         out["state"] = by_version or "unknown"
 
+    # GitHub answered but the release could not be read -- rate limited, or
+    # a file missing from the release. For a copy that updates from releases
+    # that is a failed check, and it used to come out as "could not tell"
+    # with the reason thrown away.
+    if not published and not out["git"]:
+        why = _problem.get("release") or _problem.get("changelog") or "no reason given"
+        out["state"] = "error"
+        out["error"] = f"GitHub answered, but the newest release could not be read ({why})"
+
     out["up_to_date"] = out["state"] in ("current", "ahead")
+    if out["state"] == "error":
+        log("warn", f"update check failed: {out['error']}")
+    else:
+        log("info", f"update check: GitHub answered; newest v{published or '?'}, "
+                    f"this copy v{version} ({out['state']})")
     # Any install can update itself now: a checkout pulls, everything else
     # patches the files that differ.
     out["can_install"] = out["state"] == "behind"
@@ -433,20 +463,64 @@ def apply_incremental(progress=None) -> dict:
             if progress:
                 progress(i, len(plan["files"]), rel)
             tmp = stage_dir / f"{i:04d}.part"
-            http_download(base + urllib.parse.quote(rel), tmp,
-                          timeout=120, expect_sha256=item["sha256"],
-                          max_bytes=MAX_FILE_BYTES)
+            try:
+                http_download(base + urllib.parse.quote(rel), tmp,
+                              timeout=120, expect_sha256=item["sha256"],
+                              max_bytes=MAX_FILE_BYTES)
+            except Exception as exc:  # noqa: BLE001
+                # The raw text is an address and two 64-character
+                # fingerprints. What a person needs is which file, and why.
+                low = str(exc).lower()
+                why = ("it arrived damaged" if "checksum" in low or "mismatch" in low
+                       else str(exc)[:120])
+                raise RuntimeError(f"{rel} could not be downloaded: {why}") from None
             staged.append((tmp, target))
 
         # Everything downloaded and verified before anything is replaced, so a
         # failure halfway cannot leave a half-updated install.
-        for tmp, target in staged:
-            target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.move(str(tmp), str(target))
+        #
+        # The replacing itself can still fail partway -- a file another
+        # program has open, a disk that fills up -- so each file is copied
+        # aside first and everything is put back if any step fails. Then
+        # every file is read back and compared with the release: "installed"
+        # means the files on disk are the release's, not merely that copying
+        # them raised no error.
+        before = stage_dir / "previous"
+        before.mkdir()
+        kept, created = [], []
+        try:
+            for i, (tmp, target) in enumerate(staged):
+                if target.exists():
+                    copy = before / f"{i:04d}"
+                    shutil.copy2(target, copy)
+                    kept.append((copy, target))
+                else:
+                    created.append(target)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(tmp), str(target))
+            wrong = [item["path"] for (_, target), item in zip(staged, plan["files"])
+                     if _local_digest(target) != item["sha256"]]
+            if wrong:
+                raise RuntimeError(f"{len(wrong)} file(s) did not match the release "
+                                   f"after copying ({', '.join(wrong[:3])})")
+        except Exception:
+            for copy, target in kept:
+                try:
+                    shutil.copy2(copy, target)
+                except OSError:
+                    pass
+            for target in created:
+                try:
+                    target.unlink()
+                except OSError:
+                    pass
+            raise
     except Exception as exc:  # noqa: BLE001
         shutil.rmtree(stage_dir, ignore_errors=True)
         log("warn", f"incremental update failed: {exc}")
-        return {"ok": False, "error": str(exc)[:300]}
+        return {"ok": False, "error": (f"The update did not install: {str(exc)[:240]}. "
+                                       f"Nothing was changed; this is still "
+                                       f"v{installed_version()}.")}
     finally:
         shutil.rmtree(stage_dir, ignore_errors=True)
 
@@ -456,7 +530,8 @@ def apply_incremental(progress=None) -> dict:
     new_version = installed_version()
     log("info", f"updated {len(staged)} file(s) -> v{new_version}")
     return {"ok": True, "updated": len(staged), "version": new_version,
-            "mb": plan["mb"], "restart": True}
+            "mb": plan["mb"], "restart": True, "verified": True,
+            "files": [item["path"] for item in plan["files"]]}
 
 
 

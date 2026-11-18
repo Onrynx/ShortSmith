@@ -32,6 +32,9 @@ body{margin:0;background:var(--bg);color:var(--txt);overflow:hidden;
   font-weight:700;background:rgba(255,178,36,.18);color:var(--accent2);
   border:1px solid rgba(255,178,36,.45);
   box-shadow:0 0 10px rgba(255,178,36,.18)}
+.navb .cnt.bad{background:rgba(248,113,113,.16);color:var(--bad);border-color:#4a2626}
+.uwhen{margin-top:12px;font-size:12px;color:var(--faint)}
+.uwhen.bad{color:var(--bad)}
 .navb .cnt.zero{background:#191d24;color:#5d6673;border-color:#272c35;
   box-shadow:none;font-weight:600}
 .side .sp{flex:1}
@@ -1535,16 +1538,34 @@ function notesHTML(lines){
       .trim();
 }
 
-async function loadUpdates(force){
-  const u = await api('/api/updates' + (force ? '?force=1' : ''));
+// When the copy last asked GitHub, and what happened. Shown on the page,
+// because "you have the latest version" means nothing if it never asked.
+function updateWhen(u){
+  const at = u.checked_at ? new Date(u.checked_at * 1000) : null;
+  const t = at ? at.toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'}) : '?';
+  if(u.state === 'error')
+    return '<div class="uwhen bad">Tried to check with GitHub at ' + t + '. '
+      + esc(u.error || 'It did not answer.') + '</div>';
+  const mins = u.cached ? Math.round((u.age || 0) / 60) : 0;
+  return '<div class="uwhen">Checked with GitHub at ' + t
+    + (mins >= 1 ? ' (' + mins + ' min ago)' : ' (just now)') + ' and it answered. '
+    + 'Newest published: v' + esc(u.latest_version || '?') + '.</div>';
+}
+let JUST_INSTALLED = null;
+
+// announce: say how the check went in a notification as well -- when the
+// app opens and when Check again is pressed, not every time the tab opens.
+async function loadUpdates(force, announce){
+  let u;
+  try { u = await api('/api/updates' + (force ? '?force=1' : '')); }
+  catch(e){ u = {state: 'error', error: 'Shortsmith itself did not answer.', version: '?'}; }
   $('#uSub').textContent = 'You are on v' + u.version;
-  const again = '<button class="btn g sm" onclick="loadUpdates(true)">Check again</button>';
+  const again = '<button class="btn g sm" onclick="loadUpdates(true, true)">Check again</button>';
   const newest = u.latest_version ? ' (v' + esc(u.latest_version) + ')' : '';
   let head = '';
 
   if(u.state === 'error'){
     head = '<b class="warn">Could not check for updates</b>'
-      + '<div class="muted">' + esc(u.error || '') + '</div>'
       + '<div class="row" style="margin-top:12px">' + again + '</div>';
 
   } else if(u.state === 'current'){
@@ -1597,9 +1618,29 @@ async function loadUpdates(force){
       + '<div class="val">' + notesHTML(u.whats_new) + '</div></div>';
   }
 
-  $('#uCard').innerHTML = head;
-  // The badge means "there is something to install", nothing else.
-  $('#ucnt').style.display = (u.state === 'behind') ? '' : 'none';
+  if(JUST_INSTALLED)
+    head = '<b class="ok">Installed v' + esc(JUST_INSTALLED.version) + ' at '
+      + JUST_INSTALLED.at + '</b><div class="muted">' + JUST_INSTALLED.files
+      + ' file' + (JUST_INSTALLED.files === 1 ? '' : 's') + ' replaced, every one '
+      + 'read back and checked against the release. Close Shortsmith and open it '
+      + 'again to start using it.</div>' + head.replace(/^<b[^>]*>[^<]*<\/b>/, '');
+  $('#uCard').innerHTML = head + updateWhen(u);
+  // The badge: gold when there is something to install, red when the last
+  // check failed -- so a check that never got through is visible from
+  // anywhere in the app, not only on this page.
+  const badge = $('#ucnt');
+  const failed = u.state === 'error';
+  badge.classList.toggle('bad', failed);
+  badge.textContent = failed ? '!' : '1';
+  badge.title = failed ? 'The last update check did not get through' : 'An update is ready';
+  badge.style.display = (u.state === 'behind' || failed) ? '' : 'none';
+
+  if(announce){
+    if(failed) notify('Could not check for updates', u.error || 'GitHub did not answer.', 'bad');
+    else if(u.state === 'behind') notify('Update available', 'v' + (u.latest_version || '?')
+      + ' is out. Open Updates to install it.');
+    else notify('Up to date', 'Checked with GitHub: v' + u.version + ' is the newest.', 'good');
+  }
 
   $('#uLog').innerHTML = notesHTML(u.changelog) || 'No changelog in this copy.';
   $('#uCommits').innerHTML = (u.commits || []).map(c =>
@@ -1609,14 +1650,21 @@ async function loadUpdates(force){
 }
 
 async function applyUpdate(){
-  const b = $('#uBtn'); if(b){ b.disabled = true; b.textContent = 'Installing…'; }
-  const r = await api('/api/update', {});
-  if(r.ok){
+  const b = $('#uBtn'); if(b){ b.disabled = true; b.textContent = 'Downloading and checking\u2026'; }
+  let r;
+  try { r = await api('/api/update', {}); } catch(e){ r = null; }
+  if(r && r.ok && r.updated){
+    JUST_INSTALLED = {version: r.version || '?', files: r.updated,
+                      at: new Date().toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'})};
     notify('Updated to v' + (r.version || '?'),
-           'Close and reopen Shortsmith to run the new version.', 'good');
+           r.updated + ' file' + (r.updated === 1 ? '' : 's') + ' replaced and checked. '
+           + 'Close and reopen Shortsmith to run the new version.', 'good');
     await loadUpdates(true);     // re-read from disk so the button goes away
+  } else if(r && r.ok){
+    notify('Nothing to install', r.message || 'This copy already matches the release.', 'good');
+    await loadUpdates(true);
   } else {
-    notify('Update failed', r.error || 'Unknown problem', 'bad');
+    notify('Update did not install', (r && r.error) || 'Shortsmith did not answer. Nothing was changed.', 'bad');
     if(b){ b.disabled = false; b.textContent = 'Install update'; }
   }
 }
@@ -2166,7 +2214,7 @@ window.addEventListener('keydown', e=>{
 resetSnake();
 
 pollBoot();
-loadUpdates();
+loadUpdates(false, true);   // and say how the check went
 loadClips();        // the sidebar count said 0 until this tab was first opened
 refresh(); POLL = setInterval(refresh, 3000);
 </script>
