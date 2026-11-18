@@ -1,0 +1,59 @@
+name: Retry a build GitHub could not start
+
+# GitHub sometimes has no Apple Silicon Mac free. The macOS build then sits in
+# the queue, is never given a machine, and is dropped -- "The job was not
+# acquired by Runner of type hosted even after multiple attempts" -- and since
+# a release is only published once all four downloads have built, the whole
+# release stalls. v2.4.4 went exactly that way: Windows, Intel Mac and Linux
+# built, and the Apple Silicon build never started.
+#
+# Nothing about the code was wrong, so the answer is to ask again, a little
+# later. This does that, at most three times, and ONLY when every job that
+# did not succeed is one GitHub never gave a machine to. A build that ran and
+# failed is a real failure and is left alone, red, for a person to read.
+#
+# It runs no project code: it reads the run's job list and asks for a re-run.
+
+on:
+  workflow_run:
+    workflows: ["Build bundles"]
+    types: [completed]
+
+permissions:
+  actions: write
+
+jobs:
+  retry:
+    if: >-
+      github.event.workflow_run.conclusion != 'success' &&
+      github.event.workflow_run.run_attempt < 4
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Re-run builds that never got a machine
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN: ${{ github.event.workflow_run.id }}
+          ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          JOBS="repos/$GITHUB_REPOSITORY/actions/runs/$RUN/attempts/$ATTEMPT/jobs"
+          # Never given a machine: cancelled, with no runner named.
+          dropped=$(gh api "$JOBS" --jq '[.jobs[] | select(.conclusion == "cancelled"
+                    and ((.runner_name // "") == ""))] | length')
+          # Anything else that did not succeed or was skipped is a real failure.
+          failed=$(gh api "$JOBS" --jq '[.jobs[] | select(.conclusion != "success"
+                   and .conclusion != "skipped" and (.conclusion != "cancelled"
+                   or (.runner_name // "") != ""))] | length')
+          echo "attempt $ATTEMPT: $dropped job(s) never got a machine, $failed real failure(s)"
+          if [ "$dropped" -eq 0 ] || [ "$failed" -ne 0 ]; then
+            echo "Nothing to retry."
+            exit 0
+          fi
+          echo "Waiting ten minutes for the queue to clear, then asking again."
+          sleep 600
+          # The whole run, not only the dropped job: the release is created
+          # by the last job, from all four downloads of one attempt.
+          gh run rerun "$RUN" --repo "$GITHUB_REPOSITORY"
+          echo "Asked GitHub to run the build again (attempt $((ATTEMPT + 1)) of at most 4)."
