@@ -1,5 +1,21 @@
 # Changelog
 
+## 2.4.7
+
+**Downloading again replaces an old copy**
+- If your copy will not update -- it is too old, or stuck on a screen that
+  covers the Updates button -- download Shortsmith again from the page and
+  open the new one. Shortly after it opens, it looks for an older copy on
+  this computer. When it finds one, it asks once, then moves your videos,
+  your gameplay footage and its memory of past stories into the new copy,
+  and deletes the old one.
+- It only ever touches an older copy of Shortsmith. A newer copy, a folder
+  that merely looks similar, a copy that is open right now, or anything
+  inside a developer's working folder is left alone, and it never deletes
+  anything before your things have been moved.
+- The Updates page lists any older copies it finds, with a button to
+  replace each one and a button to look again.
+
 ## 2.4.6
 
 **Choose, add and remove writer models in Settings**

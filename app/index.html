@@ -545,6 +545,7 @@ tr.dis{opacity:.42}
       <div class="scr" id="updates">
         <h1>Updates<span class="sub" id="uSub">&nbsp;</span></h1>
         <div class="card" id="uCard" style="margin-top:16px">Checking…</div>
+        <div class="card" id="oldCard" style="margin-top:12px;display:none"></div>
         <h2>What's in this version</h2>
         <div class="card"><div id="uLog" class="chlog"></div></div>
         <h2>Recent changes on GitHub</h2>
@@ -629,7 +630,7 @@ function go(id){
   document.querySelectorAll('.navb').forEach(n=>n.classList.toggle('sel', n.dataset.s===id));
   $('.scroll').scrollTop = 0;
   if(id==='machine') loadMachine();
-  if(id==='updates') loadUpdates();
+  if(id==='updates'){ loadUpdates(); loadOldCopies(); }
   if(id==='clips') loadClips();
 }
 document.querySelectorAll('.navb').forEach(n=> n.onclick=()=>go(n.dataset.s));
@@ -1859,6 +1860,95 @@ async function previewVoice(){
 // On Wi-Fi or a cable this just downloads. On a metered connection — mobile
 // data, a phone hotspot, roaming — it asks first, because the person clicking
 // Download is looking at a model name, not at their data plan.
+// ---------- older copies of Shortsmith ----------
+// Someone whose copy would not update downloads Shortsmith again. This copy
+// then finds the old one, moves their videos and footage in, and removes it
+// -- after asking, once. See shortsmith/oldcopies.py for what it will and
+// will not count as an older copy.
+let OLD = [];
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+function oldWhat(c){
+  const bits = [];
+  if(c.videos) bits.push(c.videos + ' video' + (c.videos === 1 ? '' : 's'));
+  if(c.clips) bits.push(c.clips + ' background clip' + (c.clips === 1 ? '' : 's')
+                        + (c.clips_gb ? ' (' + c.clips_gb + ' GB)' : ''));
+  return bits.length ? bits.join(' and ') : 'no videos or clips';
+}
+async function loadOldCopies(rescan){
+  let s;
+  try { s = await api('/api/oldcopies' + (rescan ? '?rescan=1' : '')); } catch(e){ return null; }
+  OLD = (s && s.copies) || [];
+  const el = $('#oldCard');
+  const again = '<div class="row" style="margin-top:10px"><button class="btn g sm" '
+    + 'onclick="lookAgain()">Look again</button></div>';
+  if(!OLD.length){
+    el.style.display = (s && (s.scanned || s.scanning)) ? 'block' : 'none';
+    el.innerHTML = '<b>Older copies on this computer</b><div class="muted" style="margin-top:4px">'
+      + (s && s.scanning ? 'Looking\u2026' : 'None found.') + '</div>' + again;
+    return s;
+  }
+  el.style.display = 'block';
+  el.innerHTML = '<b class="warn">Older copies on this computer</b>'
+    + OLD.map((c, i) => '<div style="margin-top:10px"><div>Shortsmith v' + esc(c.version)
+      + '<span class="muted"> &middot; ' + esc(oldWhat(c)) + '</span></div>'
+      + '<div class="muted" style="font-size:12px;overflow-wrap:anywhere">' + esc(c.path) + '</div>'
+      + '<button class="btn g sm" style="margin-top:6px" onclick="removeOld(' + i + ')">'
+      + 'Move my things here and remove it</button></div>').join('') + again;
+  return s;
+}
+async function lookAgain(){
+  await loadOldCopies(true);
+  for(let i = 0; i < 20; i++){
+    await sleep(1000);
+    const s = await loadOldCopies(false);
+    if(s && !s.scanning) break;
+  }
+}
+async function removeOld(i, asked){
+  const c = OLD[i];
+  if(!c) return;
+  if(!asked && !await ask({title: 'Replace the older Shortsmith?',
+        detail: 'Shortsmith v' + c.version + ' is also on this computer, in\n' + c.path
+          + '\n\nIts ' + oldWhat(c) + ' will be moved into this copy first. Then the '
+          + 'old copy is deleted. Nothing else on this computer is touched.',
+        yes: 'Move my things and remove it', no: 'Not now', danger: true})){
+    try { await api('/api/oldcopies/dismiss', {path: c.path}); } catch(e){}
+    return;
+  }
+  notify('Moving your things across', 'This can take a minute for large clips.');
+  let r;
+  try { r = await api('/api/oldcopies/remove', {path: c.path}); } catch(e){ r = null; }
+  if(r && r.ok){
+    notify('Old copy removed', 'Moved ' + oldWhat(r) + ' into this copy.', 'good');
+    LASTSIG.library = null; LASTSIG.review = null;
+    refresh(); loadClips();
+  } else {
+    notify('The old copy was not removed', (r && r.error) || 'Shortsmith did not answer.', 'bad');
+  }
+  loadOldCopies(false);
+}
+// Once, shortly after opening: offer to replace each older copy found.
+async function offerOldCopies(){
+  let s = null;
+  for(let i = 0; i < 25; i++){
+    await sleep(2000);
+    s = await loadOldCopies(false);
+    if(s && s.scanned && !s.scanning) break;
+  }
+  if(!s) return;
+  for(let i = 0; i < OLD.length; i++){
+    if(OLD[i].dismissed) continue;
+    const c = OLD[i];
+    const yes = await ask({title: 'Replace the older Shortsmith?',
+      detail: 'Shortsmith v' + c.version + ' is also on this computer, in\n' + c.path
+        + '\n\nIts ' + oldWhat(c) + ' will be moved into this copy first. Then the '
+        + 'old copy is deleted. Nothing else on this computer is touched.',
+      yes: 'Move my things and remove it', no: 'Not now', danger: true});
+    if(yes) await removeOld(i, true);
+    else { try { await api('/api/oldcopies/dismiss', {path: c.path}); } catch(e){} }
+  }
+}
+
 let MACHINE = null;
 async function useModel(name){
   const r = await api('/api/model/use', {model: name});
@@ -2286,6 +2376,7 @@ resetSnake();
 
 pollBoot();
 loadUpdates(false, true);   // and say how the check went
+offerOldCopies();           // an older Shortsmith on this computer, once
 loadClips();        // the sidebar count said 0 until this tab was first opened
 refresh(); POLL = setInterval(refresh, 3000);
 </script>

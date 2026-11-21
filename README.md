@@ -59,6 +59,11 @@ Then, once:
    Google Gemini give free keys, and only the story text is sent. You can
    switch at any time in Settings.
 
+Already have an older Shortsmith that will not update? Download it again
+anyway. The first time the new one opens, it finds the old copy, moves your
+videos and gameplay footage across, and removes the old one, after asking.
+It touches nothing else on the computer.
+
 That is the whole install. **There is no Python to install and nothing to
 type** — the download carries its own copy of everything it needs.
 

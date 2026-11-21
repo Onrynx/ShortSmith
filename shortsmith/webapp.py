@@ -822,6 +822,11 @@ class _Handler(BaseHTTPRequestHandler):
             return self._json(queue_state())
         if p == "/api/writer":
             return self._json(writer.public_state())
+        if p == "/api/oldcopies":
+            from . import oldcopies
+            if "rescan" in (q or {}):
+                oldcopies.start_scan()
+            return self._json(oldcopies.state())
         if p == "/api/boot":
             from .boot import state as boot_state
             return self._json(boot_state())
@@ -937,6 +942,16 @@ class _Handler(BaseHTTPRequestHandler):
         # this app's own window (the session token and the same-origin check
         # apply), and is never sent back: the answers carry its last four
         # characters at most.
+        # Replacing an older copy. The path is only ever one the search
+        # itself found (oldcopies.replace refuses anything else), checked
+        # again right before anything is moved or deleted.
+        if p == "/api/oldcopies/remove":
+            from . import oldcopies
+            return self._json(oldcopies.replace(str(body.get("path") or "")))
+        if p == "/api/oldcopies/dismiss":
+            from . import oldcopies
+            return self._json(oldcopies.dismiss(str(body.get("path") or "")))
+
         if p == "/api/writer/check":
             return self._json(writer.check(body))
         if p == "/api/writer/save":
@@ -1244,6 +1259,11 @@ def serve(port: int | None = None, background: bool = False):
     httpd = _Server((HOST, port), _Handler)
     url = f"http://{HOST}:{port}/"
     log("info", f"Shortsmith app listening on {url} (this machine only)")
+    # Look for an older copy of Shortsmith a few seconds after opening, once
+    # the window is up -- a fresh download is how a stuck old copy gets
+    # replaced, and this is where that starts.
+    from . import oldcopies
+    oldcopies.start_scan(delay=8)
     if background:
         t = threading.Thread(target=httpd.serve_forever, daemon=True)
         t.start()
